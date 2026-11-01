@@ -2,7 +2,7 @@
 //!
 //! No network, no key, no funds: `cargo test` from a clean clone.
 
-use crate::mandate::{check, Mandate, Refusal};
+use crate::mandate::{check as raw_check, Mandate, Refusal};
 use crate::quote::*;
 use near_sdk::env;
 
@@ -34,9 +34,20 @@ fn mandate(max_cost_bps: u32) -> Mandate {
         destination_asset: "nep141:wrap.near".into(),
         recipient: "demo.near".into(),
         max_cost_bps,
-        max_fill: 10_000_000,
+        max_fill: near_sdk::json_types::U128(10_000_000),
         expiry_ns: u64::MAX,
     }
+}
+
+/// The tests assert on the realised cost, so unwrap `Accepted` here.
+fn check(
+    canonical: &[u8],
+    signature: &[u8; 64],
+    m: &Mandate,
+    delivered: u128,
+    now_ns: u64,
+) -> Result<u32, Refusal> {
+    raw_check(canonical, signature, m, delivered, now_ns).map(|a| a.cost_bps)
 }
 
 fn parse(b: &[u8]) -> SignedQuote {
@@ -217,7 +228,7 @@ fn an_expired_mandate_is_refused() {
 
 #[test]
 fn a_fill_larger_than_the_mandate_allows_is_refused() {
-    let m = Mandate { max_fill: 9_999_999, ..mandate(10_000) };
+    let m = Mandate { max_fill: near_sdk::json_types::U128(9_999_999), ..mandate(10_000) };
     assert_eq!(
         check(HONEST, &sig(HONEST_SIG), &m, HONEST_FLOOR, NOW_NS),
         Err(Refusal::FillTooLarge { amount_in: 10_000_000, max_fill: 9_999_999 })

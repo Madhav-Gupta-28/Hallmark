@@ -1,6 +1,7 @@
 //! The mandate, the refusals, and the check that stands between them.
 
 use crate::quote::{cost_bps, is_signed_by_venue, parse_iso8601_secs, SignedQuote};
+use near_sdk::json_types::U128;
 use near_sdk::near;
 
 /// What the owner signs, once. Three numbers and an expiry: no policy language,
@@ -14,7 +15,7 @@ pub struct Mandate {
     /// the whole point: the worst all-in cost the owner will accept, in bps
     pub max_cost_bps: u32,
     /// the largest single fill, in origin base units
-    pub max_fill: u128,
+    pub max_fill: U128,
     pub expiry_ns: u64,
 }
 
@@ -44,13 +45,22 @@ pub enum Refusal {
 /// the filler actually just transferred in — known synchronously, because the
 /// filler delivers *before* anything leaves the vault. That is what lets this
 /// enforce the **realised** cost rather than merely a bound on it.
+/// What a passing check tells the vault.
+#[derive(Debug, PartialEq)]
+pub struct Accepted {
+    /// the owner's realised all-in cost for this fill, in bps
+    pub cost_bps: u32,
+    /// the origin-asset amount the filler has earned by delivering
+    pub amount_in: u128,
+}
+
 pub fn check(
     canonical: &[u8],
     signature: &[u8; 64],
     m: &Mandate,
     delivered: u128,
     now_ns: u64,
-) -> Result<u32, Refusal> {
+) -> Result<Accepted, Refusal> {
     if !is_signed_by_venue(canonical, signature) {
         return Err(Refusal::BadSignature);
     }
@@ -72,8 +82,8 @@ pub fn check(
         return Err(Refusal::QuoteExpired { deadline_secs, now_secs });
     }
     let amount_in: u128 = q.amount_in.parse().expect("bad amountIn");
-    if amount_in > m.max_fill {
-        return Err(Refusal::FillTooLarge { amount_in, max_fill: m.max_fill });
+    if amount_in > m.max_fill.0 {
+        return Err(Refusal::FillTooLarge { amount_in, max_fill: m.max_fill.0 });
     }
     // The quote's own floor is a hard sanity bound on the delivery.
     let floor: u128 = q.min_amount_out.parse().expect("bad minAmountOut");
@@ -87,6 +97,6 @@ pub fn check(
     if cost > m.max_cost_bps {
         return Err(Refusal::CostCeilingBreached { worst_bps: cost, ceiling_bps: m.max_cost_bps });
     }
-    Ok(cost)
+    Ok(Accepted { cost_bps: cost, amount_in })
 }
 

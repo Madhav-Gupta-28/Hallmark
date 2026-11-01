@@ -29,11 +29,19 @@ That number cannot be negotiated down, only shrunk by shrinking the contract.
 Building with `--no-abi` saves 2 KB and nothing else is low-hanging, so treat
 **2.5 NEAR as the real floor.**
 
-> **Measured the hard way.** Funding the vault with exactly 2.36 NEAR made the
+> **Measured the hard way.** The figure moves with the contract: v1's wasm was
+> 235,304 bytes and locked 2.36 NEAR, v2's is 257,314 and locks 2.57. Funding the
+> vault with exactly the code's own byte cost made the
 > deploy fail with `the remaining balance will not be enough to cover storage`,
 > asking for **0.1120767046792826 NEAR** more. The code lock is only part of it:
 > the deploy burns its own gas from the same account, and `new` writes contract
 > state. Fund with **2.5 NEAR** and it goes through first time.
+
+### The mandate's own storage, 0.0154 NEAR
+
+Opening a mandate costs the opener about **0.01536 NEAR** of storage staking,
+prepaid with `storage_deposit` and returned by `cancel` (§2.11). One payment
+covers however many mandates you open and close in sequence.
 
 ### Everything else is small
 
@@ -55,7 +63,8 @@ Almost all of it — **unless you run §11.**
 
 | | NEAR | recoverable? |
 |---|---|---|
-| vault storage lock | 2.36 | **yes** — `delete-account beneficiary YOU` returns the whole balance |
+| vault storage lock | 2.57 | **yes** — `delete-account beneficiary YOU` returns the whole balance |
+| mandate storage | 0.0154 | **yes** — `cancel`, then `storage_withdraw` |
 | `storage_deposit` × 4 | 0.005 | yes — `storage_unregister` on each token |
 | the trade legs | 0.2 | yes — unwrap the wNEAR, swap the USDT back |
 | gas, burned | ~0.09 | no |
@@ -67,7 +76,7 @@ Almost all of it — **unless you run §11.**
 
 Deleting the vault's full-access key (§11) is what makes "nobody to switch it
 off" literally true. It also means **nobody can delete the account either**, so
-the **2.36 NEAR is locked forever.**
+the **2.57 NEAR is locked forever.**
 
 | | permanent cost |
 |---|---|
@@ -223,6 +232,36 @@ near contract call-function as-read-only hallmarkfi.near quote_signer \
 
 Expect `ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc`.
 
+### Redeploying over an existing vault
+
+`with-init-call new` fails if the account already holds state — `#[init]`
+refuses to overwrite. Use `migrate` instead, which is `#[init(ignore_state)]`
+and `#[private]`, so only the account itself can call it:
+
+```bash
+near contract deploy hallmarkfi.near \
+  use-file target/near/hallmark/hallmark.wasm \
+  with-init-call migrate json-args '{}' \
+  prepaid-gas '100 Tgas' attached-deposit '0 NEAR' \
+  network-config mainnet sign-with-keychain send
+```
+
+Two things to know before doing this:
+
+- **Fund the account for the new code first.** NEAR stakes 1e19 yoctoNEAR per
+  byte, so a bigger wasm needs more locked balance before the deploy will land.
+  Going from v1's 235,304 bytes to v2's 257,314 needed another 0.22 NEAR.
+- **v2 uses new storage prefixes** (`M`/`C`/`S`, not `m`/`c`). `Mandate` gained
+  a field, and borsh cannot read a v1 record into a v2 struct, so the old bytes
+  are left where they are rather than being misread. That strands about 360
+  bytes — 0.0036 NEAR — of dead state, which is the honest price of changing a
+  struct that is already live. Old mandate ids are not reused: `mandate_count`
+  restarts from zero and the v1 transactions stay on the explorer.
+
+This path exists because an audit found a critical bug in a contract that was
+already deployed (ARCHITECTURE.md §2.10). It is also why §11 is done last: once
+the full-access key is gone, there is no `migrate`.
+
 **Verify the bound before trusting the deployment**, using the signed fixture
 that guarantees a 99.99% loss:
 
@@ -252,6 +291,27 @@ for TOKEN in wrap.near usdt.tether-token.near; do
   done
 done
 ```
+
+### And prepay the vault's own storage
+
+Separate from the token registrations above, and easy to miss. Opening a mandate
+writes a record, and **the vault does not stake NEAR for state you create** —
+ARCHITECTURE.md §2.11 explains why that is not an inconvenience but the fix for
+a cheap denial-of-service. Ask the contract what it will charge, then prepay it:
+
+```bash
+near contract call-function as-read-only hallmarkfi.near storage_cost_estimate \
+  json-args '{}' network-config mainnet now
+# "15360000000000000000000"   -> 0.01536 NEAR
+
+near contract call-function as-transaction hallmarkfi.near storage_deposit \
+  json-args '{}' prepaid-gas '30 Tgas' attached-deposit '0.0154 NEAR' \
+  sign-as YOU.near network-config mainnet sign-with-keychain send
+```
+
+Paid once, not per mandate: `cancel` returns it and the next `open` reuses it.
+`npm run post` does all of this for you and skips it when the balance already
+covers the next mandate — this section is here so the number is not a surprise.
 
 ## §7 Get the two legs
 
@@ -284,8 +344,15 @@ below is the same account as `YOU.near`.
 cd client && npm install
 HALLMARK_VAULT=hallmarkfi.near \
 HALLMARK_ACCOUNT=YOU.near HALLMARK_KEY=ed25519:... \
-  npm run post -- wNEAR USDT 0.1 --ceiling 300
+  npm run post -- NEAR USDT 0.1 --ceiling 300 --max-quote-age 300
 ```
+
+`--max-quote-age` is in seconds and defaults to 300. It bounds how old the USD
+marks a fill is priced against may be. It is **not** optional in the contract and
+there is no sensible "off": a cost ceiling priced from stale marks is not a
+ceiling, which is exactly the hole ARCHITECTURE.md §2.10 describes. The quote's
+own `deadline` cannot do this job, because the filler chooses it and 1Click will
+sign one ten years out.
 
 Check it landed:
 

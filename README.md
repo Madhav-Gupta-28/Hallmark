@@ -35,7 +35,7 @@ unless it says so.
 cargo test
 ```
 
-**See:** 53 tests pass — 30 unit, 23 against a real sandbox node. No network, no
+**See:** 56 tests pass — 30 unit, 26 against a real sandbox node. No network, no
 key, no funds. Four of them are the point:
 
 | test | what it shows |
@@ -143,7 +143,7 @@ comes back.
 | | |
 |---|---|
 | a whole fill, on mainnet | **30.25 TGas** — 10% of one transaction's limit |
-| opening a mandate | **0.01536 NEAR** of storage, returned by `cancel` and reusable |
+| opening a mandate | **0.01536 NEAR** of storage, reusable, and `reap` returns what it frees |
 | the contract | 257,314 bytes, which NEAR stakes 2.57 NEAR against |
 
 ## Layout
@@ -153,7 +153,7 @@ contract/src/quote.rs        the signed quote, the signature, the arithmetic
 contract/src/mandate.rs      the mandate, the typed refusals, the check
 contract/src/lib.rs          the vault
 contract/src/tests.rs        30 unit tests — every guarantee the spec claims
-contract/tests/integration.rs 23 tests, end to end against a real node
+contract/tests/integration.rs 26 tests, end to end against a real node
 client/src/lib/canonical.ts  canonicalisation — the one place it exists
 client/src/bin/bound.ts      what a live quote guarantees
 client/src/bin/post.ts       the owner

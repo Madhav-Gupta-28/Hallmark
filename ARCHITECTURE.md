@@ -505,11 +505,29 @@ pays for it.**
 | `storage_withdraw(amount?)` | call, payable | take back whatever no mandate is using |
 | `storage_balance_of(account_id)` | **view** | what is prepaid |
 | `storage_cost_estimate()` | **view** | exactly what `open` will charge, before paying it |
+| `reap(mandate_id)` | call | delete a closed record and return the storage it actually frees |
 
-`open` now deducts the charge from the opener's prepaid balance and refuses with
-*"prepay storage first"* if it is short. `cancel` returns the prepayment, so
-opening and cancelling in a loop drains nobody. Attacker leverage goes from
-roughly 10× to exactly 1×, which is the only number that is actually safe.
+`open` deducts the charge from the opener's prepaid balance and refuses with
+*"prepay storage first"* if it is short. Attacker leverage goes from roughly
+10× to exactly 1×, which is the only number that is actually safe.
+
+> **Correction kept — the first version of this fix had a smaller copy of the
+> same bug.** `cancel` returned the *whole* prepayment while leaving the record
+> in place. A mandate record measures **296 bytes**, so opening and cancelling
+> in a loop cost the vault 296 bytes a cycle and refunded the owner in full:
+> about 5× leverage instead of 10×, which is not a fix. It was caught by
+> printing real `storage_usage` deltas rather than trusting the arithmetic.
+>
+> `cancel` now returns nothing — the record is still there, and a settled
+> mandate is its own receipt — and a separate `reap` deletes a closed record and
+> refunds **the measured delta, capped at what was paid**. Measuring rather than
+> assuming is what makes it safe: whatever is not refunded is still covering
+> bytes that are still there.
+>
+> One more trap inside the trap: `near_sdk::store` collections buffer their
+> writes and flush when the call ends, so `storage_usage()` immediately after a
+> `remove` still reports the old figure and the refund came out as **zero**.
+> `reap` calls `self.mandates.flush()` before measuring.
 
 One related change, in the same spirit: `withdraw` now **removes** its credit
 slot rather than writing a zero into it. A zeroed slot still occupies storage
@@ -1231,7 +1249,8 @@ Checked against `contract/src/lib.rs`; nothing is exported that is not listed.
 | `ft_on_transfer` | call | **the only path that moves value.** NEP-141 calls it; `msg` carries the action |
 | `withdraw(asset)` | call, payable | pull a credited balance; pull-not-push by design (§4.1) |
 | `resolve_withdraw` | private | restores the credit if the payout failed |
-| `cancel(mandate_id)` | call | owner only; credits the unspent escrow back |
+| `cancel(mandate_id)` | call | owner only; credits the unspent escrow back. Keeps the record and its storage |
+| `reap(mandate_id)` | call | owner only, closed mandates only; deletes the record and refunds the storage it frees (§2.11) |
 | `get_mandates(from_index, limit)` | **view** | the order book — open mandates only |
 | `get_mandate(mandate_id)` | **view** | one record, open or closed |
 | `get_credit(account_id, asset)` | **view** | what an account can withdraw |
@@ -1371,7 +1390,7 @@ state and nothing to unwind.
 ### 7.3 The judge
 
 ```
-1. git clone && cargo test                           # 53 tests, no network, no key
+1. git clone && cargo test                           # 56 tests, no network, no key
 2. cat fixtures/worst.quote.json                     # a validly signed 99.99% haircut
 3. near view hallmarkfi.near worst_cost     '{...}'  # 10000 bps
 4. near view hallmarkfi.near realised_cost  '{...}'  # 503 bps even at the full fill
@@ -1455,6 +1474,7 @@ prices it exactly.
 | owner funds a mandate that has already expired | *"mandate has expired"* | nothing could ever fill it |
 | a token's `ft_transfer` needs more than 10 TGas | the withdrawal fails and the credit is restored | 30 TGas is now forwarded; unused gas is refunded |
 | a signature that decodes to fewer than 64 bytes | `BadSignature`, never zero-padded | a verifier must not guess at a length |
+| **a refused fill** | the *outer* `ft_transfer_call` **succeeds** and the delivery is refunded; the refusal is in an inner receipt | NEP-141 catching the panic is what makes the refund work. Anything reporting on a fill must read `receipts_outcome` — `receiptFailure()` in `client/src/lib/hallmark.ts` — or it will call a refused fill a filled one, which the reference filler did |
 | filler delivers less than the signed floor | `UnderDelivered{delivered, floor}` | §2.4 |
 | realised cost breaches the ceiling | `CostCeilingBreached{worst, ceiling}` | §2.1 |
 | quote names a recipient that is not the mandate's | `WrongRecipient` | recipient is signed |
@@ -1542,7 +1562,7 @@ Each one names what enforces it and what checks it.
 | 12 | The USD marks a cost is computed from are no older than the owner allowed (§2.10) | `now_secs > signed_at + max_quote_age_secs` refuses, against the **signed** `timestamp` | `the_freshness_bound_is_exact_to_the_second`, `a_quote_older_than_the_mandate_allows_is_refused_on_chain` |
 | 13 | No field the counterparty chooses is ever used as a bound | `depositAddress` unread (§2.4); `deadline` is a deadline, never a freshness test (§2.10) | audited: `deadline` is compared only against itself; `max_quote_age_secs` is compared against `timestamp` |
 | 14 | The vault never stakes NEAR for state a stranger created (§2.11) | `open` deducts the measured cost from the opener's prepaid balance | `opening_a_mandate_has_to_be_paid_for`, `the_charge_for_a_mandate_covers_what_it_actually_stores` |
-| 15 | An honest round trip leaves no storage behind | `withdraw` removes the credit slot; `cancel` returns the prepayment | `a_withdrawal_releases_the_storage_it_was_using`, `cancelling_returns_the_prepaid_storage` |
+| 15 | The vault's storage is always covered by a prepayment that has not been refunded | `withdraw` removes the credit slot; `cancel` refunds nothing; `reap` refunds only the **measured** bytes freed, capped at what was paid | `a_withdrawal_releases_the_storage_it_was_using`, `opening_and_cancelling_in_a_loop_does_not_drain_the_vault`, `reaping_returns_only_the_storage_it_actually_frees` |
 | 16 | A signature is 64 bytes or it is refused | `decode_signature` returns `None` on any other length | `a_signature_is_sixty_four_bytes_or_nothing` |
 
 ---
@@ -1584,7 +1604,7 @@ Each one names what enforces it and what checks it.
 | `a_thirteenth_month_is_refused` | `should_panic` |
 | `a_signature_is_sixty_four_bytes_or_nothing` | short, long, empty and non-base58 all refused, never zero-padded |
 
-**Done — 23 of 23 passing, `cargo test --test integration`, against a real
+**Done — 26 of 26 passing, `cargo test --test integration`, against a real
 sandbox node driven by a real NEAR Intents signature:**
 
 The fixture `fixtures/sandbox.quote.json` is a genuine signed 1Click quote for
@@ -1618,7 +1638,9 @@ whose key nobody has.)
 | `opening_a_mandate_has_to_be_paid_for` | **§2.11**: no prepayment ⇒ refused and refunded; prepay ⇒ works, and the prepayment is spent exactly |
 | `the_charge_for_a_mandate_covers_what_it_actually_stores` | measures real `storage_usage` growth; fails if the charge is ever an underestimate |
 | `a_withdrawal_releases_the_storage_it_was_using` | the credit slot is removed, not zeroed |
-| `cancelling_returns_the_prepaid_storage` | open/cancel in a loop drains nobody |
+| `opening_and_cancelling_in_a_loop_does_not_drain_the_vault` | measures both sides over three cycles; the first version of the §2.11 fix failed this |
+| `reaping_returns_only_the_storage_it_actually_frees` | `cancel` refunds nothing, `reap` refunds the measured delta, a reaped mandate is gone, reaping twice refuses |
+| `reap_is_owner_only_and_needs_a_closed_mandate` | authority, and ordering |
 | `unused_prepaid_storage_can_be_taken_back` | `storage_withdraw`, and that `open` then refuses |
 | `only_the_owner_can_fund_and_only_a_live_mandate` | a stranger's top-up is refused and refunded; an expired mandate takes no money |
 

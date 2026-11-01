@@ -64,7 +64,7 @@ Almost all of it — **unless you run §11.**
 | | NEAR | recoverable? |
 |---|---|---|
 | vault storage lock | 2.57 | **yes** — `delete-account beneficiary YOU` returns the whole balance |
-| mandate storage | 0.0154 | **yes** — `cancel`, then `storage_withdraw` |
+| mandate storage | 0.0154 | **mostly** — `cancel`, then `reap`, then `storage_withdraw` |
 | `storage_deposit` × 4 | 0.005 | yes — `storage_unregister` on each token |
 | the trade legs | 0.2 | yes — unwrap the wNEAR, swap the USDT back |
 | gas, burned | ~0.09 | no |
@@ -309,7 +309,8 @@ near contract call-function as-transaction hallmarkfi.near storage_deposit \
   sign-as YOU.near network-config mainnet sign-with-keychain send
 ```
 
-Paid once, not per mandate: `cancel` returns it and the next `open` reuses it.
+Paid once, not per mandate: the next `open` reuses whatever is left, and
+`reap(mandate_id)` on a cancelled mandate returns the rest.
 `npm run post` does all of this for you and skips it when the balance already
 covers the next mandate — this section is here so the number is not a surprise.
 

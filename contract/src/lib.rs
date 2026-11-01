@@ -362,6 +362,10 @@ impl Hallmark {
 
     /// Close a mandate and credit the unspent escrow back to its owner. Owner
     /// only. Fills already settled are untouched.
+    ///
+    /// The record **stays** — a settled mandate is its own receipt — and so does
+    /// the storage prepayment, because the state is still there. `reap` is what
+    /// returns it, and only once the bytes are actually gone.
     pub fn cancel(&mut self, mandate_id: u64) {
         let rec = self.mandates.get(&mandate_id).expect("no such mandate").clone();
         require!(env::predecessor_account_id() == rec.owner, "not your mandate");
@@ -370,20 +374,42 @@ impl Hallmark {
         if rec.escrow.0 > 0 {
             self.credit(&rec.owner, &rec.terms.origin_asset, rec.escrow.0);
         }
-        // The record stays readable — a settled mandate is the receipt — but the
-        // storage it prepaid for returns to the owner's balance, so cancelling
-        // and reopening is not a way to drain anyone.
-        let refund = rec.storage_paid.0;
-        let prepaid = self.storage_balance.get(&rec.owner).map(|b| b.0).unwrap_or(0);
-        self.storage_balance.insert(rec.owner.clone(), U128(prepaid + refund));
-
         let rec = self.mandates.get_mut(&mandate_id).unwrap();
         rec.escrow = U128(0);
         rec.open = false;
-        rec.storage_paid = U128(0);
         env::log_str(&format!(
             r#"EVENT_JSON:{{"standard":"hallmark","version":"1.0.0","event":"mandate_closed","data":[{{"mandate_id":"{mandate_id}"}}]}}"#
         ));
+    }
+
+    /// Delete a closed mandate's record and return the storage it actually
+    /// frees. Owner only.
+    ///
+    /// The refund is the **measured** delta, capped at what was paid. An earlier
+    /// version had `cancel` return the whole prepayment while leaving the
+    /// 296-byte record in place, which made opening and cancelling in a loop a
+    /// slower version of exactly the attack §2.11 exists to stop. Measuring
+    /// rather than assuming is the only way this is safe: whatever is not
+    /// refunded is still covering bytes that are still there.
+    pub fn reap(&mut self, mandate_id: u64) -> U128 {
+        let rec = self.mandates.get(&mandate_id).expect("no such mandate").clone();
+        require!(env::predecessor_account_id() == rec.owner, "not your mandate");
+        require!(!rec.open, "cancel the mandate first");
+        require!(rec.storage_paid.0 > 0, "already reaped");
+
+        // `store` collections buffer their writes and flush when the call ends,
+        // so `storage_usage()` right after a `remove` still reports the old
+        // figure and the refund would come out as zero. Flush, then measure.
+        let before = env::storage_usage();
+        self.mandates.remove(&mandate_id);
+        self.mandates.flush();
+        let freed = before.saturating_sub(env::storage_usage()) as u128
+            * env::storage_byte_cost().as_yoctonear();
+        let refund = freed.min(rec.storage_paid.0);
+
+        let prepaid = self.storage_balance.get(&rec.owner).map(|b| b.0).unwrap_or(0);
+        self.storage_balance.insert(rec.owner.clone(), U128(prepaid + refund));
+        U128(refund)
     }
 
     fn credit(&mut self, who: &AccountId, asset: &str, amount: u128) {

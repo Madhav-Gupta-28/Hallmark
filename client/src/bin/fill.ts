@@ -15,6 +15,7 @@ import { canonicalise, costBps, quoteAgeSecs, signatureB58, verifySigner } from 
 import { getQuote } from "../lib/oneclick.ts";
 import {
   Hallmark,
+  receiptFailure,
   signer,
   transferCall,
   tokenAccount,
@@ -92,7 +93,15 @@ for (const [id, m] of mandates) {
     deliver.toString(),
     { action: "fill", mandate_id: id, canonical, signature: signatureB58(res) },
   );
-  console.log(`       filled: ${out.transaction.hash}`);
+  // A refused fill is a *successful* ft_transfer_call with a failed inner
+  // receipt, so the outer status proves nothing. Look at the receipts.
+  const refused = receiptFailure(out);
+  if (refused) {
+    console.log(`       REFUSED: ${refused}`);
+    console.log(`       ${out.transaction.hash}  (the delivery was refunded)`);
+  } else {
+    console.log(`       filled:  ${out.transaction.hash}`);
+  }
 }
 console.log();
 

@@ -141,5 +141,29 @@ export async function transferCall(
   });
 }
 
+/**
+ * Why a fill can look like it worked when it did not.
+ *
+ * `ft_transfer_call` is a *successful* transaction even when the receiver's
+ * `ft_on_transfer` panics: NEP-141 catches the failure and refunds the sender,
+ * which is the whole point of the pattern. So the outer status is
+ * `SuccessValue` and the refusal is buried in an inner receipt. Anything that
+ * reports on a fill has to look there, or it reports a refused fill as filled.
+ *
+ * Returns the panic message if any receipt failed, or null if the fill landed.
+ */
+export function receiptFailure(outcome: unknown): string | null {
+  const receipts = (outcome as { receipts_outcome?: unknown[] })?.receipts_outcome ?? [];
+  for (const r of receipts) {
+    const status = (r as { outcome?: { status?: Record<string, unknown> } })?.outcome?.status;
+    const failure = status?.Failure as
+      | { ActionError?: { kind?: { FunctionCallError?: { ExecutionError?: string } } } }
+      | undefined;
+    if (!failure) continue;
+    return failure.ActionError?.kind?.FunctionCallError?.ExecutionError ?? JSON.stringify(failure);
+  }
+  return null;
+}
+
 /** `nep141:wrap.near` -> `wrap.near` */
 export const tokenAccount = (asset: string) => asset.replace(/^nep141:/, "");

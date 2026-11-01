@@ -961,25 +961,137 @@ async fn a_withdrawal_releases_the_storage_it_was_using() -> anyhow::Result<()> 
     Ok(())
 }
 
-/// Cancelling returns the storage the mandate prepaid for, so opening and
-/// cancelling in a loop is not a way to drain anyone.
+/// Opening and cancelling in a loop must not drain the vault.
+///
+/// The first version of the §2.11 fix had `cancel` return the whole
+/// prepayment while leaving the record in place, so each cycle silently cost
+/// the vault 296 bytes and refunded the owner in full — a slower version of
+/// exactly the attack the fix exists to stop. It was caught by measuring real
+/// `storage_usage` rather than trusting the accounting, which is why this test
+/// measures both sides.
 #[tokio::test]
-async fn cancelling_returns_the_prepaid_storage() -> anyhow::Result<()> {
+async fn opening_and_cancelling_in_a_loop_does_not_drain_the_vault() -> anyhow::Result<()> {
     let w = setup().await?;
+    let paid0: U128 = w
+        .vault
+        .view("storage_balance_of")
+        .args_json(json!({"account_id": w.owner.id()}))
+        .await?
+        .json()?;
+    let bytes0 = w.vault.view_account().await?.storage_usage;
+
+    for id in 1..=3u64 {
+        open_mandate(&w, 200, AMOUNT_IN / 4).await?;
+        w.owner
+            .call(w.vault.id(), "cancel")
+            .args_json(json!({"mandate_id": id}))
+            .transact()
+            .await?
+            .into_result()?;
+    }
+
+    let paid1: U128 = w
+        .vault
+        .view("storage_balance_of")
+        .args_json(json!({"account_id": w.owner.id()}))
+        .await?
+        .json()?;
+    let bytes1 = w.vault.view_account().await?.storage_usage;
+    let grew = (bytes1 - bytes0) as u128 * 10u128.pow(19);
+    let spent = paid0.0 - paid1.0;
+    println!("  3 open+cancel cycles: vault grew {grew} yocto of storage, owner paid {spent}");
+    assert!(
+        spent >= grew,
+        "the vault grew by {grew} but the owner was only charged {spent}"
+    );
+    Ok(())
+}
+
+/// `reap` deletes a closed record and returns the storage that actually went
+/// away — never more than was paid for it.
+#[tokio::test]
+async fn reaping_returns_only_the_storage_it_actually_frees() -> anyhow::Result<()> {
+    let w = setup().await?;
+    open_mandate(&w, 200, AMOUNT_IN).await?;
+
+    // cancel alone returns nothing: the record, and its bytes, are still there
     let before: U128 = w
         .vault
         .view("storage_balance_of")
         .args_json(json!({"account_id": w.owner.id()}))
         .await?
         .json()?;
-    open_mandate(&w, 200, AMOUNT_IN).await?;
-    let during: U128 = w
+    w.owner
+        .call(w.vault.id(), "cancel")
+        .args_json(json!({"mandate_id": 1}))
+        .transact()
+        .await?
+        .into_result()?;
+    let after_cancel: U128 = w
         .vault
         .view("storage_balance_of")
         .args_json(json!({"account_id": w.owner.id()}))
         .await?
         .json()?;
-    assert!(during.0 < before.0, "opening must consume prepaid storage");
+    assert_eq!(after_cancel.0, before.0, "cancel must not refund live storage");
+    assert!(
+        w.vault
+            .view("get_mandate")
+            .args_json(json!({"mandate_id": 1}))
+            .await?
+            .json::<Option<serde_json::Value>>()?
+            .is_some(),
+        "a cancelled mandate stays readable - it is its own receipt"
+    );
+
+    // reaping frees the bytes and returns them
+    let bytes_before = w.vault.view_account().await?.storage_usage;
+    let refund: U128 = w
+        .owner
+        .call(w.vault.id(), "reap")
+        .args_json(json!({"mandate_id": 1}))
+        .transact()
+        .await?
+        .json()?;
+    let bytes_after = w.vault.view_account().await?.storage_usage;
+    let freed = (bytes_before - bytes_after) as u128 * 10u128.pow(19);
+    println!("  reap freed {freed} yocto of storage and refunded {}", refund.0);
+    assert!(refund.0 > 0, "reaping must return something");
+    assert!(refund.0 <= freed, "refunded {} for {freed} freed", refund.0);
+    assert!(
+        w.vault
+            .view("get_mandate")
+            .args_json(json!({"mandate_id": 1}))
+            .await?
+            .json::<Option<serde_json::Value>>()?
+            .is_none(),
+        "a reaped mandate is gone"
+    );
+
+    // and only once
+    let out = w
+        .owner
+        .call(w.vault.id(), "reap")
+        .args_json(json!({"mandate_id": 1}))
+        .transact()
+        .await?;
+    assert!(out.is_failure(), "reaping twice must refuse");
+    Ok(())
+}
+
+/// Only the owner may reap, and only a closed mandate.
+#[tokio::test]
+async fn reap_is_owner_only_and_needs_a_closed_mandate() -> anyhow::Result<()> {
+    let w = setup().await?;
+    open_mandate(&w, 200, AMOUNT_IN).await?;
+
+    let out = w
+        .owner
+        .call(w.vault.id(), "reap")
+        .args_json(json!({"mandate_id": 1}))
+        .transact()
+        .await?;
+    assert!(format!("{:?}", out.failures()).contains("cancel the mandate first"));
 
     w.owner
         .call(w.vault.id(), "cancel")
@@ -987,13 +1099,13 @@ async fn cancelling_returns_the_prepaid_storage() -> anyhow::Result<()> {
         .transact()
         .await?
         .into_result()?;
-    let after: U128 = w
-        .vault
-        .view("storage_balance_of")
-        .args_json(json!({"account_id": w.owner.id()}))
-        .await?
-        .json()?;
-    assert_eq!(after.0, before.0, "cancelling must return the prepayment");
+    let out = w
+        .filler
+        .call(w.vault.id(), "reap")
+        .args_json(json!({"mandate_id": 1}))
+        .transact()
+        .await?;
+    assert!(format!("{:?}", out.failures()).contains("not your mandate"));
     Ok(())
 }
 

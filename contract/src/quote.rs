@@ -35,6 +35,11 @@ pub fn is_signed_by_venue(canonical: &[u8], signature: &[u8; 64]) -> bool {
 /// `confidentiality` and `insured` are deliberately absent: they are not signed,
 /// so the contract must never read them. Their *effect* is already inside
 /// `amountOutUsd`, which is signed.
+///
+/// `timestamp` is when the venue signed, and it is load-bearing. `deadline` is
+/// *caller-supplied* — 1Click will sign a deadline ten years out on a free
+/// `dry: true` quote — so `deadline` alone cannot bound how stale a quote is.
+/// Only `timestamp` can, and it is inside the signature (ARCHITECTURE.md §2.10).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedQuote {
@@ -47,6 +52,8 @@ pub struct SignedQuote {
     pub destination_asset: String,
     pub recipient: String,
     pub deadline: String,
+    /// when the venue signed. The freshness bound is enforced against this.
+    pub timestamp: String,
     pub slippage_tolerance: u32,
 }
 
@@ -110,6 +117,20 @@ pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// Days in a proleptic-Gregorian month. Without this, `2026-02-31` parses as
+/// 3 March — a timestamp three days later than the string says. 1Click never
+/// emits such a date, but a parser guarding a security boundary should not need
+/// that to be true.
+pub fn days_in_month(y: i64, m: i64) -> i64 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
 /// Parses exactly the shape 1Click signs — `2026-11-20T00:00:00.000Z` — to Unix
 /// seconds. Deliberately strict: a `deadline` is a security boundary, so an
 /// unrecognised shape must panic rather than be guessed at. An optional
@@ -132,7 +153,8 @@ pub fn parse_iso8601_secs(s: &str) -> u64 {
     }
     let (y, mo, d) = (num(0..4), num(5..7), num(8..10));
     let (h, mi, sec) = (num(11..13), num(14..16), num(17..19));
-    require!((1..=12).contains(&mo) && (1..=31).contains(&d), "deadline date range");
+    require!((1..=12).contains(&mo), "deadline month range");
+    require!((1..=days_in_month(y, mo)).contains(&d), "deadline day range");
     require!(h < 24 && mi < 60 && sec < 60, "deadline time range");
     let days = days_from_civil(y, mo, d);
     require!(days > 0, "deadline before the epoch");

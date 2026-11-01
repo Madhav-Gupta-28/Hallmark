@@ -1245,6 +1245,10 @@ Checked against `contract/src/lib.rs`; nothing is exported that is not listed.
 | `dry_check(canonical, signature, terms, delivered)` | **view** | allowed or refused, and why |
 | `quote_signer()` | **view** | the key the contract trusts |
 
+Twenty methods exported in total, and nothing exported that is not in the table
+above — checked by extracting every `pub fn` from the `#[near] impl` and diffing
+it against this section.
+
 `ft_on_transfer`'s `msg` is a tagged enum, and **which variant is legal depends
 on which token arrived** — the contract checks that, so an action cannot be
 performed with the wrong asset:
@@ -1528,7 +1532,7 @@ Each one names what enforces it and what checks it.
 | 2 | `reported_cost_bps ≥ true_cost_bps`, always (§8.1) | `div_ceil` on the final division | `the_reported_cost_is_never_below_the_true_cost` |
 | 3 | The bytes hashed and the bytes parsed are the same bytes (§2.6) | `is_signed_by_venue(canonical)` then `from_slice(canonical)` | `every_single_byte_is_covered_by_the_signature` |
 | 4 | No method reads a field outside §3.2's signed set | `SignedQuote` has only signed fields, so reading another is a compile error | audited: no unsigned field name appears in contract code, only in comments saying it is not read |
-| 5 | The verification path makes no cross-contract calls (§4.1) | both `ext` calls are inside `withdraw`, never in `ft_on_transfer` | audited by enclosing function; and 7.8 TGas (§5.7) leaves no room for one |
+| 5 | The verification path makes no cross-contract calls (§4.1) | every `ext_ft::ext`, `Self::ext` and `Promise::new` in the contract is inside `withdraw` or `storage_withdraw`, never in `ft_on_transfer` | audited by enclosing function — three call sites, all in the two payout methods |
 | 6 | The output is in the vault before the input is credited to anyone (§2.4) | `delivered` is an `ft_on_transfer` argument, so the transfer already happened | `an_owner_funds_a_mandate_a_stranger_fills_it_and_both_withdraw` |
 | 7 | A mandate can never credit out more origin asset than its escrow | `require!(amount_in <= rec.escrow.0)` | `a_fill_beyond_the_escrow_is_refused` |
 | 8 | Realised cost, filler spread included, never exceeds `max_cost_bps` (§2.5) | `cost_bps(&q, delivered) > m.max_cost_bps` refuses | `delivering_above_the_floor_lowers_the_owners_realised_cost` |
@@ -1634,14 +1638,22 @@ intermittent, and both were found by running the suite repeatedly rather than
 once. **"Clone it and run the tests" is the whole claim; a suite that fails one
 run in three does not support it.**
 
-**To add:**
+**Also run by hand against mainnet, 2026-11-02, and worth automating:**
+
+| probe | result |
+|---|---|
+| call `ft_on_transfer` **directly**, with no token involved at all | refused — *"this token is not the mandate's destination asset"*. The asset id is derived from `env::predecessor_account_id()`, so a caller can only ever claim to be itself. tx `BBrcmc6uqzrY4Dko1ary9Zn6VoiYBCY4tbxHwDSnNXAn` |
+| bank a signed quote, wait past the mandate's 300 s bound, then fill for real | refused on-chain with `QuoteTooOld`; the USDT came back and neither the escrow nor the filler's credit moved |
+| how far out 1Click will sign a `deadline` | **3,650 days**, on a free `dry: true` quote (§2.10) |
+
+**Still to add:**
 
 - The two-fillers-race-one-mandate case.
 - Fuzz `cost_bps` against a Python `Decimal` oracle over random quotes and
   delivery amounts, asserting `reported ≥ exact` on every sample.
 - One live-quote test behind a feature flag: fetch a real `dry: true` quote and
   verify it, so **signer-key rotation is caught by CI rather than by a judge.**
-- Gas measurement for `ft_on_transfer` at 692 bytes, recorded in §5.7.
+  The two probes above belong in the same place.
 
 ---
 
@@ -1771,10 +1783,18 @@ sourced to a section above.
    concerns quoted (§1.2). This is the paragraph that answers "is this problem
    real".
 5. **What the contract refuses**, as the typed refusal list (§5.3). Concrete,
-   not adjectival.
+   not adjectival. `QuoteTooOld` belongs on this list and is worth a sentence of
+   its own: a correct signature is **not** sufficient, because the quote's
+   deadline is written by the counterparty (§2.10).
 6. **Try it yourself** — the four keyless view calls from §7.3.
 7. **What this is not** (§2.9), in full and unhedged. Stating the limits is the
    most credible thing on the page.
+8. **The bug we shipped and then found.** §2.10, as a short section with the
+   two mainnet `dry_check` lines one day apart — `ALLOWED at 60 bps` against v1,
+   `REFUSED QuoteTooOld` against v2. A project that audits itself in public and
+   shows the diff is more believable than one that claims it was right first
+   time, and this is the only section on the page that proves the discipline in
+   §0 is real rather than stated.
 
 ### 15.3 The three sentences for a founder judge
 
@@ -1786,6 +1806,10 @@ sourced to a section above.
 - *The proof is a validly signed quote that guarantees a 99.99% loss and passes
   every spend cap and allowlist shipped today, including the one MetaMask
   released three days ago.*
+- *And the thing I would want a reviewer to check first: we audited our own
+  live contract, found that a filler could bank free signed quotes as options on
+  the owner's escrow, and closed it with a field that was already inside the
+  signature — both states are reproducible on mainnet with one keyless call.*
 
 ### 15.4 What success looks like, honestly
 

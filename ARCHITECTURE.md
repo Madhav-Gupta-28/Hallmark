@@ -351,6 +351,10 @@ Kept because it is the most useful thing here for anyone rebuilding this.
 | Vault deposits to the quote's `depositAddress` | `depositAddress` is unsigned ⇒ filler can nominate its own and steal | §2.4 |
 | Verify delivery by reading a balance delta | cannot attribute concurrent fills; a filler can claim another's delivery | §2.4 |
 | Explicit `max_filler_fee_bps` paid on delivery | double-pays; the spread already is the fee | §2.5 |
+| Bound quote staleness with the signed `deadline` | the **filler** chooses the deadline, and 1Click signs one 10 years out | §2.10 |
+| Let the vault stake storage for any mandate anyone opens | ~10× leverage; ~10 cents bricks a live vault | §2.11 |
+| Zero a credit slot on withdrawal instead of removing it | a zeroed slot still costs the vault storage | §2.11 |
+| Permissionless `fund` | a gift with no mechanism behind it; a footgun with no upside | §2.11 |
 | Claim "best execution" | a bound is provable, optimality is not | §2.9 |
 | Claim the idea is uncontested | ERC-8377, Envelope, and two repos from Oct 2026 | §2.7 |
 | NEAR AI attestation of the filler | needs a key, only 17 of 64 models attestable, answers a question no judge asks | — |
@@ -369,6 +373,162 @@ Kept because it is the most useful thing here for anyone rebuilding this.
 - **Not a custodian, ever.** No design in §2.8 that involved holding a
   counterparty's funds survived.
 
+### 2.10 The stale-quote hole, and the field that closes it
+
+**Found by auditing v1 after it was already live on mainnet. It was the most
+serious defect in the project, and it defeated the headline claim.**
+
+The invariant is denominated in `amountInUsd` and `amountOutUsd`. Those two
+numbers were true **when the venue signed**, and not necessarily now. v1's only
+freshness check was the quote's own `deadline`:
+
+```rust
+if now_secs >= deadline_secs { return Err(Refusal::QuoteExpired { .. }) }
+```
+
+**`deadline` is supplied by whoever requests the quote, and 1Click signs it
+unquestioned.** Measured live on 2026-11-01:
+
+```
+asked +   1d  signed=true  quote is valid for 1 days     worst=157bps
+asked +  30d  signed=true  quote is valid for 30 days    worst=157bps
+asked + 365d  signed=true  quote is valid for 365 days   worst=157bps
+asked +3650d  signed=true  quote is valid for 3650 days  worst=157bps
+```
+
+Ten years. And `dry: true` quotes are free, unauthenticated and **still signed**
+(§3.4). So the attack costs nothing to set up:
+
+1. A filler asks 1Click for a quote matching an open mandate, with a deadline
+   years out. Free, no key, no JWT.
+2. It does this repeatedly and keeps the signed quotes. It now holds a library
+   of **free options on the owner's escrow**, each struck at the prices of the
+   day it was minted.
+3. It waits. When the destination asset falls against the origin asset, it
+   exercises whichever banked quote has become most profitable.
+4. The vault computes the cost from the quote's own frozen USD marks, reports a
+   number inside the ceiling, and releases the escrow.
+
+The owner's `max_cost_bps` was enforced exactly — against a market that no
+longer existed. The realised loss is the whole adverse move and is unbounded.
+
+**This was demonstrated against the v1 contract live on mainnet**, keylessly and
+for nothing, using a fixture signed three days earlier:
+
+```
+LIVE MAINNET  hallmarkfi.near  (v1)
+quote signed at  2026-10-29T18:05:30.496Z   <- 3.01 days ago
+quote deadline   2026-11-20T00:00:00.000Z
+is_signed        true
+dry_check        ALLOWED at 60 bps realised all-in cost, filler earns 10000000 origin units
+```
+
+A three-day-old quote, priced at three-day-old marks, allowed at 60 bps.
+
+**The fix uses a field that was already inside the signature.** `timestamp` —
+when the venue signed — is in the canonical bytes and always was; v1 simply
+never read it. The mandate gains one number:
+
+```rust
+pub max_quote_age_secs: u32,
+```
+
+and `check` gains the only test that can bound staleness:
+
+```rust
+let signed_at_secs = parse_iso8601_secs(&q.timestamp);
+if now_secs > signed_at_secs + m.max_quote_age_secs as u64 {
+    return Err(Refusal::QuoteTooOld { signed_at_secs, now_secs, max_age_secs });
+}
+```
+
+Why `timestamp` and not `deadline`: **`timestamp` is written by the venue,
+`deadline` is written by the counterparty.** The whole design rests on trusting
+only what the counterparty cannot choose, and this is that distinction applied
+one level deeper than v1 applied it. The same reasoning that rejects
+`depositAddress` (§2.4) rejects `deadline` as a freshness bound.
+
+Four tests pin it, two of them on-chain:
+
+| test | asserts |
+|---|---|
+| `a_stale_quote_is_refused_even_though_it_is_signed_and_inside_its_deadline` | validly signed, in-deadline, refused |
+| `the_freshness_bound_is_exact_to_the_second` | allowed at exactly the bound, refused one second past |
+| `the_signing_time_is_covered_by_the_signature` | `timestamp` cannot be edited after signing |
+| `a_quote_older_than_the_mandate_allows_is_refused_on_chain` | `QuoteTooOld` in a real runtime, filler loses nothing |
+
+The ceiling on `max_quote_age_secs` is **30 days**, and it is a sanity bound
+rather than a policy: the contract's job is to enforce the age the owner
+committed to, not to pick it. The client defaults to **300 seconds**, the value
+is visible in `get_mandates` for anyone to read, and `quote_age_secs(canonical)`
+is a keyless view so a filler or a judge can see the number the bound is
+enforced against.
+
+> **Correction kept.** An earlier version of this document said the signed
+> `deadline` made the quote's age a non-issue — "the deadline is signed" appears
+> in §9's failure table. The deadline *is* signed. It is also chosen by the
+> adversary, which makes it worthless as a bound, and signing it changes
+> nothing. Being signed and being trustworthy are different properties, and
+> conflating them is how this got shipped.
+
+### 2.11 The vault does not pay for state strangers create
+
+**Also found by audit, also live on mainnet in v1.**
+
+`ft_on_transfer` carries no attached deposit, so v1's `open` wrote a
+`MandateRecord` and the **vault's own balance** was staked against it. NEAR
+locks 1e19 yoctoNEAR per byte, so each mandate cost the vault roughly 0.003–0.005
+NEAR of locked balance against roughly 0.0003 NEAR of attacker gas: about
+**ten times leverage, pointed at the vault.**
+
+Measured on the live v1 deployment:
+
+```
+storage_usage   236,202 bytes
+locked for that 2.36202 NEAR
+balance         2.65647 NEAR
+FREE headroom   0.29445 NEAR  -> 29,444 more bytes of state
+```
+
+Roughly **a hundred spam mandates — about ten cents of gas — and the vault
+cannot write state at all.** Not just new mandates: every `fill`, every
+`withdraw`, every `cancel`. A griefer with no stake and no interest in the
+protocol could stop it, and after the full-access key is deleted (§10.2) nobody
+could clear the junk.
+
+The fix is the oldest rule on NEAR, which v1 skipped: **whoever creates state
+pays for it.**
+
+| method | kind | effect |
+|---|---|---|
+| `storage_deposit(account_id?)` | call, payable | prepay. One deposit covers many mandates |
+| `storage_withdraw(amount?)` | call, payable | take back whatever no mandate is using |
+| `storage_balance_of(account_id)` | **view** | what is prepaid |
+| `storage_cost_estimate()` | **view** | exactly what `open` will charge, before paying it |
+
+`open` now deducts the charge from the opener's prepaid balance and refuses with
+*"prepay storage first"* if it is short. `cancel` returns the prepayment, so
+opening and cancelling in a loop drains nobody. Attacker leverage goes from
+roughly 10× to exactly 1×, which is the only number that is actually safe.
+
+One related change, in the same spirit: `withdraw` now **removes** its credit
+slot rather than writing a zero into it. A zeroed slot still occupies storage
+the vault paid for, and a filler could mint slots faster than the mandate that
+prepaid for them. Removing makes an honest round trip storage-neutral.
+
+The cost to an honest owner is one extra transaction, once, of about
+**0.013 NEAR** — the same shape as the `storage_deposit` every NEP-141 token
+already requires before it will hold a balance for you. `post.ts` does it
+automatically and skips it when the balance already covers the next mandate.
+
+Six tests pin this, all of them on-chain:
+`opening_a_mandate_has_to_be_paid_for`,
+`the_charge_for_a_mandate_covers_what_it_actually_stores` (which fails if the
+charge is ever an underestimate of real measured bytes),
+`a_withdrawal_releases_the_storage_it_was_using`,
+`cancelling_returns_the_prepaid_storage`,
+`unused_prepaid_storage_can_be_taken_back`, and
+`only_the_owner_can_fund_and_only_a_live_mandate`.
 ---
 
 ## §3 Verified chain facts
@@ -818,11 +978,45 @@ storage-registered on a token cannot brick a fill.
 
 | component | language | role |
 |---|---|---|
-| `contract/` | Rust / near-sdk 5.30 | the vault: verify, bound, credit |
-| `client/` | TypeScript | canonicalisation (`json-stable-stringify`), mandate posting, quote capture |
-| `filler/` | TypeScript | reference filler: read mandates → quote → source → deliver |
-| `filler-adapted/` | TypeScript | NEAR's own official DeFi starter agent, adapted |
-| `web/` | Next.js | the proof page: paste a quote, see the bound, no key, no funds |
+| `contract/` | Rust / near-sdk **=5.24.1** (§3.14) | the vault: verify, bound, credit |
+| `contract/src/quote.rs` | Rust | the signed subset, the invariant, the arithmetic |
+| `contract/src/mandate.rs` | Rust | the mandate, the typed refusals, `check` |
+| `client/src/lib/` | TypeScript | canonicalisation (`json-stable-stringify`), 1Click, the vault client |
+| `client/src/bin/bound.ts` | TypeScript | what a live quote actually guarantees. No key, no funds |
+| `client/src/bin/post.ts` | TypeScript | the owner: prepay storage, post a mandate |
+| `client/src/bin/fill.ts` | TypeScript | the reference filler: read mandates → quote → deliver |
+| `web/index.html` | one static file | the proof page. **No framework, no backend, no dependency, zero external scripts** |
+| `test-token/` | Rust | NEP-141 + full NEP-145, so a payout can be made to fail on purpose |
+
+> **Correction kept.** This table previously named `near-sdk 5.30` (contradicting
+> §3.14 four pages earlier), a `filler/` and `filler-adapted/` that do not
+> exist, and `web/` as Next.js. The proof page needs no framework: both 1Click
+> and NEAR RPC answer with `Access-Control-Allow-Origin: *`, so the page talks
+> to the real API and the real chain from the browser with nothing in between.
+
+### 4.3 The canonicaliser exists three times, on purpose
+
+Canonical form is the one place where an error is silent: a canonicaliser that
+drifts produces bytes the venue never signed, and every fill fails for a reason
+no log explains. There is no Rust implementation at all (§2.6), but there are
+three independent *producers* of canonical bytes:
+
+| where | implementation | used by |
+|---|---|---|
+| `fixtures/mkfix.py` | Python, `json.dumps(sort_keys=True)` + from-scratch RFC-8032 ed25519 | generating and re-verifying the fixtures |
+| `client/src/lib/canonical.ts` | TypeScript, `json-stable-stringify` | the CLIs and the reference filler |
+| `web/index.html` | ~20 lines of browser JS, no dependency | the proof page |
+
+All three agree, byte for byte and hash for hash, on all three fixtures:
+
+```
+honest   692 bytes  8no2rMSjesYe97Jhi6RWKxRvvYsYARBVQZXtMDMyhvwp
+worst    690 bytes  FTTFigJiyLLbx9Um6FC17P8UvRwfuSA1DRMDeNZvTj33
+sandbox  681 bytes  5TV8CQDmjsTexoYFKLvT6rwdVzGqcJ13tnBcx1eyqdZB
+```
+
+Three independent implementations agreeing is meaningfully stronger evidence
+than one being carefully written.
 
 ---
 
@@ -835,20 +1029,21 @@ configuration.
 
 ```rust
 pub struct Mandate {
-    pub origin_asset: String,       // nep141:…
+    pub origin_asset: String,         // nep141:…
     pub destination_asset: String,
-    pub recipient: String,          // the signed `recipient` a quote must name
-    pub max_cost_bps: u32,          // the whole point
-    pub max_fill: u128,             // largest single fill, origin base units
-    pub expiry_ns: u64,
-}
+    pub recipient: String,            // the signed `recipient` a quote must name
+    pub max_cost_bps: u32,            // the whole point
+    pub max_fill: U128,               // largest single fill, origin base units
+    pub max_quote_age_secs: u32,      // how stale a quote may be — §2.10
+    pub expiry_ns: U64,               // u64 as a JSON string, so a client
+}                                     //   cannot silently lose precision
 ```
 
 A reader who knows nothing about Intents can audit this in ten seconds. That is
 deliberate: a bound nobody can read is a bound nobody trusts.
 
-`open` refuses six kinds of terms that could never be enforced, each with its own
-message, all six covered by `open_refuses_terms_that_could_not_be_enforced`:
+`open` refuses eight kinds of terms that could never be enforced, each with its
+own message, all eight covered by `open_refuses_terms_that_could_not_be_enforced`:
 
 | refused | why |
 |---|---|
@@ -856,6 +1051,8 @@ message, all six covered by `open_refuses_terms_that_could_not_be_enforced`:
 | `destination_asset` not a `nep141:` id | credits are paid out via `token_account()`, which only understands nep141 ids; rejecting here keeps `withdraw` total |
 | `max_cost_bps > 10_000` | a ceiling above 100% bounds nothing |
 | `max_fill == 0` | nothing could ever fill |
+| `max_quote_age_secs == 0` | nothing could ever fill |
+| `max_quote_age_secs > 30 days` | a ceiling priced in month-old USD marks bounds nothing (§2.10) |
 | `expiry_ns` already past | nothing could ever fill |
 | `recipient != this vault` | the quote would pay someone else and delivery could not be verified |
 
@@ -872,8 +1069,9 @@ pub struct SignedQuote {
     pub origin_asset: String,
     pub destination_asset: String,
     pub recipient: String,
-    pub deadline: String,
-    pub slippage_tolerance: u32,   // surfaced for display; never decides anything
+    pub deadline: String,          // caller-chosen; bounds nothing on its own
+    pub timestamp: String,         // when the venue signed. The freshness bound
+    pub slippage_tolerance: u32,   //   is enforced against THIS — §2.10
 }
 ```
 
@@ -888,7 +1086,7 @@ pub fn check(
     m: &Mandate,
     delivered: u128,
     now_ns: u64,
-) -> Result<u32, Refusal> {
+) -> Result<Accepted, Refusal> {
     let digest  = env::sha256_array(canonical);
     let message = bs58::encode(digest).into_string();
     if !env::ed25519_verify(signature, message.as_bytes(), &signer_pk()) {
@@ -907,8 +1105,18 @@ pub fn check(
         return Err(Refusal::QuoteExpired { deadline_secs, now_secs });
     }
 
+    // The bound is denominated in USD marks that were true when the venue
+    // signed. `deadline` is chosen by whoever asked for the quote, so only the
+    // signed `timestamp` can bound how stale those marks are — §2.10.
+    let signed_at_secs = parse_iso8601_secs(&q.timestamp);
+    if now_secs > signed_at_secs + m.max_quote_age_secs as u64 {
+        return Err(Refusal::QuoteTooOld { signed_at_secs, now_secs,
+                                          max_age_secs: m.max_quote_age_secs });
+    }
+
     let amount_in: u128 = q.amount_in.parse().expect("bad amountIn");
-    if amount_in > m.max_fill { return Err(Refusal::FillTooLarge { amount_in, max_fill: m.max_fill }) }
+    if amount_in > m.max_fill.0 { return Err(Refusal::FillTooLarge { amount_in,
+                                             max_fill: m.max_fill.0 }) }
 
     let floor: u128 = q.min_amount_out.parse().expect("bad minAmountOut");
     if delivered < floor { return Err(Refusal::UnderDelivered { delivered, floor }) }
@@ -917,7 +1125,7 @@ pub fn check(
     if cost > m.max_cost_bps {
         return Err(Refusal::CostCeilingBreached { worst_bps: cost, ceiling_bps: m.max_cost_bps });
     }
-    Ok(cost)
+    Ok(Accepted { cost_bps: cost, amount_in })
 }
 ```
 
@@ -932,6 +1140,7 @@ pub enum Refusal {
     WrongRecipient,
     FillTooLarge        { amount_in: u128, max_fill: u128 },
     QuoteExpired        { deadline_secs: u64, now_secs: u64 },
+    QuoteTooOld         { signed_at_secs: u64, now_secs: u64, max_age_secs: u32 },
     MandateExpired,
 }
 ```
@@ -960,18 +1169,21 @@ the classic off-by-one-day bug) and
 ```rust
 #[near(contract_state)]
 pub struct Hallmark {
-    mandates: IterableMap<u64, MandateRecord>,
-    next_id:  u64,
-    credits:  LookupMap<(AccountId, String), u128>,  // (who, token_id) → claimable
+    mandates:        IterableMap<u64, MandateRecord>,
+    credits:         LookupMap<(AccountId, String), U128>,  // (who, token) → claimable
+    storage_balance: LookupMap<AccountId, U128>,            // prepaid, per account
+    next_id:         u64,
 }
 
 pub struct MandateRecord {
-    owner:     AccountId,
-    terms:     Mandate,
-    escrow:    u128,   // remaining origin base units
-    delivered: u128,   // destination base units credited so far
-    fills:     u32,
-    worst_bps: u32,    // worst realised cost across this mandate's fills
+    owner:        AccountId,
+    terms:        Mandate,
+    escrow:       U128,   // remaining origin base units
+    delivered:    U128,   // destination base units credited so far
+    fills:        u32,
+    worst_bps:    u32,    // worst realised cost across this mandate's fills
+    open:         bool,
+    storage_paid: U128,   // returned to the owner's balance by `cancel`
 }
 ```
 
@@ -986,6 +1198,9 @@ Checked against `contract/src/lib.rs`; nothing is exported that is not listed.
 | method | kind | purpose |
 |---|---|---|
 | `new` | init | once, at deploy |
+| `migrate` | **private** init | supersede v1's state in place; see §2.10. Only the account itself can call it, and the full-access key is deleted after (§10.2) |
+| `storage_deposit(account_id?)` | call, payable | prepay for the state you will create (§2.11) |
+| `storage_withdraw(amount?)` | call, payable | take back what no mandate is using |
 | `ft_on_transfer` | call | **the only path that moves value.** NEP-141 calls it; `msg` carries the action |
 | `withdraw(asset)` | call, payable | pull a credited balance; pull-not-push by design (§4.1) |
 | `resolve_withdraw` | private | restores the credit if the payout failed |
@@ -993,6 +1208,10 @@ Checked against `contract/src/lib.rs`; nothing is exported that is not listed.
 | `get_mandates(from_index, limit)` | **view** | the order book — open mandates only |
 | `get_mandate(mandate_id)` | **view** | one record, open or closed |
 | `get_credit(account_id, asset)` | **view** | what an account can withdraw |
+| `mandate_count()` | **view** | how many have ever been opened, so a caller can page |
+| `storage_balance_of(account_id)` | **view** | prepaid storage |
+| `storage_cost_estimate()` | **view** | what `open` will charge, before paying it |
+| `quote_age_secs(canonical)` | **view** | how old the venue's signature is, as the chain sees it (§2.10) |
 | `worst_cost(canonical)` | **view** | the bound, for anyone, free |
 | `realised_cost(canonical, delivered)` | **view** | what the owner would actually pay |
 | `is_signed(canonical, signature)` | **view** | did NEAR Intents really sign these bytes? |
@@ -1009,9 +1228,16 @@ performed with the wrong asset:
 | `fund` | that mandate's **origin** asset | top up the escrow |
 | `fill` | that mandate's **destination** asset | the transfer *is* the delivery |
 
-The eight view methods are the proof surface: **every guarantee in this document
-can be exercised with no key, no funds and no deposit**, which
+The **twelve** view methods are the proof surface: **every guarantee in this
+document can be exercised with no key, no funds and no deposit**, which
 `the_view_methods_answer_without_a_key` demonstrates against a live node.
+
+Two of them are deliberately *arithmetic only* and do **not** check the
+signature: `worst_cost` and `realised_cost` price whatever bytes they are
+handed. That is what makes them useful on a quote you are still deciding about,
+and it is why `dry_check` — which does verify — is the one a filler consults
+before spending anything. The proof page calls `is_signed` alongside them for
+exactly this reason.
 
 ### 5.7 Gas
 
@@ -1042,10 +1268,14 @@ all of its work.** Hallmark's guarantee is not "someone will trade for me"; it i
 "I need not trust whoever does." One owner and one agent is already a complete
 product. No network is required for the mechanism to be sound (§1.5).
 
-**2. The demonstrated supply side is three fillers, and no more is claimed.** Two
-independently written reference fillers competing for the same mandate, plus one
-adapted from **NEAR's own official DeFi starter prompt**, with the diff shown so
-a judge can see how a stranger's agent becomes a filler.
+**2. The demonstrated supply side today is one reference filler**
+(`client/src/bin/fill.ts`), and the plan is three: a second written
+independently, competing for the same mandate, plus one adapted from **NEAR's
+own official DeFi starter prompt**, with the diff shown so a judge can see how a
+stranger's agent becomes a filler. The second and third are **outstanding** —
+build order step 6 is marked ◐ for this reason, and §14 lists it. An earlier
+draft of this section described all three in the present tense, which was a
+claim about the future written as a statement about the repo.
 
 > **Correction kept.** An earlier claim said any official-prompt agent becomes a
 > filler "by changing one line." That is false. It is roughly **20 lines** — read
@@ -1104,7 +1334,7 @@ state and nothing to unwind.
 ### 7.3 The judge
 
 ```
-1. git clone && cd contract && cargo test        # 19 tests, no network, no key
+1. git clone && cargo test                       # 53 tests, no network, no key
 2. cat fixtures/worst.quote.json                 # a validly signed 99.99% haircut
 3. near view hallmark.near worst_cost    '{...}' # 10000 bps
 4. near view hallmark.near realised_cost '{...}' # 503 bps even at the full fill
@@ -1178,7 +1408,13 @@ prices it exactly.
 | what fails | what happens | why that is right |
 |---|---|---|
 | filler delivers a tampered quote | `BadSignature`, before any field is read | §2.6 |
-| filler delivers against a stale quote | `QuoteExpired{deadline, now}` | the deadline is signed |
+| filler delivers against a quote past its deadline | `QuoteExpired{deadline, now}` | — |
+| filler banks a signed quote and exercises it later | `QuoteTooOld{signed_at, now, max_age}` | the **venue** writes `timestamp`; the filler writes `deadline` (§2.10) |
+| stranger opens mandates to burn the vault's storage | *"prepay storage first"* | whoever creates state pays for it (§2.11) |
+| stranger tops up someone else's mandate | *"only the owner can fund a mandate"* | a gift with no mechanism behind it |
+| owner funds a mandate that has already expired | *"mandate has expired"* | nothing could ever fill it |
+| a token's `ft_transfer` needs more than 10 TGas | the withdrawal fails and the credit is restored | 30 TGas is now forwarded; unused gas is refunded |
+| a signature that decodes to fewer than 64 bytes | `BadSignature`, never zero-padded | a verifier must not guess at a length |
 | filler delivers less than the signed floor | `UnderDelivered{delivered, floor}` | §2.4 |
 | realised cost breaches the ceiling | `CostCeilingBreached{worst, ceiling}` | §2.1 |
 | quote names a recipient that is not the mandate's | `WrongRecipient` | recipient is signed |
@@ -1207,6 +1443,8 @@ path in which uncertainty results in a transfer.
 | malicious filler nominating its own deposit address | — | **impossible**: the vault never sends to a filler-nominated address (§2.4) |
 | filler claiming another's delivery | — | **impossible**: the amount is a function argument, not a balance delta (§2.4) |
 | malicious filler + stolen agent key | unlimited delivery attempts | each is bounded; worst case is repeated ceiling-cost fills, capped by `max_fill` and escrow |
+| filler banking free signed quotes as options on the escrow | 1Click signs a 10-year deadline on a free `dry: true` quote | **closed by §2.10.** v1 was exposed to this and it was the worst defect in the project |
+| griefer with no stake, buying the vault's storage with gas | ~10 cents to stop every write | **closed by §2.11** |
 | 1Click, signing a terrible quote | — | refused; its own signature is the evidence |
 | 1Click, refusing to sign | — | liveness loss, never a funds loss |
 | 1Click signer key compromised | can mint arbitrarily bad signed quotes | **unmitigated.** §10.1 |
@@ -1261,12 +1499,17 @@ Each one names what enforces it and what checks it.
 | 9 | No admin key, no pause, no upgrade path (§10.2) | there is no such method; immutability itself is a deploy step | audited: no `owner_id`, `admin`, `pause`, `upgrade` or `migrate` anywhere |
 | 10 | A failed payout restores the credit rather than burning it | `resolve_withdraw` re-adds on `Err` | `a_failed_transfer_restores_the_credit` |
 | 11 | An action cannot be performed with the wrong token | `open`/`fund` require the origin asset, `fill` the destination asset | `a_fill_in_the_wrong_token_is_refused` |
+| 12 | The USD marks a cost is computed from are no older than the owner allowed (§2.10) | `now_secs > signed_at + max_quote_age_secs` refuses, against the **signed** `timestamp` | `the_freshness_bound_is_exact_to_the_second`, `a_quote_older_than_the_mandate_allows_is_refused_on_chain` |
+| 13 | No field the counterparty chooses is ever used as a bound | `depositAddress` unread (§2.4); `deadline` is a deadline, never a freshness test (§2.10) | audited: `deadline` is compared only against itself; `max_quote_age_secs` is compared against `timestamp` |
+| 14 | The vault never stakes NEAR for state a stranger created (§2.11) | `open` deducts the measured cost from the opener's prepaid balance | `opening_a_mandate_has_to_be_paid_for`, `the_charge_for_a_mandate_covers_what_it_actually_stores` |
+| 15 | An honest round trip leaves no storage behind | `withdraw` removes the credit slot; `cancel` returns the prepayment | `a_withdrawal_releases_the_storage_it_was_using`, `cancelling_returns_the_prepaid_storage` |
+| 16 | A signature is 64 bytes or it is refused | `decode_signature` returns `None` on any other length | `a_signature_is_sixty_four_bytes_or_nothing` |
 
 ---
 
 ## §12 Test plan
 
-**Done — 21 of 21 passing, `cargo test`, no network, no key, ~0.18s:**
+**Done — 30 of 30 passing, `cargo test`, no network, no key, ~0.19s:**
 
 | test | asserts |
 |---|---|
@@ -1291,8 +1534,17 @@ Each one names what enforces it and what checks it.
 | `parse_fixed_truncates_toward_a_worse_cost` | fixed-point parsing |
 | `a_quote_for_the_wrong_pair_is_refused` | `WrongAsset` |
 | `a_quote_routed_to_someone_else_is_refused` | `WrongRecipient` |
+| `a_stale_quote_is_refused_even_though_it_is_signed_and_inside_its_deadline` | **the §2.10 hole**: signed, in-deadline, refused |
+| `the_freshness_bound_is_exact_to_the_second` | allowed at the bound, refused one second past it |
+| `the_signing_time_is_covered_by_the_signature` | `timestamp` cannot be edited after signing |
+| `the_age_bound_has_to_be_set_and_has_to_be_sane` | a mandate with no age bound refuses everything |
+| `a_date_that_does_not_exist_is_refused` | `days_in_month`, incl. the 100- and 400-year rules |
+| `the_31st_of_february_is_not_guessed_at` | `should_panic` — used to parse as 3 March |
+| `the_31st_of_april_is_not_guessed_at` | `should_panic` |
+| `a_thirteenth_month_is_refused` | `should_panic` |
+| `a_signature_is_sixty_four_bytes_or_nothing` | short, long, empty and non-base58 all refused, never zero-padded |
 
-**Done — 15 of 15 passing, `cargo test --test integration`, against a real
+**Done — 23 of 23 passing, `cargo test --test integration`, against a real
 sandbox node driven by a real NEAR Intents signature:**
 
 The fixture `fixtures/sandbox.quote.json` is a genuine signed 1Click quote for
@@ -1316,16 +1568,35 @@ whose key nobody has.)
 | `a_closed_mandate_cannot_be_funded` | a cancelled mandate takes no more money |
 | `withdrawal_is_single_use_and_guarded` | missing 1 yoctoNEAR, nothing-to-withdraw, and the second withdrawal all refuse |
 | `a_failed_transfer_restores_the_credit` | an unregistered payee cannot burn a balance |
-| `the_view_methods_answer_without_a_key` | all eight views, incl. `is_signed` rejecting a tampered quote and `dry_check` returning each verdict |
+| `the_view_methods_answer_without_a_key` | the keyless proof surface, incl. `is_signed` rejecting a tampered quote and `dry_check` returning each verdict |
 | `get_mandates_lists_only_open_ones` | the order book drops cancelled mandates; unknown ids return `null` |
 | `cancel_after_a_fill_returns_only_the_remainder` | cancelling returns unspent escrow and leaves settled fills alone |
 | `an_owner_can_cancel_and_recover_the_unspent_escrow` | escrow returns; a closed mandate cannot be filled |
 | `a_stranger_cannot_cancel_a_mandate` | owner-only authority |
+| `a_quote_older_than_the_mandate_allows_is_refused_on_chain` | **§2.10** in a real runtime: `QuoteTooOld`, filler loses nothing, escrow untouched |
+| `fixture_is_still_fresh_enough_to_fill` | says in one line if the captured fixture has aged out, instead of making you read fifteen failures |
+| `opening_a_mandate_has_to_be_paid_for` | **§2.11**: no prepayment ⇒ refused and refunded; prepay ⇒ works, and the prepayment is spent exactly |
+| `the_charge_for_a_mandate_covers_what_it_actually_stores` | measures real `storage_usage` growth; fails if the charge is ever an underestimate |
+| `a_withdrawal_releases_the_storage_it_was_using` | the credit slot is removed, not zeroed |
+| `cancelling_returns_the_prepaid_storage` | open/cancel in a loop drains nobody |
+| `unused_prepaid_storage_can_be_taken_back` | `storage_withdraw`, and that `open` then refuses |
+| `only_the_owner_can_fund_and_only_a_live_mandate` | a stranger's top-up is refused and refunded; an expired mandate takes no money |
 
 Account creation note: `registrar` can only create dot-free top-level accounts,
 and `near` exists in genesis with a key nobody holds, so `wrap.near` cannot be
 created the ordinary way. The tests use the sandbox's `patch` to write each
 account into state with a known key.
+
+**The suite is deterministic, and that took two fixes.** Each integration test
+starts a real nearcore node, and at cargo's default parallelism 23 of them race
+for ports until one dies inside `PeerManagerActor::spawn`; `.cargo/config.toml`
+therefore pins `RUST_TEST_THREADS = "4"`. Separately, a `patch`ed account's
+state lands before the node has indexed its access key, so an immediate call
+fails with *"access key … has never been observed"* — `account()` now polls
+`view_access_key` until it is actually queryable. Both failures were
+intermittent, and both were found by running the suite repeatedly rather than
+once. **"Clone it and run the tests" is the whole claim; a suite that fails one
+run in three does not support it.**
 
 **To add:**
 
@@ -1342,17 +1613,18 @@ account into state with a known key.
 
 | # | task | gate |
 |---|---|---|
-| 0 | **done** — verifier, 19 tests, wasm builds | ✓ 2026-11-01 |
+| 0 | **done** — verifier, 30 unit tests, wasm builds | ✓ 2026-11-01 |
 | 1 | **done** — vault state + `ft_on_transfer` for the **origin** token | ✓ |
 | 2 | **done** — `ft_on_transfer` for the **destination** token + `credits` | ✓ |
 | 3 | **done** — `withdraw`, `cancel`, `get_mandates` | ✓ |
-| 4 | **done** — `near-workspaces` end-to-end, 5 tests; gas recorded in §5.7 | ✓ |
-| 5 | **done** — TypeScript client: canonicaliser (24 assertions), 1Click, vault | ✓ |
+| 4 | **done** — `near-workspaces` end-to-end, 23 tests; gas recorded in §5.7 | ✓ |
+| 5 | **done** — TypeScript client: canonicaliser (44 assertions), 1Click, vault | ✓ |
 | 6 | **done** — `bound`, `post` and the reference filler; adapted official-prompt filler still to come | ◐ |
 | 7 | deploy to mainnet, dev account, tiny amounts; **delete the full-access key** | §10.2 |
 | 8 | **one real ~$5 mainnet fill**, end to end | the last unknown |
 | 9 | **done** — proof page, static, every figure a live view call | ✓ |
 | 10 | README as "do X — see Y" steps; no marketing | spec requirement |
+| 11 | **done** — full line-by-line audit of contract + client against this file; §2.10 and §2.11 found and closed; v2 redeployed and re-exercised on mainnet | ✓ 2026-11-01 |
 
 **On deferring the ~$5 mainnet fill:** it was first priority while `appFees` was
 the compensation rail. §3.8 settled the fee question from live state at zero
@@ -1374,6 +1646,26 @@ the end-to-end claim is **UNVERIFIED** and appears nowhere public.
 *Resolved:* gas (§5.7), the sandbox fund → fill → withdraw path (§12), and
 **the mainnet round trip (§3.17)**.
 
+**Found by the line-by-line audit of 2026-11-01, and closed:**
+
+2. **The stale-quote hole (§2.10).** v1 bounded quote age by the signed
+   `deadline`, which the *filler* chooses and 1Click signs ten years out for
+   free. A filler could bank free signed quotes as options on the owner's
+   escrow. Closed with `max_quote_age_secs` against the signed `timestamp`.
+   This was the most serious defect in the project and it was live on mainnet.
+3. **The vault paid for strangers' state (§2.11).** ~10× leverage; about ten
+   cents of gas to stop every write on a live vault. Closed with prepaid
+   storage, and `withdraw` now releases its credit slot.
+
+Smaller, same audit: `post.ts` could not open a mandate at all (it sent
+`expiry_ns` as a string against a `u64`, now `U64` everywhere); `fund` accepted
+top-ups from strangers and on expired mandates; `withdraw` forwarded only 10
+TGas, enough for the tokens tested and not for an arbitrary one; a signature
+decoding to fewer than 64 bytes was silently zero-padded; `2026-02-31` parsed as
+3 March; the TypeScript fixed-point parser accepted `".5"` where Rust panics;
+and the test suite failed roughly one run in three for two unrelated sandbox
+races (§12).
+
 **ASSUMPTION:**
 
 4. That the $154.91 in the 1Click fee account arrived *as app fees* (§3.8).
@@ -1385,20 +1677,30 @@ the end-to-end claim is **UNVERIFIED** and appears nowhere public.
 
 **Known limits, stated rather than hidden:**
 
-6. **First-come-first-served means the filler delivers near the floor.** The
+6. **`get_mandates` scans from the start of the map**, so it is O(total
+   mandates) rather than O(limit). With storage now prepaid (§2.11) that is a
+   scaling note and no longer a griefing vector, but a vault with many thousands
+   of mandates will need an index of open ones. `mandate_count()` exposes the
+   bound.
+7. **First-come-first-served means the filler delivers near the floor.** The
    owner gets their ceiling, not the best price available. An auction window —
    collect deliveries for N blocks, settle the best — is the natural next
    version and is **not** claimed for v1.
-7. **1Click signer-key compromise is unmitigated** (§10.1).
-8. **No independent price benchmark exists** (§3.12). A bound, never best
+8. **1Click signer-key compromise is unmitigated** (§10.1).
+9. **No independent price benchmark exists** (§3.12). A bound, never best
    execution.
-9. **Liveness depends on 1Click.** If the API stops signing, Hallmark stops
+10. **Liveness depends on 1Click.** If the API stops signing, Hallmark stops
    filling. It never stops *refusing*, which is the safe direction.
-10. **The filler needs capital** (§6.4). This is the deliberate cost of closing
+11. **The filler needs capital** (§6.4). This is the deliberate cost of closing
     the `depositAddress` hole.
-11. **No live filler ecosystem.** Three fillers, all ours or adapted by us.
-12. **Immutable means unpatchable** (§10.2).
-13. **Mainnet only.** No Intents testnet exists or is planned. Dev accounts,
+12. **One reference filler, not an ecosystem.** `client/src/bin/fill.ts`. The
+    adapted official-prompt filler is still outstanding (§6.2, build order 6),
+    and §6's claim of "three fillers" is a plan, not a count.
+13. **Immutable means unpatchable** (§10.2) — and §2.10 is the argument for
+    deleting that key as late as possible. An audit found a critical bug in a
+    contract that was already live; had the key been gone, it could not have
+    been fixed.
+14. **Mainnet only.** No Intents testnet exists or is planned. Dev accounts,
     tiny amounts, `dry: true` quotes wherever possible.
 
 ---
@@ -1483,7 +1785,7 @@ Then `security`, `business`, `open`. Not `agents`, not `realworld`, not
 **Verified by us, 2026-11-01, reproducible from this repo**
 
 - `fixtures/mkfix.py` — canonicalisation + from-scratch RFC-8032 ed25519
-- `contract/src/lib.rs` — 19 tests, the verifier, the arithmetic
+- `contract/src/lib.rs` — the vault; `src/tests.rs` 30 tests, `tests/integration.rs` 23
 - `fixtures/honest.quote.json`, `fixtures/worst.quote.json` — signed captures
 
 **Live endpoints and accounts**
@@ -1497,7 +1799,9 @@ Then `security`, `business`, `open`. Not `agents`, not `realworld`, not
 **Source read, not merely cited**
 
 - 1Click SDK `dist/index.mjs` — signature coverage, `appFees: void 0` at :1617
-- `near-sdk` 5.30.0 `env.rs` — `ed25519_verify` :684, `ecrecover` gated at :591
+- `near-sdk` **5.24.1** `env.rs` — `ed25519_verify` :773, `ecrecover` gated at :707 (§3.14b).
+  An earlier draft of this list cited 5.30.0 and its line numbers; 5.30 cannot
+  produce a contract this VM will run, so it is the wrong source to cite
 
 **Regulatory**
 

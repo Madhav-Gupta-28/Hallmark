@@ -43,13 +43,42 @@ Building with `--no-abi` saves 2 KB and nothing else is low-hanging, so treat
 **Buy 3 NEAR. Buy nothing else.** Swap ~$0.50 of it to USDT on Rhea on-chain —
 deep wNEAR/USDT liquidity is exactly why this pair was chosen (§0.2).
 
-Of that 3 NEAR:
+### How much of it you get back
 
-- **~2.36 is locked, not spent.** It sits as the vault's storage deposit and is
-  released only if the contract account is ever deleted.
-- **~0.11 is genuinely spent** on gas and storage registrations.
-- **~0.2 is the trade itself and comes straight back**, because you are both
-  sides of it.
+Almost all of it — **unless you run §11.**
+
+| | NEAR | recoverable? |
+|---|---|---|
+| vault storage lock | 2.36 | **yes** — `delete-account beneficiary YOU` returns the whole balance |
+| `storage_deposit` × 4 | 0.005 | yes — `storage_unregister` on each token |
+| the trade legs | 0.2 | yes — unwrap the wNEAR, swap the USDT back |
+| gas, burned | ~0.09 | no |
+| execution cost of the test trade | ~0.003 | no — this is the 2.76% the mandate allowed |
+
+**If you keep the vault's key: real cost is ~0.1 NEAR, about $0.44.**
+
+### §11 is what makes it unrecoverable, and that is the whole trade
+
+Deleting the vault's full-access key (§11) is what makes "nobody to switch it
+off" literally true. It also means **nobody can delete the account either**, so
+the **2.36 NEAR is locked forever.**
+
+| | permanent cost |
+|---|---|
+| keep the key | **~0.1 NEAR (~$0.44)** |
+| delete the key | **~2.46 NEAR (~$10.80)** |
+
+$10.80 is a fair price for a claim that is literally true rather than
+aspirational. But the cost is identical whenever you pay it, so there is no
+reason to pay it early and every reason not to: **keep the key through the
+build, and delete it only just before submitting.** Two weeks of being able to
+fix a bug is worth far more than ten dollars.
+
+If you keep it, say so in the README. A project that admits a key exists is more
+credible than one that claims immutability it has not executed.
+
+Before the final immutable deploy it is also worth shrinking the contract — the
+lock is 0.00001 NEAR per byte, so every 100 KB removed is 1 NEAR you never lose.
 
 ### Use 0.1 wNEAR as the order size
 

@@ -1150,9 +1150,21 @@ This is not fixable from inside the design. It is stated rather than buried.
 
 "Nobody to switch it off" is only true if it is executed. After the final
 deploy, **delete the full-access key** so the contract cannot be upgraded or
-paused by anyone, including us. The tradeoff is real and accepted: a bug found
-later cannot be patched, only superseded by a new deployment that owners
-voluntarily migrate to. Step 7 in §13.
+paused by anyone, including us. Step 7 in §13.
+
+Two costs, both accepted and both stated:
+
+1. **A bug found later cannot be patched**, only superseded by a new deployment
+   that owners migrate to voluntarily.
+2. **The storage lock becomes permanent.** An account with no full-access key
+   cannot be deleted, and deleting the account is the only way to release the
+   0.00001 NEAR/byte that NEAR locks against the contract's code — 2.36 NEAR for
+   this contract. Immutability and recoverability are the same key; you cannot
+   keep both.
+
+Because the cost is identical whenever it is paid, the key is deleted **last**,
+immediately before submission, so the build retains the ability to fix a bug for
+as long as possible. Until then the README states that the key exists.
 
 ---
 

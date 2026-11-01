@@ -602,21 +602,67 @@ Both USD marks were present on **every** signed quote obtained, across 6 assets
 and 6 chains. Where no quote exists there is nothing to verify and nothing to
 approve, so the vault refuses by default. There is no "missing price" branch.
 
-### 3.14 NEAR SDK facts
+### 3.14 The toolchain trap, which costs a day if you meet it late
+
+This is the most expensive thing in the build, and nothing warns you until a
+contract is deployed and every call fails.
+
+**nearcore's VM only accepts MVP WebAssembly.** From rustc 1.82 on, the
+`wasm32-unknown-unknown` target emits post-MVP features (reference types,
+sign-extension) by default, and from **1.87** on the result is unusable. The
+failure mode is the trap: `DeployContract` **succeeds**, because deploying does
+not compile the module. Every subsequent call fails with
+
+```
+FunctionCallError(CompilationError(PrepareError(Deserialization)))
+```
+
+`cargo near build` refuses up front and says so plainly:
+
+```
+WARNING: wasm, compiled with 1.87.0 or newer rust toolchain is currently
+         not compatible with nearcore VM
+WARNING: please downgrade to 1.86.0 toolchain for compiling contracts
+```
+
+**`-C target-cpu=mvp` is not sufficient**, because the prebuilt `std` was
+compiled with the newer features regardless.
+
+That collides head-on with §3.11's other finding: **`near-sdk` 5.30.0 requires
+rustc ≥ 1.95**, so 5.30 *cannot* produce a contract this VM will run. The
+resolution:
+
+| constraint | value |
+|---|---|
+| `near-sdk` | **`=5.24.1`** — newest that compiles on 1.86 |
+| why the `=` | `"5.24.1"` means `^5.24.1`, which resolves to 5.30.0 and fails |
+| `near-sys` | **`=0.2.9`** — 0.2.10 and later require rustc 1.93 |
+| `serde_with` | 3.11.0 — 3.24 requires 1.88 |
+| wasm toolchain | **1.86**, via `./build.sh` (`cargo +1.86 near build`) |
+| test toolchain | **1.99.1**, pinned in `rust-toolchain.toml` |
+
+Two toolchains are unavoidable: `near-workspaces`' dependency tree needs
+rustc ≥ 1.88 (`encoding_rs`, the `icu_*` crates), and the contract wasm needs
+≤ 1.86. `build.sh` isolates the wasm build so `cargo test` is unaffected.
+
+### 3.14b NEAR SDK facts
+
+Verified against the version actually shipped, `near-sdk` 5.24.1:
 
 | fact | value |
 |---|---|
-| `near-sdk` | **5.30.0** |
-| minimum rustc | **1.95** — 1.85 fails resolution with a wall of `requires rustc 1.95` |
-| toolchain pinned here | 1.99.1, `rust-toolchain.toml` |
-| `env::ed25519_verify` | **not** behind `unstable` — plain public fn, `env.rs:684` |
-| `env::ecrecover` | **is** behind `#[cfg(feature = "unstable")]`, `env.rs:591` |
-| also available, not gated | `sha256_array`, `p256_verify`, `ml_dsa_verify` |
-| release wasm artifact | **210,425 bytes** |
+| `env::ed25519_verify` | **not** behind `unstable` — plain public fn, `env.rs:773` |
+| `env::ecrecover` | **is** behind `#[cfg(feature = "unstable")]`, `env.rs:707` |
+| also available | `sha256_array`, `p256_verify` |
+| wasm artifact, after `wasm-opt -O` | **235,171 bytes** |
+| gas for a whole fill, end to end | **7.8 TGas** (§5.7) |
 
-> **Correction kept.** An earlier note claimed both `ed25519_verify` and
-> `ecrecover` are `unstable`-gated. Only `ecrecover` is. The critical path needs
-> no unstable feature flag at all.
+> **Correction kept.** An earlier draft of this section recorded `near-sdk`
+> 5.30.0 and rustc 1.99.1 as the build configuration, having verified only that
+> they *compile*. They do compile, and produce a contract that cannot execute a
+> single call. Compiling is not the test; deploying to a node and calling it is.
+> The gate placement for `ed25519_verify` and `ecrecover` was right, and is
+> re-verified above against 5.24.1.
 
 ### 3.15 Market size
 
@@ -866,11 +912,14 @@ guarantee in this document with no key, no funds and no deposit.**
 
 ### 5.7 Gas
 
-The expensive step is `ed25519_verify` over a 692-byte message plus one
-`sha256`. Both are host functions with published per-byte costs, and the
-verification path makes **no cross-contract calls**, so the whole fill fits
-comfortably inside one 300 TGas transaction. **UNVERIFIED** — to be measured in
-step 4 and recorded here as a number, not an adjective.
+**Measured: 7.8 TGas for an entire fill**, end to end — the filler's
+`ft_transfer_call`, the token's hop, `sha256` + `ed25519_verify` over the signed
+bytes, the invariant, and both credits. Against a 300 TGas limit that is 2.6%.
+
+The verification path makes no cross-contract calls (§4.1), so there is nothing
+in it that scales with anything but the length of the signed quote.
+`an_owner_funds_a_mandate_a_stranger_fills_it_and_both_withdraw` asserts
+`< 100 TGas`, so a regression shows up as a failing test.
 
 ---
 
@@ -1115,10 +1164,33 @@ voluntarily migrate to. Step 7 in §13.
 | `mul_div_does_not_overflow_at_realistic_magnitudes` | $1M of a 24-decimal token |
 | `parse_fixed_truncates_toward_a_worse_cost` | fixed-point parsing |
 
+**Done — 5 of 5 passing, `cargo test --test integration`, against a real
+sandbox node driven by a real NEAR Intents signature:**
+
+The fixture `fixtures/sandbox.quote.json` is a genuine signed 1Click quote for
+5 wNEAR → ETH with `recipient: hallmark.near`. Every account it names is a
+*named* NEAR account, so the sandbox can stand up the exact accounts the
+signature commits to — `wrap.near`, `eth.bridge.near`, `hallmark.near`. Nothing
+is mocked: real NEP-141s, real `ft_transfer_call`s, and the real
+`ed25519_verify` host function. (The mainnet USDC fixture cannot be used this
+way: its asset is a 64-hex implicit account whose key nobody has.)
+
+| test | asserts |
+|---|---|
+| `an_owner_funds_a_mandate_a_stranger_fills_it_and_both_withdraw` | the whole product: fund, fill at 69 bps realised, both sides withdraw real tokens, 7.8 TGas |
+| `a_ceiling_the_fill_cannot_meet_refuses_and_refunds_the_filler` | typed `CostCeilingBreached` on-chain, **and the filler loses nothing** |
+| `delivering_under_the_signed_floor_is_refused` | `UnderDelivered` in the real runtime |
+| `an_owner_can_cancel_and_recover_the_unspent_escrow` | escrow returns; a closed mandate cannot be filled |
+| `a_stranger_cannot_cancel_a_mandate` | owner-only authority |
+
+Account creation note: `registrar` can only create dot-free top-level accounts,
+and `near` exists in genesis with a key nobody holds, so `wrap.near` cannot be
+created the ordinary way. The tests use the sandbox's `patch` to write each
+account into state with a known key.
+
 **To add:**
 
-- `near-workspaces` integration: fund → fill → withdraw against a sandbox,
-  including the two-fillers-race-one-mandate case.
+- The two-fillers-race-one-mandate case.
 - Fuzz `cost_bps` against a Python `Decimal` oracle over random quotes and
   delivery amounts, asserting `reported ≥ exact` on every sample.
 - One live-quote test behind a feature flag: fetch a real `dry: true` quote and
@@ -1132,10 +1204,10 @@ voluntarily migrate to. Step 7 in §13.
 | # | task | gate |
 |---|---|---|
 | 0 | **done** — verifier, 19 tests, wasm builds | ✓ 2026-11-01 |
-| 1 | vault state + `ft_on_transfer` for the **origin** token (funding a mandate) | — |
-| 2 | `ft_on_transfer` for the **destination** token (the fill path) + `credits` | — |
-| 3 | `withdraw`, `cancel`, `get_mandates` | — |
-| 4 | `near-workspaces` end-to-end; record gas in §5.7 | — |
+| 1 | **done** — vault state + `ft_on_transfer` for the **origin** token | ✓ |
+| 2 | **done** — `ft_on_transfer` for the **destination** token + `credits` | ✓ |
+| 3 | **done** — `withdraw`, `cancel`, `get_mandates` | ✓ |
+| 4 | **done** — `near-workspaces` end-to-end, 5 tests; gas recorded in §5.7 | ✓ |
 | 5 | TypeScript client: canonicalisation, mandate posting, quote capture | — |
 | 6 | reference filler ×2 + the adapted official-prompt filler | — |
 | 7 | deploy to mainnet, dev account, tiny amounts; **delete the full-access key** | §10.2 |
@@ -1155,12 +1227,16 @@ the end-to-end claim is **UNVERIFIED** and appears nowhere public.
 
 **UNVERIFIED — must be resolved before any public claim of end-to-end operation:**
 
-1. A real fund → deliver → withdraw cycle on mainnet. Step 8. Nothing in §1–§12
-   depends on it except the end-to-end claim itself.
-2. Gas for `ft_on_transfer` with a 692-byte `ed25519_verify`. Step 4, §5.7.
-3. That a filler sourcing via `depositType: INTENTS` can deliver into the vault
+1. A real fund → deliver → withdraw cycle on **mainnet**. Step 8. The same cycle
+   is verified end to end against a sandbox node with a real NEAR Intents
+   signature (§12), so what remains unverified is mainnet specifically: real
+   token contracts, real gas prices, real storage costs.
+2. That a filler sourcing via `depositType: INTENTS` can deliver into the vault
    within the quote's deadline in practice. ~10 s estimated (§3.6); not timed by
    us end to end.
+
+*Resolved since the first draft:* gas (**7.8 TGas**, §5.7) and the full
+fund → fill → withdraw path (§12).
 
 **ASSUMPTION:**
 

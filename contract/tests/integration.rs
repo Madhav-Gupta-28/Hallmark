@@ -194,6 +194,13 @@ async fn an_owner_funds_a_mandate_a_stranger_fills_it_and_both_withdraw() -> any
     let out = try_fill(&w, 1, EXPECTED_OUT).await?;
     assert!(out.is_success(), "fill failed: {out:#?}");
 
+    // The whole verification — sha256 + ed25519_verify over 681 bytes, the
+    // invariant, and both credits — inside one transaction. Recorded so a
+    // regression in gas is visible (ARCHITECTURE.md §5.7).
+    let tgas = out.total_gas_burnt.as_gas() as f64 / 1e12;
+    println!("fill end-to-end: {tgas:.1} TGas");
+    assert!(tgas < 100.0, "a fill must fit well inside one transaction, used {tgas:.1} TGas");
+
     // the owner is credited every unit delivered; the filler earns the input
     assert_eq!(credit(&w, &w.owner, DESTINATION).await?, EXPECTED_OUT);
     assert_eq!(credit(&w, &w.filler, ORIGIN).await?, AMOUNT_IN);

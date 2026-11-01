@@ -41,15 +41,70 @@ Four signed fields and the amount that actually arrived. Every cost — slippage
 bridge fee, solver spread, app fee — has already moved those numbers before the
 venue signed them, so there is nothing else to check.
 
+## See what a live quote actually guarantees
+
+No key, no funds, nothing deployed. `dry: true` quotes are free and commit
+nothing.
+
+```bash
+cd client && npm install
+npm run bound -- USDC NEAR 100
+```
+
+```
+  100 USDC -> wNEAR
+
+  in                 $99.992400000000
+  out                $99.569842049448      22.681057 wNEAR
+  guaranteed floor                     22.454247 wNEAR
+  slippageTolerance  100 bps   <- what a policy engine reads
+
+  realised cost if the fill is honoured in full   43 bps
+  GUARANTEED-WORST all-in cost                    142 bps   <- what the venue actually promised
+
+  signature valid    true  (against ed25519:reYaWhvwu8Jz...)
+```
+
+The gap between those last two lines is the product.
+
+## Run it
+
+```bash
+./build.sh                                  # the deployable wasm (needs rustc 1.86)
+cd contract && cargo test                   # 21 unit tests
+cargo test --test integration               # 5 tests against a sandbox node
+cd ../client && npm install && npm test      # the canonicaliser, vs signed fixtures
+```
+
+The integration tests stand up `wrap.near`, `eth.bridge.near` and
+`hallmark.near` in a local node and fill a mandate using a real NEAR Intents
+signature. Nothing is mocked, and a whole fill costs **7.8 TGas**.
+
+## Posting and filling
+
+```bash
+# an owner, once
+HALLMARK_ACCOUNT=you.near HALLMARK_KEY=ed25519:... \
+  npm run post -- USDC NEAR 100 --ceiling 200
+
+# anyone, repeatedly
+HALLMARK_ACCOUNT=filler.near HALLMARK_KEY=ed25519:... npm run fill
+npm run fill -- --dry        # price every open mandate, send nothing
+```
+
 ## Layout
 
 ```
-contract/src/quote.rs     the signed quote, the signature, the arithmetic
-contract/src/mandate.rs   the mandate, the refusals, the check
-contract/src/lib.rs       the vault
-contract/src/tests.rs     every guarantee the spec claims
-fixtures/                 signed captures + the canonicalisation script
-ARCHITECTURE.md           the full specification
+contract/src/quote.rs       the signed quote, the signature, the arithmetic
+contract/src/mandate.rs     the mandate, the refusals, the check
+contract/src/lib.rs         the vault
+contract/src/tests.rs       every guarantee the spec claims
+contract/tests/             end-to-end, against a real node
+client/src/lib/canonical.ts canonicalisation — the one place it exists
+client/src/bin/bound.ts     what a live quote guarantees
+client/src/bin/fill.ts      the reference filler
+fixtures/                   signed captures + the canonicalisation script
+ARCHITECTURE.md             the full specification
 ```
 
 ## Specification

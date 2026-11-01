@@ -1208,8 +1208,8 @@ account into state with a known key.
 | 2 | **done** — `ft_on_transfer` for the **destination** token + `credits` | ✓ |
 | 3 | **done** — `withdraw`, `cancel`, `get_mandates` | ✓ |
 | 4 | **done** — `near-workspaces` end-to-end, 5 tests; gas recorded in §5.7 | ✓ |
-| 5 | TypeScript client: canonicalisation, mandate posting, quote capture | — |
-| 6 | reference filler ×2 + the adapted official-prompt filler | — |
+| 5 | **done** — TypeScript client: canonicaliser (24 assertions), 1Click, vault | ✓ |
+| 6 | **done** — `bound`, `post` and the reference filler; adapted official-prompt filler still to come | ◐ |
 | 7 | deploy to mainnet, dev account, tiny amounts; **delete the full-access key** | §10.2 |
 | 8 | **one real ~$5 mainnet fill**, end to end | the last unknown |
 | 9 | proof page: paste a quote, see the bound | — |

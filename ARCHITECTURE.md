@@ -577,6 +577,40 @@ The rule: the recipient must match the chain the asset **settles on**, which is
 not always the chain the asset is *named* after. Retested with chain-correct
 recipients, USD marks were present on every quote across 6 assets on 6 chains.
 
+**And the recipient must already exist on-chain.** 1Click refuses to sign a
+quote naming a NEAR account that has not been created, and reports it as
+**HTTP 400 `Internal server error`** — which reads like an outage and is not.
+Verified with a control:
+
+| recipient | exists on-chain | quote |
+|---|---|---|
+| `demo.near` | yes | signed |
+| `hallmark.near` | yes | signed |
+| `relay.tg` | yes | signed |
+| `hallmarkfi.near` | **no** | **rejected** |
+| `zzz-does-not-exist-9x7.near` | **no** | **rejected** |
+
+This imposes an ordering constraint on deployment: **the vault account must be
+created before any quote can name it**, so before a filler can do anything at
+all. DEPLOY.md §4 puts it first for this reason.
+
+### 3.11b The mainnet test pair
+
+`wNEAR → USDT` — `nep141:wrap.near` (24 dp) to
+`nep141:usdt.tether-token.near` (6 dp).
+
+Both are Intents-listed **and** obtainable by swapping NEAR on a NEAR DEX, so no
+bridging is involved. That is not true of Intents USDC, which is the omni-bridge
+token `nep141:17208628…33a1` with almost no NEAR-native liquidity (§3.12) — it
+is the right fixture for the exploit demo and the wrong asset to acquire for a
+live test.
+
+Measured live on 2026-11-01 for 1.2 wNEAR: **40 bps** at full delivery, **140
+bps** guaranteed-worst. `USDT → wNEAR` gives 42 / 142.
+
+**`hallmark.near` is already registered** by someone else (0.05 NEAR, no code),
+so the deployment target is **`hallmarkfi.near`**.
+
 ### 3.12 Rhea cannot be an independent benchmark
 
 Scanned **all 8,992** Rhea pools via `get_number_of_pools` + enumeration:

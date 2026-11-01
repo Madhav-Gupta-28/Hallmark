@@ -107,6 +107,12 @@ fixtures/                   signed captures + the canonicalisation script
 ARCHITECTURE.md             the full specification
 ```
 
+## Mainnet
+
+[`DEPLOY.md`](DEPLOY.md) — step by step, with real costs (about 5.2 NEAR and
+5 USDT, and the capital comes back). There is no Intents testnet and none is
+planned, so mainnet is the only place this runs.
+
 ## Specification
 
 [`ARCHITECTURE.md`](ARCHITECTURE.md) — every number verified against mainnet or

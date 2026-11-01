@@ -18,7 +18,7 @@ const flag = (name: string, dflt: string) => {
 };
 const [fromSym = "USDC", toSym = "NEAR", humanAmount = "100"] = argv.filter((a) => !a.startsWith("--") && !argv[argv.indexOf(a) - 1]?.startsWith("--"));
 
-const VAULT = process.env.HALLMARK_VAULT ?? "hallmark.near";
+const VAULT = process.env.HALLMARK_VAULT ?? "hallmarkfi.near";
 const RPC = process.env.NEAR_RPC ?? "https://rpc.mainnet.near.org";
 const accountId = process.env.HALLMARK_ACCOUNT;
 const key = process.env.HALLMARK_KEY;

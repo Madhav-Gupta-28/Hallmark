@@ -21,7 +21,7 @@ import {
   type MandateRecord,
 } from "../lib/hallmark.ts";
 
-const VAULT = process.env.HALLMARK_VAULT ?? "hallmark.near";
+const VAULT = process.env.HALLMARK_VAULT ?? "hallmarkfi.near";
 const RPC = process.env.NEAR_RPC ?? "https://rpc.mainnet.near.org";
 const DRY = process.argv.includes("--dry") || !process.env.HALLMARK_KEY;
 

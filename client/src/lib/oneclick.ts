@@ -35,7 +35,20 @@ async function call(path: string, body: unknown): Promise<any> {
     body: JSON.stringify(body),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`1Click ${path} -> HTTP ${res.status}: ${text.slice(0, 300)}`);
+  if (!res.ok) {
+    // 1Click answers HTTP 400 "Internal server error" when the recipient is not
+    // an existing on-chain NEAR account. That reads like an outage and is not,
+    // so say what it actually means (ARCHITECTURE.md §3.11).
+    if (res.status === 400 && text.includes("Internal server error")) {
+      const rcpt = (body as { recipient?: string }).recipient;
+      throw new Error(
+        `1Click rejected the quote. The most common cause is that the recipient ` +
+          `(${rcpt ?? "unset"}) does not exist on-chain yet — create the account first.\n` +
+          `  raw: ${text.slice(0, 200)}`,
+      );
+    }
+    throw new Error(`1Click ${path} -> HTTP ${res.status}: ${text.slice(0, 300)}`);
+  }
   return JSON.parse(text);
 }
 

@@ -28,8 +28,10 @@ const res = await getQuote({
   originAsset: from.assetId,
   destinationAsset: to.assetId,
   amount: amount.toString(),
-  recipient: "hallmark.near",
-  refundTo: "hallmark.near",
+  // 1Click refuses a quote whose recipient is not an existing on-chain
+  // account, so this names a real one (ARCHITECTURE.md §3.11).
+  recipient: process.env.HALLMARK_VAULT ?? "hallmark.near",
+  refundTo: process.env.HALLMARK_VAULT ?? "hallmark.near",
 });
 
 const canonical = canonicalise(res);

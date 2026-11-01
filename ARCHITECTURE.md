@@ -1351,7 +1351,7 @@ account into state with a known key.
 | 6 | **done** — `bound`, `post` and the reference filler; adapted official-prompt filler still to come | ◐ |
 | 7 | deploy to mainnet, dev account, tiny amounts; **delete the full-access key** | §10.2 |
 | 8 | **one real ~$5 mainnet fill**, end to end | the last unknown |
-| 9 | proof page: paste a quote, see the bound | — |
+| 9 | **done** — proof page, static, every figure a live view call | ✓ |
 | 10 | README as "do X — see Y" steps; no marketing | spec requirement |
 
 **On deferring the ~$5 mainnet fill:** it was first priority while `appFees` was

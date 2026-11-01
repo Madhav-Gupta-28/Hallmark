@@ -33,6 +33,20 @@ cd contract && cargo test
 - `malicious_quote_is_a_9999_bps_haircut_and_is_validly_signed`
 - `every_single_byte_is_covered_by_the_signature` — all 692 bytes, flipped one at a time
 
+## The proof page
+
+```bash
+cd web && python3 -m http.server 8000
+```
+
+One static file, no build step, no backend, no dependencies. It fetches a live
+signed quote from the public 1Click API, canonicalises it in the browser, and
+asks `hallmarkfi.near` what the quote actually guarantees. Every number it shows
+is a view call to the live contract — nothing is computed by the page except the
+canonical bytes, and `web/index.html` is short enough to read in full.
+
+Deploys to any static host as-is.
+
 ## Ask the live contract, right now
 
 No key, no funds, no deposit — these are view calls on mainnet.
@@ -130,6 +144,7 @@ contract/tests/             end-to-end, against a real node
 client/src/lib/canonical.ts canonicalisation — the one place it exists
 client/src/bin/bound.ts     what a live quote guarantees
 client/src/bin/fill.ts      the reference filler
+web/index.html              the proof page — one file, no backend
 fixtures/                   signed captures + the canonicalisation script
 ARCHITECTURE.md             the full specification
 ```

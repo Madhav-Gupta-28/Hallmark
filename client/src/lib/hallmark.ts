@@ -11,7 +11,15 @@ export interface MandateTerms {
   destination_asset: string;
   recipient: string;
   max_cost_bps: number;
+  /** origin base units, as a string: u128 does not fit a JS number */
   max_fill: string;
+  /**
+   * How stale a quote may be at fill time, measured from the venue's own signed
+   * `timestamp`. Without it the cost ceiling is enforced against USD marks of
+   * unbounded age — see ARCHITECTURE.md §2.10.
+   */
+  max_quote_age_secs: number;
+  /** nanoseconds, as a string: u64 does not fit a JS number either */
   expiry_ns: string;
 }
 
@@ -57,7 +65,7 @@ export class Hallmark {
       if (String(body.result.error).includes("CodeDoesNotExist")) {
         throw new Error(
           `no Hallmark vault deployed at ${this.vault} on ${this.rpc}.\n` +
-            `  Set HALLMARK_VAULT to a deployed vault, or deploy one with ./deploy.sh`,
+            `  Set HALLMARK_VAULT to a deployed vault, or deploy one — see DEPLOY.md`,
         );
       }
       throw new Error(`${method}: ${body.result.error}`);
@@ -80,6 +88,20 @@ export class Hallmark {
   /** What the bound says, computed by the contract rather than by us. */
   worstCost(canonical: string): Promise<number> {
     return this.view("worst_cost", { canonical });
+  }
+
+  /** How old the venue's signature on this quote is, as the chain sees it. */
+  quoteAgeSecs(canonical: string): Promise<string> {
+    return this.view("quote_age_secs", { canonical });
+  }
+
+  /** What `open` will charge the owner in storage staking, in yoctoNEAR. */
+  storageCostEstimate(): Promise<string> {
+    return this.view("storage_cost_estimate", {});
+  }
+
+  storageBalanceOf(accountId: string): Promise<string> {
+    return this.view("storage_balance_of", { account_id: accountId });
   }
 
   dryCheck(

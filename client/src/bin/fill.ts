@@ -11,7 +11,7 @@
  * §6.4. There is no fee field anywhere: the filler's pay is the spread between
  * what it can source the output for and what it delivers.
  */
-import { canonicalise, costBps, signatureB58, verifySigner } from "../lib/canonical.ts";
+import { canonicalise, costBps, quoteAgeSecs, signatureB58, verifySigner } from "../lib/canonical.ts";
 import { getQuote } from "../lib/oneclick.ts";
 import {
   Hallmark,
@@ -71,8 +71,17 @@ for (const [id, m] of mandates) {
   }
 
   // Ask the contract itself before spending anything.
+  // A fresh quote, every time. The mandate bounds how stale one may be, and a
+  // filler that banks quotes to exercise later is the attack that bound exists
+  // for (§2.10) — so there is nothing to gain by holding one.
+  const age = quoteAgeSecs(res);
+  if (age > m.terms.max_quote_age_secs) {
+    console.log(`${label}  skip: quote is ${age}s old, mandate allows ${m.terms.max_quote_age_secs}s`);
+    continue;
+  }
+
   const verdict = await hallmark.dryCheck(canonical, signatureB58(res), m.terms, deliver.toString());
-  console.log(`${label}  ${cost} bps <= ${m.terms.max_cost_bps} bps   ${verdict}`);
+  console.log(`${label}  ${cost} bps <= ${m.terms.max_cost_bps} bps  (quote ${age}s old)  ${verdict}`);
   if (!verdict.startsWith("ALLOWED") || DRY) continue;
 
   const account = signer(process.env.HALLMARK_ACCOUNT!, process.env.HALLMARK_KEY!, RPC);

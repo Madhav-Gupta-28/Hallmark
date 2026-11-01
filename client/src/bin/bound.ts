@@ -12,6 +12,7 @@ import {
   quoteHash,
   worstCostBps,
   costBps,
+  quoteAgeSecs,
   signatureB58,
   verifySigner,
   QUOTE_SIGNER,
@@ -49,6 +50,9 @@ console.log(`
 
   realised cost if the fill is honoured in full   ${costBps(res, expected)} bps
   GUARANTEED-WORST all-in cost                    ${worstCostBps(res)} bps   <- what the venue actually promised
+
+  signed at          ${res.timestamp}   (${quoteAgeSecs(res)}s ago)
+  deadline           ${res.quoteRequest.deadline}   <- chosen by whoever asked, not by the venue
 
   quote hash         ${quoteHash(canonical)}
   canonical bytes    ${Buffer.byteLength(canonical, "utf8")}

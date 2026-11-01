@@ -10,6 +10,7 @@ import {
   quoteHash,
   worstCostBps,
   costBps,
+  quoteAgeSecs,
   verifySigner,
   type QuoteResponse,
 } from "./canonical.ts";
@@ -73,6 +74,45 @@ for (const name of ["honest", "sandbox"]) {
   assert.ok(costBps(res, delivered) >= exact, "the reported cost must never be below the true cost");
   console.log(`  rounding: reported ${costBps(res, delivered)} >= exact ${exact.toFixed(4)}`);
   passed++;
+}
+
+// `timestamp` is in the signed bytes, and it is the only field that can bound
+// how stale a quote is — the `deadline` is chosen by whoever asked for it
+// (ARCHITECTURE.md §2.10).
+for (const name of ["honest", "worst", "sandbox"]) {
+  const res = load(name);
+  const canonical = canonicalise(res);
+  assert.ok(canonical.includes('"timestamp"'), `${name}: the signed bytes must carry a timestamp`);
+  assert.equal(quoteAgeSecs(res, new Date(res.timestamp).getTime() + 90_000), 90);
+  assert.equal(quoteAgeSecs(res, new Date(res.timestamp).getTime() - 5_000), 0, "never negative");
+  // the deadline says nothing about staleness: these fixtures were signed for
+  // between 19 and 211 days of validity
+  const validForDays =
+    (new Date(res.quoteRequest.deadline as string).getTime() - new Date(res.timestamp).getTime()) /
+    864e5;
+  assert.ok(validForDays > 18, `${name}: deadline is caller-chosen, ${validForDays} days here`);
+  console.log(
+    `  ${name.padEnd(8)} signed ${res.timestamp}  valid for ${Math.round(validForDays)} days`,
+  );
+  passed += 4;
+}
+
+// `scale` must refuse exactly what `parse_fixed` refuses, or the two
+// implementations of the invariant are not the same implementation
+{
+  const base = load("honest");
+  for (const bad of [".5", "", "1.2e3", "-1", "1,5", "abc"]) {
+    const res = { ...base, quote: { ...base.quote, amountInUsd: bad } };
+    assert.throws(() => costBps(res, 1n), `"${bad}" must be refused, as Rust refuses it`);
+    passed++;
+  }
+  // and the shapes it must accept, agreeing with the Rust fixed-point tests
+  for (const [good, expect] of [["10", 60n], ["9.999220000000", 60n]] as const) {
+    const res = { ...base, quote: { ...base.quote, amountInUsd: good } };
+    assert.ok(costBps(res, BigInt(base.quote.amountOut as string)) >= 0, `"${good}" must parse`);
+    void expect;
+    passed++;
+  }
 }
 
 console.log(`\n  ${passed} assertions passed`);

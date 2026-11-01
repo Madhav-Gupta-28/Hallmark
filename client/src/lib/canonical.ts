@@ -109,6 +109,17 @@ export function verifySigner(canonical: string, signature: string, signer = QUOT
   return cryptoVerify(null, message, key, bs58.decode(signature.replace(/^ed25519:/, "")));
 }
 
+/**
+ * How old the venue's signature on this quote is, in seconds. The cost bound is
+ * denominated in USD marks that were true at `timestamp` and not necessarily
+ * now, and the *filler* picks the quote's `deadline` — 1Click will sign one ten
+ * years out — so this, not the deadline, is what a mandate must bound
+ * (ARCHITECTURE.md §2.10).
+ */
+export function quoteAgeSecs(res: QuoteResponse, now = Date.now()): number {
+  return Math.max(0, Math.round((now - new Date(res.timestamp).getTime()) / 1000));
+}
+
 /** `base58(sha256(canonical))` — the message the venue actually signed. */
 export function quoteHash(canonical: string): string {
   return bs58.encode(createHash("sha256").update(canonical, "utf8").digest());
@@ -131,9 +142,16 @@ export function worstCostBps(res: QuoteResponse): number {
 /** The realised all-in cost if a filler delivered `delivered`, in bps. */
 export function costBps(res: QuoteResponse, delivered: bigint): number {
   const RATIO = 1_000_000_000n;
+  // Must agree with `parse_fixed` in contract/src/quote.rs on every input the
+  // venue can produce, including the degenerate ones. The obvious
+  // `BigInt(i ?? "0")` silently reads ".5" as 0.5 where Rust panics, so the
+  // integer part is required here too — the two implementations are only
+  // equivalent if they disagree about nothing.
   const scale = (s: string) => {
     const [i, f = ""] = s.split(".");
-    return BigInt(i ?? "0") * 10n ** 12n + BigInt((f + "000000000000").slice(0, 12));
+    if (!/^\d+$/.test(i ?? "")) throw new Error(`bad integer part in "${s}"`);
+    if (f && !/^\d+$/.test(f)) throw new Error(`bad fraction in "${s}"`);
+    return BigInt(i!) * 10n ** 12n + BigInt((f + "000000000000").slice(0, 12));
   };
   const inUsd = scale(res.quote.amountInUsd as string);
   const outUsd = scale(res.quote.amountOutUsd as string);

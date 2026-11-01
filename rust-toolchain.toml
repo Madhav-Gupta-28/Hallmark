@@ -1,3 +1,6 @@
+# Tests and host builds run on this. The deployable wasm does NOT: nearcore's VM
+# rejects wasm emitted by rustc 1.87 or newer, so `build.sh` compiles the
+# contract with `+1.86`. See ARCHITECTURE.md §3.14.
 [toolchain]
 channel = "1.99.1"
 targets = ["wasm32-unknown-unknown"]

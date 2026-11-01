@@ -1,0 +1,100 @@
+//! A plain NEP-141 token, for the sandbox only. Not part of Hallmark.
+//!
+//! It exists so the integration tests can exercise the real `ft_transfer_call`
+//! path against the real NEAR runtime rather than a mock.
+
+use near_contract_standards::fungible_token::metadata::{
+    FungibleTokenMetadata, FungibleTokenMetadataProvider, FT_METADATA_SPEC,
+};
+use near_contract_standards::fungible_token::{FungibleToken, FungibleTokenCore, FungibleTokenResolver};
+use near_sdk::json_types::U128;
+use near_sdk::{env, near, AccountId, PanicOnDefault, Promise, PromiseOrValue};
+
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
+pub struct TestToken {
+    token: FungibleToken,
+    decimals: u8,
+    symbol: String,
+}
+
+#[near]
+impl TestToken {
+    #[init]
+    pub fn new(owner_id: AccountId, total_supply: U128, decimals: u8, symbol: String) -> Self {
+        let mut token = FungibleToken::new(b"t".to_vec());
+        token.internal_register_account(&owner_id);
+        token.internal_deposit(&owner_id, total_supply.0);
+        Self { token, decimals, symbol }
+    }
+
+    /// Sandbox convenience: hand anyone a balance without a faucet dance.
+    pub fn mint(&mut self, account_id: AccountId, amount: U128) {
+        if self.token.accounts.get(&account_id).is_none() {
+            self.token.internal_register_account(&account_id);
+        }
+        self.token.internal_deposit(&account_id, amount.0);
+    }
+
+    pub fn storage_deposit(&mut self, account_id: Option<AccountId>) {
+        let who = account_id.unwrap_or_else(env::predecessor_account_id);
+        if self.token.accounts.get(&who).is_none() {
+            self.token.internal_register_account(&who);
+        }
+    }
+}
+
+#[near]
+impl FungibleTokenCore for TestToken {
+    #[payable]
+    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>) {
+        self.token.ft_transfer(receiver_id, amount, memo)
+    }
+
+    #[payable]
+    fn ft_transfer_call(
+        &mut self,
+        receiver_id: AccountId,
+        amount: U128,
+        memo: Option<String>,
+        msg: String,
+    ) -> PromiseOrValue<U128> {
+        self.token.ft_transfer_call(receiver_id, amount, memo, msg)
+    }
+
+    fn ft_total_supply(&self) -> U128 {
+        self.token.ft_total_supply()
+    }
+
+    fn ft_balance_of(&self, account_id: AccountId) -> U128 {
+        self.token.ft_balance_of(account_id)
+    }
+}
+
+#[near]
+impl FungibleTokenResolver for TestToken {
+    #[private]
+    fn ft_resolve_transfer(
+        &mut self,
+        sender_id: AccountId,
+        receiver_id: AccountId,
+        amount: U128,
+    ) -> U128 {
+        self.token.ft_resolve_transfer(sender_id, receiver_id, amount)
+    }
+}
+
+#[near]
+impl FungibleTokenMetadataProvider for TestToken {
+    fn ft_metadata(&self) -> FungibleTokenMetadata {
+        FungibleTokenMetadata {
+            spec: FT_METADATA_SPEC.to_string(),
+            name: self.symbol.clone(),
+            symbol: self.symbol.clone(),
+            icon: None,
+            reference: None,
+            reference_hash: None,
+            decimals: self.decimals,
+        }
+    }
+}

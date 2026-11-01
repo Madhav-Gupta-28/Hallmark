@@ -18,9 +18,9 @@ def stable(o):
     return json.dumps(o)
 
 PUB="ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc"
-open('spike/fixtures/pub.bin','wb').write(b58dec(PUB.split(':')[1]))
+open('../contract/fixtures/pub.bin','wb').write(b58dec(PUB.split(':')[1]))
 
-for src,name in (('quote.json','honest'),('worst_quote.json','worst')):
+for src,name in (('honest.quote.json','honest'),('worst.quote.json','worst'),('sandbox.quote.json','sandbox')):
     r=json.load(open(src)); qr,qt=r['quoteRequest'],r['quote']
     nz=lambda v: v if v else None
     sreq={'dry':qr.get('dry'),'swapType':qr.get('swapType'),'slippageTolerance':qr.get('slippageTolerance'),
@@ -32,6 +32,6 @@ for src,name in (('quote.json','honest'),('worst_quote.json','worst')):
      'amountOut','amountOutFormatted','amountOutUsd','minAmountOut')}
     data=stable({**sreq,**squote,'timestamp':r['timestamp']}).encode()
     h=b58enc(hashlib.sha256(data).digest())
-    open(f'spike/fixtures/{name}.canonical.json','wb').write(data)
-    open(f'spike/fixtures/{name}.sig.bin','wb').write(b58dec(r['signature'].split(':')[1]))
+    open(f'../contract/fixtures/{name}.canonical.json','wb').write(data)
+    open(f'../contract/fixtures/{name}.sig.bin','wb').write(b58dec(r['signature'].split(':')[1]))
     print(f'{name:7s} bytes={len(data):4d}  hash={h}')

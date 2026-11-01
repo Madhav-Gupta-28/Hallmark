@@ -1,0 +1,14 @@
+[workspace]
+members = ["contract", "test-token"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+overflow-checks = true
+panic = "abort"

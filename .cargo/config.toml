@@ -1,0 +1,6 @@
+# NEAR's wasm VM only accepts MVP WebAssembly. Rust enables reference-types and
+# multivalue by default for wasm32-unknown-unknown from 1.82 on, and a contract
+# built with them is rejected at deploy time with
+# `CompilationError(PrepareError(Deserialization))`.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-cpu=mvp", "-C", "link-arg=-zstack-size=131072"]

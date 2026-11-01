@@ -103,6 +103,7 @@
     <button id="go">Get a quote</button>
     <label class="note" style="margin:0 0 0 4px">
       ceiling <input id="ceil" size="4" value="30"> bps
+      &nbsp; max quote age <input id="age" size="4" value="300"> s
     </label>
   </div>
   <div id="live"></div>
@@ -217,6 +218,14 @@ function canonicalise(res) {
   return stable(p);
 }
 
+function fmtAge(secs) {
+  const n = Number(secs);
+  if (n < 120) return `${n}s`;
+  if (n < 7200) return `${Math.round(n / 60)}min`;
+  if (n < 172800) return `${(n / 3600).toFixed(1)}h`;
+  return `${(n / 86400).toFixed(1)} days`;
+}
+
 const rowsHtml = rows => rows.map(([k,v,cls]) =>
   `<div class="row"><span class="k">${k}</span><span class="v ${cls||""}">${v}</span></div>`).join("");
 
@@ -309,15 +318,18 @@ async function liveQuote() {
 async function render(out, canonical, signature, quote, from, to) {
   const q = JSON.parse(canonical);
   const ceiling = Math.max(0, Math.min(10000, parseInt($("#ceil").value || "30", 10)));
+  const maxAge = Math.max(1, parseInt($("#age").value || "300", 10));
   const terms = {
     origin_asset: q.originAsset, destination_asset: q.destinationAsset,
     recipient: q.recipient, max_cost_bps: ceiling,
-    max_fill: q.amountIn, expiry_ns: 4_000_000_000_000_000_000,
+    max_fill: q.amountIn, max_quote_age_secs: maxAge,
+    expiry_ns: "4000000000000000000",
   };
-  const [signed, worst, full, verdict] = await Promise.all([
+  const [signed, worst, full, age, verdict] = await Promise.all([
     view("is_signed",     { canonical, signature }),
     view("worst_cost",    { canonical }),
     view("realised_cost", { canonical, delivered: q.amountOut }),
+    view("quote_age_secs",{ canonical }),
     view("dry_check",     { canonical, signature, terms, delivered: q.minAmountOut }),
   ]);
   const dp = n => to ? (Number(n) / 10 ** to.decimals) : Number(n);
@@ -331,13 +343,18 @@ async function render(out, canonical, signature, quote, from, to) {
         ["out", `$${Number(q.amountOutUsd).toFixed(4)}${to ? ` &nbsp;<span class="dim">${dp(q.amountOut).toFixed(6)} ${to.symbol}</span>` : ""}`],
         ["guaranteed floor", to ? `<span class="dim">${dp(q.minAmountOut).toFixed(6)} ${to.symbol}</span>` : q.minAmountOut],
         ["slippageTolerance", `${q.slippageTolerance} bps <span class="dim">&larr; what policy engines read</span>`],
+        ["signed at <span class='dim'>&larr; inside the signature</span>",
+          `${esc(q.timestamp)} &nbsp;<span class="${Number(age) > maxAge ? "red" : "green"}">${fmtAge(age)} old</span>`],
+        ["deadline <span class='dim'>&larr; chosen by whoever asked for the quote</span>",
+          `<span class="dim">${esc(q.deadline)}</span>`],
         ["cost if honoured in full", `<span class="big">${full} bps</span>`],
         ["guaranteed&#8209;worst all&#8209;in cost", `<span class="big ${worst > ceiling ? "red" : "green"}">${worst} bps</span>`],
       ])}
     </div>
     <div class="verdict ${allowed ? "ok" : "no"}">${esc(verdict)}</div>
     <p class="src">&#8627; every figure above answered by <b>${VAULT}</b> on NEAR mainnet,
-       against a <b>${ceiling} bps</b> ceiling. The gap between the last two rows is the product.</p>`;
+       against a <b>${ceiling} bps</b> ceiling and a <b>${maxAge} s</b> freshness bound.
+       The gap between the last two cost rows is the product.</p>`;
 }
 
 /* ----------------------------- pasted quote ------------------------------- */

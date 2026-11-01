@@ -18,8 +18,12 @@ Read §0 before running anything: **step 11 is irreversible.**
 | owner's test capital | **~1.2 wNEAR** (~$5) | what gets sold |
 | filler's test capital | **~5 USDT** | the filler delivers the output *first*, so it needs inventory (ARCHITECTURE.md §6.4) |
 
-**Total: about 5.2 NEAR and 5 USDT.** The two capital legs come back to you —
-you are both sides of this trade.
+**Total: about 5.2 NEAR and 5 USDT — roughly $28 at $4.40/NEAR
+(2026-11-01).** The two capital legs come back to you, so the real cost is the
+~4 NEAR locked in the vault plus pennies of gas.
+
+Note that **$5 of NEAR is 1.14 NEAR and is not enough**: the wasm storage lock
+alone is 2.3517 NEAR, and that is a protocol rule, not a fee.
 
 ## §0.1 Why you are both sides, and why that is not a cheat
 
@@ -55,8 +59,12 @@ near --version          # near-cli-rs 0.23.6 or newer
 rustup toolchain list   # 1.86 must be present; ./build.sh installs it if not
 ```
 
-You need an existing funded mainnet account to pay for all of this. Everything
-below calls it `YOU.near` — substitute yours.
+You need a funded mainnet account to pay for all of this; §3 makes one. Every
+command below writes it as `YOU.near` — substitute yours, which may be a
+64-character implicit account id rather than a name.
+
+**Nothing below ever needs a private key in plaintext.** Every signing step uses
+`sign-with-keychain`, which reads the key your OS keychain holds.
 
 ## §2 Build the wasm
 
@@ -71,20 +79,42 @@ with `CompilationError(PrepareError(Deserialization))`. See ARCHITECTURE.md
 
 Expect `target/near/hallmark/hallmark.wasm`, about 235 KB.
 
-## §3 Put your key in the CLI keychain
+## §3 Get a funded mainnet account — no wallet required
+
+**You do not need a browser wallet for this.** The CLI can make an account and
+keep its key in your OS keychain, which is also the only way to sign these
+commands without a private key ever being pasted anywhere.
 
 ```bash
-near account import-account using-web-wallet network-config mainnet
+near account create-account fund-later use-auto-generation \
+  save-to-keychain network-config mainnet
 ```
 
-Never paste a private key into a terminal that logs, and never into this repo.
+That prints a 64-character **implicit account id** and stores its key in your
+keychain. Buy NEAR on any exchange and withdraw **~6 NEAR** to that id — the
+account comes into existence the moment it receives funds.
+
+Check it arrived:
+
+```bash
+near account view-account-summary <THE_64_CHAR_ID> network-config mainnet now
+```
+
+> **If you would rather use a wallet:** prefer **Meteor** or **HERE**.
+> **Do not use MyNearWallet** — it was scheduled for deprecation on
+> **2026-10-31**. Whatever you use, import the account into the CLI afterwards
+> with `near account import-account using-seed-phrase` or
+> `using-private-key`, because every step below signs through the keychain.
+
+An implicit account works perfectly as the funder and as the owner/filler. A
+pretty `you.near` name is optional and costs extra.
 
 ## §4 Create the vault account
 
 ```bash
 near account create-account fund-myself hallmarkfi.near '4 NEAR' \
   autogenerate-new-keypair save-to-keychain \
-  sign-as YOU.near \
+  sign-as <YOUR_ACCOUNT> \
   network-config mainnet sign-with-keychain send
 ```
 

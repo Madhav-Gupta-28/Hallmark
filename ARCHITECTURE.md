@@ -534,10 +534,35 @@ slot rather than writing a zero into it. A zeroed slot still occupies storage
 the vault paid for, and a filler could mint slots faster than the mandate that
 prepaid for them. Removing makes an honest round trip storage-neutral.
 
-The cost to an honest owner is one extra transaction, once, of about
-**0.013 NEAR** — the same shape as the `storage_deposit` every NEP-141 token
+The cost to an honest owner is one extra transaction, once, of
+**0.01536 NEAR** — the same shape as the `storage_deposit` every NEP-141 token
 already requires before it will hold a balance for you. `post.ts` does it
 automatically and skips it when the balance already covers the next mandate.
+
+**The charge is deliberately conservative, and the surplus is not refunded.**
+Measured on mainnet across a full `open → cancel → reap → storage_withdraw`
+cycle:
+
+| | bytes | NEAR |
+|---|---|---|
+| charged at `open` | 1,536 | 0.01536 |
+| the mandate record itself | 296 | 0.00296 |
+| one credit slot, measured | 145 | 0.00145 |
+| returned by `reap` | 359 | 0.00359 |
+
+So an owner pays about **0.0118 NEAR per mandate cycle** that does not come
+back. That buys slack for the credit slots a mandate's fills will create: 1,024
+bytes of allowance against ~145 bytes a slot is room for **about seven**.
+
+Why a fixed allowance rather than exact accounting: a credit slot is created by
+a *fill*, and `ft_on_transfer` carries no deposit, so a filler cannot be charged
+in NEAR at the moment it creates one. A mandate with more than ~7 distinct
+fillers who never withdraw would exceed its allowance and the vault would
+subsidise the excess. That is **a stated limit, not a closed hole** (§14): each
+extra slot costs the filler a real token delivery and the forfeiture of the
+credit it earned, so the leverage runs the wrong way for an attacker — which is
+the property that matters, and is why this is left as slack rather than as a
+second accounting system.
 
 Six tests pin this, all of them on-chain:
 `opening_a_mandate_has_to_be_paid_for`,
@@ -947,7 +972,17 @@ the refusal is the freshness check and nothing else.
 | withdraw USDT | `BX2Cdkrc38zLZXkccV8Vup74kg6D7bpwxXFFQFV6fFKB` | |
 | withdraw wNEAR | `GKyc767VFH3f84697C9k2AXy3xH8TpWqD4sFhczktFUF` | |
 | `cancel` | `8PT2WWLV9Sgn5qhihfmKUjNwrSEvFECwHxmPLX2u455Y` | storage prepayment returned: 0 → 0.01536 NEAR |
-| mandate #2 opened | `9zv1iEghZmssMtGacfumUJY1wDjVTihmkBSqbJvW3f7s` | 0.03 wNEAR, **open now**, and it reused the refund rather than depositing again |
+| mandate #2 opened | `9zv1iEghZmssMtGacfumUJY1wDjVTihmkBSqbJvW3f7s` | 0.03 wNEAR, **open now** |
+| **a real stale fill, attempted** | `3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc` | quote banked for 326 s against a 300 s bound. `REFUSED QuoteTooOld`; the USDT was refunded and neither escrow nor credit moved |
+| a fake-token fill, attempted | `BBrcmc6uqzrY4Dko1ary9Zn6VoiYBCY4tbxHwDSnNXAn` | `ft_on_transfer` called directly, no token involved — refused |
+| `reap` redeploy | `2zUdcMfGTgUfpD8NGDVDUosj31Gv3S1gqkxV779Tmi8D` | code only, no `migrate`: the struct layout did not change, so mandate #2 survived |
+| mandate #3: open → cancel → reap → `storage_withdraw` | `5aLHjteFnfTCtTAg14rGGX16q5mozghAHxew4Xejv8r5` … | the whole storage lifecycle, measured in §2.11 |
+
+**A refused fill is a successful transaction.** `3JKAnmbAnQKM…` has outer status
+`SuccessValue` and the refusal in receipt 1 — NEP-141 catches the panic and
+refunds, which is what makes the refund work. The reference filler read only the
+outer status and called that fill filled; `receiptFailure()` in
+`client/src/lib/hallmark.ts` is the fix, and §9 records the trap.
 
 The receipt, straight off the chain:
 
@@ -1779,30 +1814,35 @@ races (§12).
 
 **Known limits, stated rather than hidden:**
 
-6. **`get_mandates` scans from the start of the map**, so it is O(total
+6. **The mandate storage charge is slack, not exact accounting** (§2.11). An
+   owner does not get about 0.0118 NEAR per cycle back, and a mandate with more
+   than ~7 distinct fillers who never withdraw would have the vault subsidise
+   the excess. Uneconomic to exploit — each slot costs a real delivery and the
+   credit earned by it — but it is arithmetic, not a proof.
+7. **`get_mandates` scans from the start of the map**, so it is O(total
    mandates) rather than O(limit). With storage now prepaid (§2.11) that is a
    scaling note and no longer a griefing vector, but a vault with many thousands
    of mandates will need an index of open ones. `mandate_count()` exposes the
    bound.
-7. **First-come-first-served means the filler delivers near the floor.** The
+8. **First-come-first-served means the filler delivers near the floor.** The
    owner gets their ceiling, not the best price available. An auction window —
    collect deliveries for N blocks, settle the best — is the natural next
    version and is **not** claimed for v1.
-8. **1Click signer-key compromise is unmitigated** (§10.1).
-9. **No independent price benchmark exists** (§3.12). A bound, never best
+9. **1Click signer-key compromise is unmitigated** (§10.1).
+10. **No independent price benchmark exists** (§3.12). A bound, never best
    execution.
-10. **Liveness depends on 1Click.** If the API stops signing, Hallmark stops
+11. **Liveness depends on 1Click.** If the API stops signing, Hallmark stops
    filling. It never stops *refusing*, which is the safe direction.
-11. **The filler needs capital** (§6.4). This is the deliberate cost of closing
+12. **The filler needs capital** (§6.4). This is the deliberate cost of closing
     the `depositAddress` hole.
-12. **One reference filler, not an ecosystem.** `client/src/bin/fill.ts`. The
+13. **One reference filler, not an ecosystem.** `client/src/bin/fill.ts`. The
     adapted official-prompt filler is still outstanding (§6.2, build order 6),
     and §6's claim of "three fillers" is a plan, not a count.
-13. **Immutable means unpatchable** (§10.2) — and §2.10 is the argument for
+14. **Immutable means unpatchable** (§10.2) — and §2.10 is the argument for
     deleting that key as late as possible. An audit found a critical bug in a
     contract that was already live; had the key been gone, it could not have
     been fixed.
-14. **Mainnet only.** No Intents testnet exists or is planned. Dev accounts,
+15. **Mainnet only.** No Intents testnet exists or is planned. Dev accounts,
     tiny amounts, `dry: true` quotes wherever possible.
 
 ---

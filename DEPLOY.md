@@ -10,20 +10,64 @@ Read §0 before running anything: **step 11 is irreversible.**
 
 ## §0 What this costs, exactly
 
-| item | amount | why |
+Everything below was measured against mainnet on 2026-11-01. NEAR was $4.40 and
+the gas price was 100,000,000 yocto/gas.
+
+### The floor is the storage lock, and it is a protocol rule
+
+NEAR charges **0.00001 NEAR per byte** of account storage, held as a lock rather
+than a fee. The contract is 235,171 bytes, so:
+
+| | bytes | NEAR |
 |---|---|---|
-| vault account, funded | **4 NEAR** | 2.3517 NEAR is *locked* as storage for the 235,171-byte wasm (0.00001 NEAR/byte), the rest covers state growth and gas |
-| `storage_deposit`, per (account, token) | **0.00125 NEAR** | NEP-141 requires it before an account can hold or receive a token. 6 pairs here → 0.0075 NEAR |
-| gas, everything below | **< 0.02 NEAR** | a whole fill costs 7.8 TGas |
-| owner's test capital | **~1.2 wNEAR** (~$5) | what gets sold |
-| filler's test capital | **~5 USDT** | the filler delivers the output *first*, so it needs inventory (ARCHITECTURE.md §6.4) |
+| contract code | 235,171 | **2.35171** |
+| account record | 182 | 0.00182 |
+| state after one fill | ~540 | 0.00540 |
+| **the vault must hold at least** | | **2.35893** |
 
-**Total: about 5.2 NEAR and 5 USDT — roughly $28 at $4.40/NEAR
-(2026-11-01).** The two capital legs come back to you, so the real cost is the
-~4 NEAR locked in the vault plus pennies of gas.
+That number cannot be negotiated down, only shrunk by shrinking the contract.
+Building with `--no-abi` saves 2 KB and nothing else is low-hanging, so treat
+**~2.4 NEAR as the real floor.**
 
-Note that **$5 of NEAR is 1.14 NEAR and is not enough**: the wasm storage lock
-alone is 2.3517 NEAR, and that is a protocol rule, not a fee.
+### Everything else is small
+
+| item | NEAR |
+|---|---|
+| gas, all ~12 transactions (30–300 TGas each) | ~0.09 |
+| `storage_deposit` × 4 pairs, at 0.00125 each | 0.005 |
+| owner's side: 0.1 wNEAR | 0.1 *(comes back)* |
+| filler's side: ~0.44 USDT | ~0.1 worth *(comes back)* |
+
+### The minimum: 3 NEAR, about $13
+
+**Buy 3 NEAR. Buy nothing else.** Swap ~$0.50 of it to USDT on Rhea on-chain —
+deep wNEAR/USDT liquidity is exactly why this pair was chosen (§0.2).
+
+Of that 3 NEAR:
+
+- **~2.36 is locked, not spent.** It sits as the vault's storage deposit and is
+  released only if the contract account is ever deleted.
+- **~0.11 is genuinely spent** on gas and storage registrations.
+- **~0.2 is the trade itself and comes straight back**, because you are both
+  sides of it.
+
+### Use 0.1 wNEAR as the order size
+
+1Click signs quotes down to **0.01 wNEAR ($0.04)**, verified:
+
+| order | realised cost at full fill | guaranteed-worst |
+|---|---|---|
+| 2 wNEAR | 48 bps | 147 bps |
+| 1 wNEAR | 65 bps | 164 bps |
+| 0.25 wNEAR | 103 bps | 202 bps |
+| **0.1 wNEAR** | **178 bps** | **276 bps** |
+| 0.01 wNEAR | 1300 bps | 1387 bps |
+
+Fixed routing costs dominate a small order, so the bound gets *worse* as the
+order shrinks — which makes a cheap test a better demonstration, not a weaker
+one. At 0.1 wNEAR the venue's own signed floor is a **2.76% haircut**, and a
+mandate with a 300 bps ceiling accepts it while a 200 bps ceiling refuses it
+on-chain. Both are worth showing.
 
 ## §0.1 Why you are both sides, and why that is not a cheat
 
@@ -47,8 +91,7 @@ token `nep141:17208628…33a1` and has almost no NEAR-native liquidity
 (ARCHITECTURE.md §3.12).
 
 Live, 2026-11-01, for 1.2 wNEAR: **40 bps** if the fill is honoured in full,
-**140 bps** guaranteed-worst. A 200 bps ceiling accepts it; a 50 bps ceiling
-refuses it on-chain.
+**140 bps** guaranteed-worst. See §0 for the full size/cost curve.
 
 ---
 
@@ -91,7 +134,7 @@ near account create-account fund-later use-auto-generation \
 ```
 
 That prints a 64-character **implicit account id** and stores its key in your
-keychain. Buy NEAR on any exchange and withdraw **~6 NEAR** to that id — the
+keychain. Buy NEAR on any exchange and withdraw **3 NEAR** to that id — the
 account comes into existence the moment it receives funds.
 
 Check it arrived:
@@ -112,7 +155,7 @@ pretty `you.near` name is optional and costs extra.
 ## §4 Create the vault account
 
 ```bash
-near account create-account fund-myself hallmarkfi.near '4 NEAR' \
+near account create-account fund-myself hallmarkfi.near '2.4 NEAR' \
   autogenerate-new-keypair save-to-keychain \
   sign-as <YOUR_ACCOUNT> \
   network-config mainnet sign-with-keychain send
@@ -180,12 +223,16 @@ done
 ```bash
 # owner: NEAR -> wNEAR
 near contract call-function as-transaction wrap.near near_deposit \
-  json-args '{}' prepaid-gas '30 Tgas' attached-deposit '1.3 NEAR' \
+  json-args '{}' prepaid-gas '30 Tgas' attached-deposit '0.1 NEAR' \
   sign-as YOU.near network-config mainnet sign-with-keychain send
 ```
 
-For the filler's USDT, swap a little NEAR on any NEAR DEX and send it to
-`FILLER.near`. Roughly 5 USDT is plenty.
+For the filler's USDT, swap ~$0.50 of NEAR on [Rhea](https://rhea.finance).
+Half a USDT is plenty for a 0.1 wNEAR order.
+
+If you are using one account as both owner and filler — which §0.1 explains is
+the honest v1 case — you only need that one account registered, and `FILLER.near`
+below is the same account as `YOU.near`.
 
 ## §8 Post the mandate
 
@@ -193,7 +240,7 @@ For the filler's USDT, swap a little NEAR on any NEAR DEX and send it to
 cd client && npm install
 HALLMARK_VAULT=hallmarkfi.near \
 HALLMARK_ACCOUNT=YOU.near HALLMARK_KEY=ed25519:... \
-  npm run post -- wNEAR USDT 1.2 --ceiling 200
+  npm run post -- wNEAR USDT 0.1 --ceiling 300
 ```
 
 Check it landed:

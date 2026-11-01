@@ -17,13 +17,13 @@ import {
   verifySigner,
   QUOTE_SIGNER,
 } from "../lib/canonical.ts";
-import { getQuote, nearAsset } from "../lib/oneclick.ts";
+import { getQuote, nearAsset, parseUnits } from "../lib/oneclick.ts";
 
 const [fromSym = "USDC", toSym = "NEAR", humanAmount = "100"] = process.argv.slice(2);
 
 const from = await nearAsset(fromSym);
 const to = await nearAsset(toSym);
-const amount = (BigInt(Math.round(Number(humanAmount) * 1e6)) * 10n ** BigInt(from.decimals)) / 10n ** 6n;
+const amount = parseUnits(humanAmount, from.decimals);
 
 const res = await getQuote({
   originAsset: from.assetId,

@@ -884,42 +884,69 @@ differentiator, and a judge can reproduce it in one command.
 
 ### 3.17 Live on mainnet
 
-Deployed and exercised end to end on 2026-11-01.
+Deployed and exercised end to end twice: **v1 on 2026-11-01**, and **v2 on
+2026-11-02** after the audit found §2.10 and §2.11.
 
 | | |
 |---|---|
 | vault | **`hallmarkfi.near`** |
-| wasm | 235,304 bytes, sha256 `1e45410a…5f7c27a3` |
-| deploy + `new` | `5gPd4L1uG1uNGitZr3j6XPYtwzWg1RFsq8K41KsSCBpK` |
-| mandate #1 opened | `2EoBbkdjyZ1QUp61NAjsrsgiqjSptRNs8nFFgJWiqtm3` |
-| **the fill** | `HXSYahR3ZJnVHfGkvrB8tAqdzM38fDuwi4RXNgYYjNta` |
-| withdrawals | `FgmmC65k8zjY2KpbdZFAdt6qT7ro1Uwdn9FSpVbTqeyn`, `2Ko2TatsMiPYh5VvxXjvzZNGK1M5gN5mEJGvErENQpWM` |
+| wasm (v2) | 257,314 bytes, sha256 `52b7dcf9…7cf6dd8c` |
+| v2 deploy + `migrate` | `8ndzKy5DWr4d6SorwgFKDGi8fB4RJHQv7dvcusmpqx4d` |
+| v1 deploy (superseded) | `5gPd4L1uG1uNGitZr3j6XPYtwzWg1RFsq8K41KsSCBpK` |
+
+**The v1 exploit, demonstrated against v1 and then against v2.** The same four
+arguments, the same keyless `dry_check`, one day apart:
+
+```
+v1, 2026-11-01   ALLOWED at 60 bps realised all-in cost, filler earns 10000000 origin units
+v2, 2026-11-02   REFUSED QuoteTooOld { signed_at_secs: 1793297130, now_secs: 1793557929, max_age_secs: 300 }
+```
+
+The quote is validly signed in both cases and three days inside its own
+deadline. With the age bound widened to 30 days v2 allows it again at 60 bps, so
+the refusal is the freshness check and nothing else.
+
+**The v2 round trip**, driven entirely by the CLIs in `client/src/bin`:
+
+| step | tx | |
+|---|---|---|
+| `storage_deposit` | `5cp6cDVQDG4X3sVmnQ72sACSeEXrKNwRAdSFtQU21o6e` | 0.01536 NEAR, prepaid by the owner |
+| mandate #1 opened | `6isjCxafsGRorNixKCPpwuXGqWb6hk73gQTYiVbV6Cse` | 0.1 wNEAR → USDT, 300 bps, 300 s |
+| **the fill** | `44QgFYjtPFzmLtGonoMQKXEZVcB4moGGQDrH1Pt2ErAi` | **105 bps**, quote **1 second** old, 30.25 TGas |
+| withdraw USDT | `BX2Cdkrc38zLZXkccV8Vup74kg6D7bpwxXFFQFV6fFKB` | |
+| withdraw wNEAR | `GKyc767VFH3f84697C9k2AXy3xH8TpWqD4sFhczktFUF` | |
+| `cancel` | `8PT2WWLV9Sgn5qhihfmKUjNwrSEvFECwHxmPLX2u455Y` | storage prepayment returned: 0 → 0.01536 NEAR |
+| mandate #2 opened | `9zv1iEghZmssMtGacfumUJY1wDjVTihmkBSqbJvW3f7s` | 0.03 wNEAR, **open now**, and it reused the refund rather than depositing again |
 
 The receipt, straight off the chain:
 
 ```
 EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
   "data":[{"mandate_id":"1","filler":"d3bc151a…b7bd484",
-           "amount_in":"100000000000000000000000","delivered":"428390",
-           "cost_bps":115,"ceiling_bps":300}]}
+           "amount_in":"100000000000000000000000","delivered":"424919",
+           "cost_bps":105,"ceiling_bps":300}]}
 ```
 
-0.1 wNEAR sold for 0.428390 USDT at a **realised all-in cost of 115 bps**
+0.1 wNEAR sold for 0.424919 USDT at a **realised all-in cost of 105 bps**
 against a ceiling of 300, proven against NEAR Intents' own signature, with the
 output in the vault before the input was credited to anyone.
 
 The round trip closes to the token: balances before the mandate and after both
-withdrawals are identical (0.130000 wNEAR, 0.518409 USDT), because the owner and
-the filler were the same account — the honest v1 case of §6.1.
+withdrawals are identical (0.130000 wNEAR, 0.518409 USDT) and every credit is
+zero, because the owner and the filler were the same account — the honest v1
+case of §6.1.
 
 And the keyless proof surface answers on mainnet today:
 
 ```
-quote_signer()                            ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc
-is_signed(worst.quote.json)               true
-worst_cost(worst.quote.json)              10000 bps
-realised_cost(worst, at full fill)          503 bps   <- 500 bps of unread appFees, priced
-dry_check(worst, floor, 30 bps ceiling)   REFUSED CostCeilingBreached { worst_bps: 10000, ceiling_bps: 30 }
+quote_signer()                                ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc
+storage_cost_estimate()                       0.01536 NEAR
+is_signed(worst.quote.json)                   true
+quote_age_secs(worst.quote.json)              97868   (1.13 days)
+worst_cost(worst.quote.json)                  10000 bps
+realised_cost(worst, at full fill)              503 bps   <- 500 bps of unread appFees, priced
+dry_check(worst, 300 s age bound)             REFUSED QuoteTooOld { … max_age_secs: 300 }
+dry_check(worst, 30 d age bound, 30 bps)      REFUSED CostCeilingBreached { worst_bps: 10000, ceiling_bps: 30 }
 ```
 
 ---
@@ -1241,7 +1268,8 @@ exactly this reason.
 
 ### 5.7 Gas
 
-**Mainnet, measured on the first live fill: 29.85 TGas** across every receipt in
+**Mainnet, measured on the v2 live fill: 30.25 TGas** (v1 measured 29.85; the
+freshness check costs one extra ISO-8601 parse) across every receipt in
 the transaction — the filler's `ft_transfer_call`, the token's hop, the
 verification, and both credits. Against a 300 TGas limit that is 10%.
 
@@ -1309,13 +1337,18 @@ not pretend otherwise.
 ### 7.1 The owner
 
 ```
-1. choose a pair, a ceiling, a max fill, an expiry
+0. storage_deposit(storage_cost_estimate())    # once, ~0.0154 NEAR, reusable
+1. choose a pair, a ceiling, a max fill, a max quote age, an expiry
 2. ft_transfer_call the ORIGIN asset into the vault, msg = the mandate terms
 3. walk away
 4. withdraw(destination) as fills arrive;  cancel(id) to recover unspent escrow
 ```
 
-The owner commits once and never signs again.
+Step 0 is the same `storage_deposit` every NEP-141 token already asks for before
+it will hold a balance for you, and `cancel` gives it back, so it is paid once
+rather than per mandate (§2.11). `post.ts` does it and skips it when the balance
+already covers the next one. After that the owner commits once and never signs
+again.
 
 ### 7.2 The filler
 
@@ -1334,14 +1367,17 @@ state and nothing to unwind.
 ### 7.3 The judge
 
 ```
-1. git clone && cargo test                       # 53 tests, no network, no key
-2. cat fixtures/worst.quote.json                 # a validly signed 99.99% haircut
-3. near view hallmark.near worst_cost    '{...}' # 10000 bps
-4. near view hallmark.near realised_cost '{...}' # 503 bps even at the full fill
-5. near view hallmark.near dry_check     '{...}' # REFUSED CostCeilingBreached
+1. git clone && cargo test                           # 53 tests, no network, no key
+2. cat fixtures/worst.quote.json                     # a validly signed 99.99% haircut
+3. near view hallmarkfi.near worst_cost     '{...}'  # 10000 bps
+4. near view hallmarkfi.near realised_cost  '{...}'  # 503 bps even at the full fill
+5. near view hallmarkfi.near quote_age_secs '{...}'  # how stale those marks are
+6. near view hallmarkfi.near dry_check      '{...}'  # REFUSED, and which refusal
+7. near view hallmarkfi.near get_mandates   '{}'     # a real open mandate, right now
 ```
 
-Step 1 needs no network and no funds. Steps 3–5 need no key.
+Step 1 needs no network and no funds. Steps 3–7 need no key. Or open the proof
+page, which makes all of them a click and computes none of them itself.
 
 ---
 

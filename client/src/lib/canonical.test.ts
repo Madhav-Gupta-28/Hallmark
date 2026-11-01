@@ -14,6 +14,7 @@ import {
   verifySigner,
   type QuoteResponse,
 } from "./canonical.ts";
+import { parseUnits, formatUnits } from "./oneclick.ts";
 
 const load = (n: string): QuoteResponse =>
   JSON.parse(readFileSync(new URL(`../../../fixtures/${n}.quote.json`, import.meta.url), "utf8"));
@@ -113,6 +114,25 @@ for (const name of ["honest", "worst", "sandbox"]) {
     void expect;
     passed++;
   }
+}
+
+
+
+// Exact amounts. `Math.round(Number("0.1") * 10 ** 24)` is off by 8,388,608
+// base units, because a float64 cannot hold 1e23.
+{
+  assert.equal(parseUnits("0.1", 24), 10n ** 23n);
+  assert.equal(parseUnits("1", 6), 1_000_000n);
+  assert.equal(parseUnits("0.428390", 6), 428_390n);
+  assert.equal(parseUnits("123.456789012345678901234", 24), 123456789012345678901234000n);
+  assert.equal(formatUnits(10n ** 23n, 24), "0.1");
+  assert.equal(formatUnits(428_390n, 6), "0.42839");
+  assert.equal(formatUnits(1_000_000n, 6), "1");
+  assert.throws(() => parseUnits("0.1234567", 6), "more precision than the token has");
+  assert.throws(() => parseUnits("-1", 24));
+  assert.throws(() => parseUnits("1e5", 24));
+  passed += 10;
+  console.log(`  amounts: 0.1 wNEAR = ${parseUnits("0.1", 24)} base units, exactly`);
 }
 
 console.log(`\n  ${passed} assertions passed`);

@@ -9,7 +9,7 @@
  * the owner signs nothing again — the ceiling is enforced on-chain against
  * whatever any filler brings.
  */
-import { nearAsset } from "../lib/oneclick.ts";
+import { nearAsset, parseUnits } from "../lib/oneclick.ts";
 import { Hallmark, signer, transferCall, tokenAccount, type MandateTerms } from "../lib/hallmark.ts";
 
 const VAULT = process.env.HALLMARK_VAULT ?? "hallmarkfi.near";
@@ -37,7 +37,7 @@ const [fromSym = "USDC", toSym = "NEAR", humanAmount = "100"] = positional;
 
 const from = await nearAsset(fromSym);
 const to = await nearAsset(toSym);
-const amount = BigInt(Math.round(Number(humanAmount) * 10 ** from.decimals)).toString();
+const amount = parseUnits(humanAmount, from.decimals).toString();
 const days = Number(flag("days", "7"));
 
 const terms: MandateTerms = {

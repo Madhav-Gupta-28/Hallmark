@@ -99,3 +99,28 @@ export async function nearAsset(symbol: string): Promise<TokenInfo> {
   }
   return hit;
 }
+
+/**
+ * A human amount ("0.1") to base units, exactly.
+ *
+ * `Math.round(Number(h) * 10 ** decimals)` is the obvious version and it is
+ * wrong: wNEAR has 24 decimals, and a float64 cannot hold 1e23, so "0.1 wNEAR"
+ * becomes 100000000000000008388608 — off by 8,388,608 base units. Every amount
+ * in this project is an exact integer and must be built as one.
+ */
+export function parseUnits(human: string, decimals: number): bigint {
+  const t = human.trim();
+  if (!/^\d+(\.\d+)?$/.test(t)) throw new Error(`not a positive decimal amount: "${human}"`);
+  const [int, frac = ""] = t.split(".");
+  if (frac.length > decimals) {
+    throw new Error(`${human} has more than ${decimals} decimal places`);
+  }
+  return BigInt(int + frac.padEnd(decimals, "0"));
+}
+
+/** Base units back to a human string, exactly. */
+export function formatUnits(amount: bigint, decimals: number): string {
+  const s = amount.toString().padStart(decimals + 1, "0");
+  const frac = s.slice(s.length - decimals).replace(/0+$/, "");
+  return s.slice(0, s.length - decimals) + (frac ? "." + frac : "");
+}

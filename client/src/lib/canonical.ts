@@ -15,7 +15,7 @@
  */
 import stringify from "json-stable-stringify";
 import bs58 from "bs58";
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 
 /** Exactly the request fields 1Click covers, in the SDK's own order. */
 const SIGNED_REQUEST_FIELDS = [
@@ -80,6 +80,33 @@ export function canonicalise(res: QuoteResponse): string {
   const out = stringify(payload);
   if (out === undefined) throw new Error("quote is not serialisable");
   return out;
+}
+
+/**
+ * The 1Click quote signer, hardcoded in the contract too. If a live quote ever
+ * fails to verify against this, the venue has rotated its key and every fill
+ * will be refused on-chain until the contract knows the new one — which is why
+ * `verifySigner` exists and why CI checks a live quote (ARCHITECTURE.md §14).
+ */
+export const QUOTE_SIGNER = "ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc";
+
+/**
+ * Did the venue sign these bytes with the key the contract trusts?
+ *
+ * Exactly what the contract does: hash, base58 the digest, and verify the
+ * signature over the UTF-8 of *that string* — not over the digest.
+ */
+export function verifySigner(canonical: string, signature: string, signer = QUOTE_SIGNER): boolean {
+  const raw = bs58.decode(signer.replace(/^ed25519:/, ""));
+  if (raw.length !== 32) throw new Error("signer key must be 32 bytes");
+  // SPKI wrapper for a raw ed25519 public key
+  const spki = Buffer.concat([
+    Buffer.from("302a300506032b6570032100", "hex"),
+    Buffer.from(raw),
+  ]);
+  const key = createPublicKey({ key: spki, format: "der", type: "spki" });
+  const message = Buffer.from(quoteHash(canonical), "utf8");
+  return cryptoVerify(null, message, key, bs58.decode(signature.replace(/^ed25519:/, "")));
 }
 
 /** `base58(sha256(canonical))` — the message the venue actually signed. */

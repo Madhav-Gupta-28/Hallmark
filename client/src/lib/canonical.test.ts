@@ -5,7 +5,14 @@
  */
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { canonicalise, quoteHash, worstCostBps, costBps, type QuoteResponse } from "./canonical.ts";
+import {
+  canonicalise,
+  quoteHash,
+  worstCostBps,
+  costBps,
+  verifySigner,
+  type QuoteResponse,
+} from "./canonical.ts";
 
 const load = (n: string): QuoteResponse =>
   JSON.parse(readFileSync(new URL(`../../../fixtures/${n}.quote.json`, import.meta.url), "utf8"));
@@ -28,6 +35,12 @@ for (const [name, hash, bytes, worst] of cases) {
     `${name}: canonical length must match the signed bytes`,
   );
   assert.equal(quoteHash(canonical), hash, `${name}: quote hash must match the venue's`);
+  assert.ok(verifySigner(canonical, res.signature), `${name}: must verify against the trusted signer`);
+
+  // one flipped character must break it, the same property the contract relies on
+  const tampered = canonical.replace(/"amountOut":"(\d)/, (_m, d) => `"amountOut":"${(Number(d) + 1) % 10}`);
+  assert.ok(tampered !== canonical, `${name}: tamper setup`);
+  assert.ok(!verifySigner(tampered, res.signature), `${name}: a tampered quote must not verify`);
   assert.equal(worstCostBps(res), worst, `${name}: worst-case cost`);
 
   // the bytes must not contain a field the venue did not sign
@@ -35,7 +48,7 @@ for (const [name, hash, bytes, worst] of cases) {
     assert.ok(!canonical.includes(unsigned), `${name}: ${unsigned} must not be in the signed bytes`);
   }
   console.log(`  ${name.padEnd(8)} ${bytes} bytes  ${hash}  worst ${worst} bps`);
-  passed += 4;
+  passed += 7;
 }
 
 // delivering the full expected amount always costs less than delivering the floor

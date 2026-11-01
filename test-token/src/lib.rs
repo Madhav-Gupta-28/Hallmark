@@ -7,6 +7,9 @@ use near_contract_standards::fungible_token::metadata::{
     FungibleTokenMetadata, FungibleTokenMetadataProvider, FT_METADATA_SPEC,
 };
 use near_contract_standards::fungible_token::{FungibleToken, FungibleTokenCore, FungibleTokenResolver};
+use near_contract_standards::storage_management::{
+    StorageBalance, StorageBalanceBounds, StorageManagement,
+};
 use near_sdk::json_types::U128;
 use near_sdk::{env, near, AccountId, PanicOnDefault, Promise, PromiseOrValue};
 
@@ -36,11 +39,37 @@ impl TestToken {
         self.token.internal_deposit(&account_id, amount.0);
     }
 
-    pub fn storage_deposit(&mut self, account_id: Option<AccountId>) {
-        let who = account_id.unwrap_or_else(env::predecessor_account_id);
-        if self.token.accounts.get(&who).is_none() {
-            self.token.internal_register_account(&who);
-        }
+}
+
+/// The real NEP-145 surface, so tests can exercise an account that is *not*
+/// registered — which is how a token transfer is made to fail on purpose.
+#[near]
+impl StorageManagement for TestToken {
+    #[payable]
+    fn storage_deposit(
+        &mut self,
+        account_id: Option<AccountId>,
+        registration_only: Option<bool>,
+    ) -> StorageBalance {
+        self.token.storage_deposit(account_id, registration_only)
+    }
+
+    #[payable]
+    fn storage_withdraw(&mut self, amount: Option<near_sdk::NearToken>) -> StorageBalance {
+        self.token.storage_withdraw(amount)
+    }
+
+    #[payable]
+    fn storage_unregister(&mut self, force: Option<bool>) -> bool {
+        self.token.storage_unregister(force)
+    }
+
+    fn storage_balance_bounds(&self) -> StorageBalanceBounds {
+        self.token.storage_balance_bounds()
+    }
+
+    fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
+        self.token.storage_balance_of(account_id)
     }
 }
 

@@ -807,6 +807,18 @@ pub struct Mandate {
 A reader who knows nothing about Intents can audit this in ten seconds. That is
 deliberate: a bound nobody can read is a bound nobody trusts.
 
+`open` refuses six kinds of terms that could never be enforced, each with its own
+message, all six covered by `open_refuses_terms_that_could_not_be_enforced`:
+
+| refused | why |
+|---|---|
+| `origin_asset == destination_asset` | one token would match both the funding path and the delivery path, so `Fill` could be satisfied with the very asset being sold |
+| `destination_asset` not a `nep141:` id | credits are paid out via `token_account()`, which only understands nep141 ids; rejecting here keeps `withdraw` total |
+| `max_cost_bps > 10_000` | a ceiling above 100% bounds nothing |
+| `max_fill == 0` | nothing could ever fill |
+| `expiry_ns` already past | nothing could ever fill |
+| `recipient != this vault` | the quote would pay someone else and delivery could not be verified |
+
 ### 5.2 `SignedQuote` — only what the signature covers
 
 ```rust
@@ -929,20 +941,37 @@ collections expensive.
 
 ### 5.6 The exported surface
 
+Checked against `contract/src/lib.rs`; nothing is exported that is not listed.
+
 | method | kind | purpose |
 |---|---|---|
-| `post_mandate` | call | via `ft_on_transfer` on the **origin** token, `msg` = terms |
-| `ft_on_transfer` | call | the one verification path (origin ⇒ fund; destination ⇒ fill) |
-| `withdraw(token)` | call | pull credited balance; pull-not-push by design |
-| `cancel(id)` | call | owner only; credits the unspent escrow back |
-| `get_mandates(from, limit)` | **view** | what fillers read |
+| `new` | init | once, at deploy |
+| `ft_on_transfer` | call | **the only path that moves value.** NEP-141 calls it; `msg` carries the action |
+| `withdraw(asset)` | call, payable | pull a credited balance; pull-not-push by design (§4.1) |
+| `resolve_withdraw` | private | restores the credit if the payout failed |
+| `cancel(mandate_id)` | call | owner only; credits the unspent escrow back |
+| `get_mandates(from_index, limit)` | **view** | the order book — open mandates only |
+| `get_mandate(mandate_id)` | **view** | one record, open or closed |
+| `get_credit(account_id, asset)` | **view** | what an account can withdraw |
 | `worst_cost(canonical)` | **view** | the bound, for anyone, free |
 | `realised_cost(canonical, delivered)` | **view** | what the owner would actually pay |
-| `is_signed(canonical, sig)` | **view** | did 1Click really sign these bytes? |
-| `dry_check(canonical, sig, mandate, delivered)` | **view** | allowed or refused, and why |
+| `is_signed(canonical, signature)` | **view** | did NEAR Intents really sign these bytes? |
+| `dry_check(canonical, signature, terms, delivered)` | **view** | allowed or refused, and why |
+| `quote_signer()` | **view** | the key the contract trusts |
 
-The five view methods are the proof surface: **a judge can exercise every
-guarantee in this document with no key, no funds and no deposit.**
+`ft_on_transfer`'s `msg` is a tagged enum, and **which variant is legal depends
+on which token arrived** — the contract checks that, so an action cannot be
+performed with the wrong asset:
+
+| `action` | legal token | effect |
+|---|---|---|
+| `open` | the mandate's **origin** asset | create a funded mandate |
+| `fund` | that mandate's **origin** asset | top up the escrow |
+| `fill` | that mandate's **destination** asset | the transfer *is* the delivery |
+
+The eight view methods are the proof surface: **every guarantee in this document
+can be exercised with no key, no funds and no deposit**, which
+`the_view_methods_answer_without_a_key` demonstrates against a live node.
 
 ### 5.7 Gas
 
@@ -1170,23 +1199,27 @@ as long as possible. Until then the README states that the key exists.
 
 ## §11 Invariants
 
-1. No token is credited out of the vault unless `check()` returned `Ok`.
-2. `reported_cost_bps ≥ true_cost_bps`, always (§8.1).
-3. The bytes hashed and the bytes parsed are **the same bytes** (§2.6).
-4. No contract method reads a field outside §3.2's signed set.
-5. The verification path makes **no cross-contract calls** (§4.1).
-6. The owner's output is in the vault before the owner's input is credited to
-   anyone (§2.4).
-7. A mandate can never credit out more origin asset than its escrow.
-8. Realised cost to the owner, filler spread included, never exceeds
-   `max_cost_bps` (§2.5).
-9. The contract has no admin key, no pause and no upgrade path (§10.2).
+Each one names what enforces it and what checks it.
+
+| # | invariant | enforced by | checked by |
+|---|---|---|---|
+| 1 | No token is credited out unless `check()` returned `Ok` | the `Err` arm of `fill` panics before either `credit` call | `a_ceiling_the_fill_cannot_meet_refuses_and_refunds_the_filler` |
+| 2 | `reported_cost_bps ≥ true_cost_bps`, always (§8.1) | `div_ceil` on the final division | `the_reported_cost_is_never_below_the_true_cost` |
+| 3 | The bytes hashed and the bytes parsed are the same bytes (§2.6) | `is_signed_by_venue(canonical)` then `from_slice(canonical)` | `every_single_byte_is_covered_by_the_signature` |
+| 4 | No method reads a field outside §3.2's signed set | `SignedQuote` has only signed fields, so reading another is a compile error | audited: no unsigned field name appears in contract code, only in comments saying it is not read |
+| 5 | The verification path makes no cross-contract calls (§4.1) | both `ext` calls are inside `withdraw`, never in `ft_on_transfer` | audited by enclosing function; and 7.8 TGas (§5.7) leaves no room for one |
+| 6 | The output is in the vault before the input is credited to anyone (§2.4) | `delivered` is an `ft_on_transfer` argument, so the transfer already happened | `an_owner_funds_a_mandate_a_stranger_fills_it_and_both_withdraw` |
+| 7 | A mandate can never credit out more origin asset than its escrow | `require!(amount_in <= rec.escrow.0)` | `a_fill_beyond_the_escrow_is_refused` |
+| 8 | Realised cost, filler spread included, never exceeds `max_cost_bps` (§2.5) | `cost_bps(&q, delivered) > m.max_cost_bps` refuses | `delivering_above_the_floor_lowers_the_owners_realised_cost` |
+| 9 | No admin key, no pause, no upgrade path (§10.2) | there is no such method; immutability itself is a deploy step | audited: no `owner_id`, `admin`, `pause`, `upgrade` or `migrate` anywhere |
+| 10 | A failed payout restores the credit rather than burning it | `resolve_withdraw` re-adds on `Err` | `a_failed_transfer_restores_the_credit` |
+| 11 | An action cannot be performed with the wrong token | `open`/`fund` require the origin asset, `fill` the destination asset | `a_fill_in_the_wrong_token_is_refused` |
 
 ---
 
 ## §12 Test plan
 
-**Done — 19 of 19 passing, `cargo test`, no network, no key, ~0.18s:**
+**Done — 21 of 21 passing, `cargo test`, no network, no key, ~0.18s:**
 
 | test | asserts |
 |---|---|
@@ -1209,23 +1242,36 @@ as long as possible. Until then the README states that the key exists.
 | `a_malformed_deadline_panics_rather_than_being_guessed_at` | `should_panic` |
 | `mul_div_does_not_overflow_at_realistic_magnitudes` | $1M of a 24-decimal token |
 | `parse_fixed_truncates_toward_a_worse_cost` | fixed-point parsing |
+| `a_quote_for_the_wrong_pair_is_refused` | `WrongAsset` |
+| `a_quote_routed_to_someone_else_is_refused` | `WrongRecipient` |
 
-**Done — 5 of 5 passing, `cargo test --test integration`, against a real
+**Done — 15 of 15 passing, `cargo test --test integration`, against a real
 sandbox node driven by a real NEAR Intents signature:**
 
 The fixture `fixtures/sandbox.quote.json` is a genuine signed 1Click quote for
 5 wNEAR → ETH with `recipient: hallmark.near`. Every account it names is a
 *named* NEAR account, so the sandbox can stand up the exact accounts the
 signature commits to — `wrap.near`, `eth.bridge.near`, `hallmark.near`. Nothing
-is mocked: real NEP-141s, real `ft_transfer_call`s, and the real
-`ed25519_verify` host function. (The mainnet USDC fixture cannot be used this
-way: its asset is a 64-hex implicit account whose key nobody has.)
+is mocked: real NEP-141s (with the full NEP-145 storage surface), real
+`ft_transfer_call`s, and the real `ed25519_verify` host function. (The mainnet
+USDC fixture cannot be used this way: its asset is a 64-hex implicit account
+whose key nobody has.)
 
 | test | asserts |
 |---|---|
 | `an_owner_funds_a_mandate_a_stranger_fills_it_and_both_withdraw` | the whole product: fund, fill at 69 bps realised, both sides withdraw real tokens, 7.8 TGas |
 | `a_ceiling_the_fill_cannot_meet_refuses_and_refunds_the_filler` | typed `CostCeilingBreached` on-chain, **and the filler loses nothing** |
 | `delivering_under_the_signed_floor_is_refused` | `UnderDelivered` in the real runtime |
+| `open_refuses_terms_that_could_not_be_enforced` | all **six** `open` guards (§5.1), and that none of them creates a mandate |
+| `a_fill_in_the_wrong_token_is_refused` | the origin asset cannot be delivered as if it were the output |
+| `a_mandate_can_be_topped_up_and_the_extra_is_fillable` | `fund` doubles the escrow and supports two fills |
+| `a_fill_beyond_the_escrow_is_refused` | escrow is a hard ceiling; no double credit on the refused fill |
+| `a_closed_mandate_cannot_be_funded` | a cancelled mandate takes no more money |
+| `withdrawal_is_single_use_and_guarded` | missing 1 yoctoNEAR, nothing-to-withdraw, and the second withdrawal all refuse |
+| `a_failed_transfer_restores_the_credit` | an unregistered payee cannot burn a balance |
+| `the_view_methods_answer_without_a_key` | all eight views, incl. `is_signed` rejecting a tampered quote and `dry_check` returning each verdict |
+| `get_mandates_lists_only_open_ones` | the order book drops cancelled mandates; unknown ids return `null` |
+| `cancel_after_a_fill_returns_only_the_remainder` | cancelling returns unspent escrow and leaves settled fills alone |
 | `an_owner_can_cancel_and_recover_the_unspent_escrow` | escrow returns; a closed mandate cannot be filled |
 | `a_stranger_cannot_cancel_a_mandate` | owner-only authority |
 

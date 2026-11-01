@@ -35,16 +35,6 @@ pub enum Refusal {
     MandateExpired,
 }
 
-/// Verify a quote against a mandate. `canonical` is the exact byte string the
-/// client hashed; the contract re-hashes it rather than re-serialising, so there
-/// is no canonicalisation logic in Rust at all and therefore no way for Rust and
-/// TypeScript to disagree about it.
-/// Verify a delivery against a mandate.
-///
-/// `canonical` is the exact byte string the client hashed. `delivered` is what
-/// the filler actually just transferred in — known synchronously, because the
-/// filler delivers *before* anything leaves the vault. That is what lets this
-/// enforce the **realised** cost rather than merely a bound on it.
 /// What a passing check tells the vault.
 #[derive(Debug, PartialEq)]
 pub struct Accepted {
@@ -54,6 +44,16 @@ pub struct Accepted {
     pub amount_in: u128,
 }
 
+/// Verify a delivery against a mandate.
+///
+/// `canonical` is the exact byte string the client hashed; the contract
+/// re-hashes it rather than re-serialising, so there is no canonicalisation
+/// logic in Rust at all and no way for Rust and TypeScript to disagree about it.
+///
+/// `delivered` is what the filler actually just transferred in — known
+/// synchronously, because the filler delivers *before* anything leaves the
+/// vault. That is what lets this enforce the **realised** cost rather than
+/// merely a bound on it.
 pub fn check(
     canonical: &[u8],
     signature: &[u8; 64],

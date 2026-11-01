@@ -122,6 +122,19 @@ impl Hallmark {
 
     fn open(&mut self, owner: AccountId, asset: String, amount: u128, terms: Mandate) {
         require!(asset == terms.origin_asset, "this token is not the mandate's origin asset");
+        // Without this, one token would match both the funding path and the
+        // delivery path, and `Action::Fill` could be satisfied with the very
+        // asset the owner is trying to sell.
+        require!(
+            terms.origin_asset != terms.destination_asset,
+            "origin and destination must differ"
+        );
+        // Credits are withdrawn via `token_account()`, which only understands
+        // nep141 ids. Rejecting anything else here keeps `withdraw` total.
+        require!(
+            terms.destination_asset.starts_with("nep141:"),
+            "destination must be a nep141 asset"
+        );
         require!(terms.max_cost_bps <= 10_000, "a ceiling above 100% bounds nothing");
         require!(terms.max_fill.0 > 0, "max_fill must be positive");
         require!(terms.expiry_ns > env::block_timestamp(), "mandate already expired");

@@ -11,7 +11,7 @@ use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
 };
 use near_sdk::json_types::U128;
-use near_sdk::{env, near, AccountId, PanicOnDefault, Promise, PromiseOrValue};
+use near_sdk::{near, AccountId, PanicOnDefault, PromiseOrValue};
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]

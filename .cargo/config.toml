@@ -4,3 +4,11 @@
 # `CompilationError(PrepareError(Deserialization))`.
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-cpu=mvp", "-C", "link-arg=-zstack-size=131072"]
+
+# The integration suite starts a real nearcore sandbox node per test. At cargo's
+# default parallelism they race for ports and one dies in
+# `PeerManagerActor::spawn`, so `cargo test` from a clean clone fails roughly
+# one run in three on a laptop. Bounding the harness makes it deterministic,
+# which matters because "clone it and run the tests" is the whole claim.
+[env]
+RUST_TEST_THREADS = "4"

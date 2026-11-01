@@ -1,9 +1,10 @@
 //! Hallmark — a not-held order that enforces its own execution bound.
 //!
 //! An owner funds a mandate naming a pair, a worst acceptable all-in cost, a
-//! maximum fill and an expiry. Anyone may fill it. The filler delivers the
-//! output **first**, and the vault verifies that delivery against NEAR Intents'
-//! own signature before crediting the filler with the input.
+//! maximum fill, a maximum quote age and an expiry. Anyone may fill it. The
+//! filler delivers the output **first**, and the vault verifies that delivery
+//! against NEAR Intents' own signature before crediting the filler with the
+//! input.
 //!
 //! Delivering first is the load-bearing decision, not a detail. A quote's
 //! `depositAddress` is not covered by the venue's signature, so any design where
@@ -19,16 +20,28 @@ pub mod quote;
 pub use mandate::{check, Accepted, Mandate, Refusal};
 pub use quote::{cost_bps, is_signed_by_venue, worst_cost_bps, SignedQuote, QUOTE_SIGNER};
 
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{U128, U64};
 use near_sdk::store::{IterableMap, LookupMap};
 use near_sdk::{
     env, ext_contract, near, require, serde_json, AccountId, Gas, NearToken, PanicOnDefault,
     Promise, PromiseError,
 };
 
-const GAS_FOR_FT_TRANSFER: Gas = Gas::from_tgas(10);
+/// A NEP-141 `ft_transfer` is cheap, but the destination asset is whatever the
+/// owner named, and a token with a heavier transfer must not be able to strand a
+/// credit permanently. Unused gas is refunded, so there is no cost to headroom.
+const GAS_FOR_FT_TRANSFER: Gas = Gas::from_tgas(30);
 const GAS_FOR_RESOLVE: Gas = Gas::from_tgas(10);
 const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
+
+/// A `(who, asset)` credit slot, generously. The key is an account id (≤64) plus
+/// an asset id (≤71 for a 64-hex omni-bridge token), the value is 16 bytes, and
+/// the rest is map overhead.
+const CREDIT_SLOT_BYTES: u64 = 256;
+/// How many credit slots a mandate prepays for. `withdraw` *removes* a slot
+/// rather than zeroing it, so an honest mandate needs two at a time and this is
+/// slack rather than a limit.
+const CREDIT_SLOTS_PREPAID: u64 = 4;
 
 #[ext_contract(ext_ft)]
 #[allow(dead_code)] // the macro generates `ext_ft`; the trait itself is only its shape
@@ -51,6 +64,9 @@ pub struct MandateRecord {
     /// bps. By construction this can never exceed `terms.max_cost_bps`.
     pub worst_bps: u32,
     pub open: bool,
+    /// what opening this mandate cost its owner in storage staking, in
+    /// yoctoNEAR. Returned to their storage balance by `cancel`.
+    pub storage_paid: U128,
 }
 
 /// What a caller asks for when they send tokens in. Which variants are legal
@@ -74,6 +90,11 @@ pub struct Hallmark {
     /// a counterparty who is not storage-registered on a token cannot brick a
     /// fill for anyone else.
     credits: LookupMap<(AccountId, String), U128>,
+    /// Prepaid NEAR, per account, against the state that account creates.
+    /// Without this the vault pays for every mandate anyone opens, and a
+    /// stranger can burn the vault's balance roughly ten times faster than
+    /// their own — see ARCHITECTURE.md §2.11.
+    storage_balance: LookupMap<AccountId, U128>,
     next_id: u64,
 }
 
@@ -82,10 +103,64 @@ impl Hallmark {
     #[init]
     pub fn new() -> Self {
         Self {
-            mandates: IterableMap::new(b"m"),
-            credits: LookupMap::new(b"c"),
+            // v2 prefixes. v1 shipped a `Mandate` without `max_quote_age_secs`,
+            // and borsh cannot read a v1 record into a v2 struct, so the new
+            // maps get their own namespace rather than tripping over the old
+            // bytes. §2.10.
+            mandates: IterableMap::new(b"M"),
+            credits: LookupMap::new(b"C"),
+            storage_balance: LookupMap::new(b"S"),
             next_id: 1,
         }
+    }
+
+    /// Replace v1's state wholesale. There is no admin key and no upgrade path
+    /// once the full-access key is gone (§10.2); this exists only so the v1
+    /// deployment can be superseded in place before that key is deleted, and it
+    /// is `#[private]` so only the account itself can call it.
+    #[private]
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        Self::new()
+    }
+
+    // --------------------------------------------------------------- storage
+
+    /// Prepay for the state you are about to create. One deposit covers many
+    /// mandates; whatever is left can be withdrawn.
+    #[payable]
+    pub fn storage_deposit(&mut self, account_id: Option<AccountId>) -> U128 {
+        let who = account_id.unwrap_or_else(env::predecessor_account_id);
+        let amount = env::attached_deposit().as_yoctonear();
+        require!(amount > 0, "attach a deposit");
+        let now = self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0) + amount;
+        self.storage_balance.insert(who, U128(now));
+        U128(now)
+    }
+
+    /// Take back prepaid storage that no mandate is using.
+    #[payable]
+    pub fn storage_withdraw(&mut self, amount: Option<U128>) -> Promise {
+        require!(env::attached_deposit() >= ONE_YOCTO, "attach 1 yoctoNEAR");
+        let who = env::predecessor_account_id();
+        let available = self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0);
+        let want = amount.map(|a| a.0).unwrap_or(available);
+        require!(want > 0 && want <= available, "not that much prepaid storage");
+        self.storage_balance.insert(who.clone(), U128(available - want));
+        Promise::new(who).transfer(NearToken::from_yoctonear(want))
+    }
+
+    pub fn storage_balance_of(&self, account_id: AccountId) -> U128 {
+        self.storage_balance.get(&account_id).copied().unwrap_or(U128(0))
+    }
+
+    /// What `open` will charge, so a client can prepay exactly once and know it
+    /// is enough. Deliberately a view: it needs no key and no deposit.
+    pub fn storage_cost_estimate(&self) -> U128 {
+        U128(
+            env::storage_byte_cost().as_yoctonear()
+                * (MANDATE_RECORD_BYTES + CREDIT_SLOT_BYTES * CREDIT_SLOTS_PREPAID) as u128,
+        )
     }
 
     // ------------------------------------------------------------- the one path
@@ -100,19 +175,14 @@ impl Hallmark {
     ///
     /// Returns the unused amount, always `0`: the vault either accepts the whole
     /// transfer or panics, which refunds it.
-    pub fn ft_on_transfer(
-        &mut self,
-        sender_id: AccountId,
-        amount: U128,
-        msg: String,
-    ) -> U128 {
+    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> U128 {
         let asset = asset_id(&env::predecessor_account_id());
         let action: Action = serde_json::from_str(&msg).expect("msg is not a Hallmark action");
         require!(amount.0 > 0, "empty transfer");
 
         match action {
             Action::Open { terms } => self.open(sender_id, asset, amount.0, terms),
-            Action::Fund { mandate_id } => self.fund(mandate_id, asset, amount.0),
+            Action::Fund { mandate_id } => self.fund(sender_id, mandate_id, asset, amount.0),
             Action::Fill { mandate_id, canonical, signature } => {
                 self.fill(sender_id, asset, amount.0, mandate_id, &canonical, &signature)
             }
@@ -137,11 +207,30 @@ impl Hallmark {
         );
         require!(terms.max_cost_bps <= 10_000, "a ceiling above 100% bounds nothing");
         require!(terms.max_fill.0 > 0, "max_fill must be positive");
-        require!(terms.expiry_ns > env::block_timestamp(), "mandate already expired");
+        // A ceiling is enforced against the USD marks the venue signed, so a
+        // mandate that accepts arbitrarily old quotes has no ceiling in any
+        // useful sense. The filler picks the quote's `deadline`, so only this
+        // bounds staleness (§2.10).
+        require!(terms.max_quote_age_secs > 0, "max_quote_age_secs must be positive");
+        require!(
+            terms.max_quote_age_secs <= MAX_QUOTE_AGE_CEILING_SECS,
+            "max_quote_age_secs above thirty days bounds nothing useful"
+        );
+        require!(terms.expiry_ns.0 > env::block_timestamp(), "mandate already expired");
         require!(
             terms.recipient == env::current_account_id().to_string(),
             "the quote's recipient must be this vault, or the delivery cannot be verified"
         );
+
+        // The opener pays for the state the opener creates. Charged against a
+        // prepaid balance because `ft_on_transfer` carries no deposit.
+        let charge = self.storage_cost_estimate().0;
+        let prepaid = self.storage_balance.get(&owner).map(|b| b.0).unwrap_or(0);
+        require!(
+            prepaid >= charge,
+            "prepay storage first: call storage_deposit with at least storage_cost_estimate()"
+        );
+        self.storage_balance.insert(owner.clone(), U128(prepaid - charge));
 
         let id = self.next_id;
         self.next_id += 1;
@@ -155,6 +244,7 @@ impl Hallmark {
                 fills: 0,
                 worst_bps: 0,
                 open: true,
+                storage_paid: U128(charge),
             },
         );
         env::log_str(&format!(
@@ -162,9 +252,14 @@ impl Hallmark {
         ));
     }
 
-    fn fund(&mut self, mandate_id: u64, asset: String, amount: u128) {
+    fn fund(&mut self, sender: AccountId, mandate_id: u64, asset: String, amount: u128) {
         let rec = self.mandates.get_mut(&mandate_id).expect("no such mandate");
         require!(rec.open, "mandate is closed");
+        // Funding someone else's mandate is a gift with no mechanism behind it,
+        // and an expired mandate can never be filled — so topping either one up
+        // is a mistake, not a feature.
+        require!(sender == rec.owner, "only the owner can fund a mandate");
+        require!(rec.terms.expiry_ns.0 > env::block_timestamp(), "mandate has expired");
         require!(asset == rec.terms.origin_asset, "this token is not the mandate's origin asset");
         rec.escrow = U128(rec.escrow.0 + amount);
     }
@@ -187,10 +282,7 @@ impl Hallmark {
             "this token is not the mandate's destination asset"
         );
 
-        let mut sig = [0u8; 64];
-        bs58::decode(signature.trim_start_matches("ed25519:"))
-            .onto(&mut sig)
-            .expect("signature is not 64 base58-decoded bytes");
+        let sig = decode_signature(signature).expect("signature is not 64 base58-decoded bytes");
 
         let accepted =
             match check(canonical.as_bytes(), &sig, &rec.terms, delivered, env::block_timestamp()) {
@@ -232,7 +324,11 @@ impl Hallmark {
         let key = (who.clone(), asset.clone());
         let amount = self.credits.get(&key).map(|b| b.0).unwrap_or(0);
         require!(amount > 0, "nothing to withdraw");
-        self.credits.insert(key, U128(0));
+        // Removed, not zeroed. A zeroed slot still occupies storage the vault
+        // paid for, so a filler could mint slots faster than the mandate that
+        // prepaid for them. Removing makes an honest round trip
+        // storage-neutral.
+        self.credits.remove(&key);
 
         ext_ft::ext(token_account(&asset))
             .with_attached_deposit(ONE_YOCTO)
@@ -274,9 +370,17 @@ impl Hallmark {
         if rec.escrow.0 > 0 {
             self.credit(&rec.owner, &rec.terms.origin_asset, rec.escrow.0);
         }
+        // The record stays readable — a settled mandate is the receipt — but the
+        // storage it prepaid for returns to the owner's balance, so cancelling
+        // and reopening is not a way to drain anyone.
+        let refund = rec.storage_paid.0;
+        let prepaid = self.storage_balance.get(&rec.owner).map(|b| b.0).unwrap_or(0);
+        self.storage_balance.insert(rec.owner.clone(), U128(prepaid + refund));
+
         let rec = self.mandates.get_mut(&mandate_id).unwrap();
         rec.escrow = U128(0);
         rec.open = false;
+        rec.storage_paid = U128(0);
         env::log_str(&format!(
             r#"EVENT_JSON:{{"standard":"hallmark","version":"1.0.0","event":"mandate_closed","data":[{{"mandate_id":"{mandate_id}"}}]}}"#
         ));
@@ -294,7 +398,11 @@ impl Hallmark {
     // here with no key, no funds and no deposit.
 
     /// What fillers read.
-    pub fn get_mandates(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<(u64, MandateRecord)> {
+    pub fn get_mandates(
+        &self,
+        from_index: Option<u64>,
+        limit: Option<u64>,
+    ) -> Vec<(u64, MandateRecord)> {
         let from = from_index.unwrap_or(0);
         self.mandates
             .iter()
@@ -309,28 +417,45 @@ impl Hallmark {
         self.mandates.get(&mandate_id).cloned()
     }
 
+    /// How many mandates have ever been opened. `get_mandates` scans from the
+    /// start, so a caller that needs to page knows the bound.
+    pub fn mandate_count(&self) -> u64 {
+        self.next_id - 1
+    }
+
     pub fn get_credit(&self, account_id: AccountId, asset: String) -> U128 {
         self.credits.get(&(account_id, asset)).copied().unwrap_or(U128(0))
     }
 
     /// The guaranteed-worst all-in cost of this quote, in bps — the cost if a
     /// filler delivered only the floor the venue signed.
+    ///
+    /// Pure arithmetic over the bytes it is handed: it does **not** check the
+    /// signature, so pair it with `is_signed` before believing it of a quote you
+    /// did not fetch yourself. `dry_check` does both.
     pub fn worst_cost(&self, canonical: String) -> u32 {
         worst_cost_bps(&parse_quote(&canonical))
     }
 
     /// What the owner would actually pay if a filler delivered `delivered`.
+    /// Arithmetic only; see `worst_cost`.
     pub fn realised_cost(&self, canonical: String, delivered: U128) -> u32 {
         cost_bps(&parse_quote(&canonical), delivered.0)
     }
 
     /// Did NEAR Intents really sign exactly these bytes?
     pub fn is_signed(&self, canonical: String, signature: String) -> bool {
-        let mut sig = [0u8; 64];
-        if bs58::decode(signature.trim_start_matches("ed25519:")).onto(&mut sig).is_err() {
-            return false;
+        match decode_signature(&signature) {
+            Some(sig) => is_signed_by_venue(canonical.as_bytes(), &sig),
+            None => false,
         }
-        is_signed_by_venue(canonical.as_bytes(), &sig)
+    }
+
+    /// How old the venue's own signature on this quote is, in seconds, as the
+    /// chain sees it. This is the number `max_quote_age_secs` bounds (§2.10).
+    pub fn quote_age_secs(&self, canonical: String) -> U64 {
+        let signed_at = quote::parse_iso8601_secs(&parse_quote(&canonical).timestamp);
+        U64((env::block_timestamp() / 1_000_000_000).saturating_sub(signed_at))
     }
 
     /// The full check, exactly as a fill runs it, against terms you supply.
@@ -341,10 +466,9 @@ impl Hallmark {
         terms: Mandate,
         delivered: U128,
     ) -> String {
-        let mut sig = [0u8; 64];
-        if bs58::decode(signature.trim_start_matches("ed25519:")).onto(&mut sig).is_err() {
+        let Some(sig) = decode_signature(&signature) else {
             return "REFUSED BadSignature".into();
-        }
+        };
         match check(canonical.as_bytes(), &sig, &terms, delivered.0, env::block_timestamp()) {
             Ok(a) => format!(
                 "ALLOWED at {} bps realised all-in cost, filler earns {} origin units",
@@ -356,6 +480,29 @@ impl Hallmark {
 
     pub fn quote_signer(&self) -> String {
         QUOTE_SIGNER.to_string()
+    }
+}
+
+/// A mandate record, borsh-encoded, rounded up. Measured by
+/// `opening_a_mandate_is_paid_for_by_its_owner`, which fails if it is ever an
+/// underestimate.
+const MANDATE_RECORD_BYTES: u64 = 512;
+/// A sanity bound, not a policy. The contract's job is to enforce the age the
+/// owner committed to, not to pick it — a tight bound is the client's default
+/// (300 s) and is visible in `get_mandates` for anyone to read. What this stops
+/// is a mandate that bounds nothing at all, which is what v1 shipped by
+/// omission. Thirty days is also what keeps the captured integration fixture
+/// usable; see the note in `contract/tests/integration.rs`.
+const MAX_QUOTE_AGE_CEILING_SECS: u32 = 30 * 86_400;
+
+/// Exactly 64 base58 bytes, or nothing. `bs58`'s `onto` leaves the tail of the
+/// buffer untouched for a short input, which would silently zero-pad a
+/// signature; a verifier should never guess at the length of a signature.
+fn decode_signature(signature: &str) -> Option<[u8; 64]> {
+    let mut sig = [0u8; 64];
+    match bs58::decode(signature.trim_start_matches("ed25519:")).onto(&mut sig) {
+        Ok(64) => Some(sig),
+        _ => None,
     }
 }
 

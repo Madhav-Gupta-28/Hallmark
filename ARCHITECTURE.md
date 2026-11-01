@@ -654,6 +654,19 @@ It no longer matters to the vault, which never touches a deposit address (§2.4)
   requested with no `appFees` at all; the echoed request contains
   `[{"recipient":"5880ad2b…47dd","fee":20}]`. **1Click's own rake is 20 bps.**
   That is the right anchor for judging whether a filler's spread is reasonable.
+  Re-checked on an unauthenticated quote on **2026-11-02**: still `fee: 20`.
+
+> **Documentation disagrees with the network, and the network wins (§0).**
+> NEAR's own `near-intents` agent skill states *"Auth quote or pay 0.25% —
+> without an API key, an extra 25 bps fee applies to every non-`ANY_INPUT`
+> quote"* (`near/agent-skills`, `skills/near-intents/SKILL.md`, read
+> 2026-11-02). Every unauthenticated quote we have captured, across two
+> separate days, echoes **20 bps**, not 25. Recorded rather than reconciled:
+> the anchor used in §15.4 is the measured 20.
+>
+> It does not touch the mechanism either way. Whatever the rake is, it has
+> already moved `amountOutUsd` before the venue signed it, which is the entire
+> point of §2.3 — the contract prices a fee it is not told about.
 
 ### 3.8 App fees land — proven from live state, with no transaction
 
@@ -1321,12 +1334,31 @@ product. No network is required for the mechanism to be sound (§1.5).
 
 **2. The demonstrated supply side today is one reference filler**
 (`client/src/bin/fill.ts`), and the plan is three: a second written
-independently, competing for the same mandate, plus one adapted from **NEAR's
-own official DeFi starter prompt**, with the diff shown so a judge can see how a
+independently, competing for the same mandate, plus one adapted from NEAR's own
+official agent material, with the diff shown so a judge can see how a
 stranger's agent becomes a filler. The second and third are **outstanding** —
 build order step 6 is marked ◐ for this reason, and §14 lists it. An earlier
 draft of this section described all three in the present tense, which was a
 claim about the future written as a statement about the repo.
+
+> **Correction kept — the artifact to adapt is not what this section called
+> it.** Earlier drafts said "NEAR's own official DeFi starter prompt". Searched
+> for on 2026-11-02: no such starter agent or prompt exists. What does exist is
+> **`github.com/near/agent-skills`**, whose `near-intents` skill is NEAR's
+> official agent-facing material for 1Click — a `SKILL.md` plus `rules/*.md`,
+> installed with
+> `npx skills add near/agent-skills --skill near-intents`. Eight skills are
+> published there (`near-intents`, `near-api-js`, `near-cli-rs`,
+> `near-contract-audit`, `near-dapp`, `near-kit`, `near-smart-contracts`,
+> `near-ai-cloud`).
+>
+> That is a better anchor than a prompt, and it sharpens the point: the skill
+> teaches an agent the flow `/v0/tokens → /v0/quote (dry) → /v0/quote (wet) →
+> deposit tx → /v0/status`. **A Hallmark filler is that flow with the deposit
+> step pointed at a vault instead of a `depositAddress`, plus reading open
+> mandates.** The honest size of that diff is the ~20 lines already recorded
+> below, and it is work that has not been done yet rather than work being
+> claimed.
 
 > **Correction kept.** An earlier claim said any official-prompt agent becomes a
 > filler "by changing one line." That is false. It is roughly **20 lines** — read
@@ -1390,7 +1422,7 @@ state and nothing to unwind.
 ### 7.3 The judge
 
 ```
-1. git clone && cargo test                           # 56 tests, no network, no key
+1. git clone && cargo test                           # 55 tests, no network, no key
 2. cat fixtures/worst.quote.json                     # a validly signed 99.99% haircut
 3. near view hallmarkfi.near worst_cost     '{...}'  # 10000 bps
 4. near view hallmarkfi.near realised_cost  '{...}'  # 503 bps even at the full fill
@@ -1604,7 +1636,7 @@ Each one names what enforces it and what checks it.
 | `a_thirteenth_month_is_refused` | `should_panic` |
 | `a_signature_is_sixty_four_bytes_or_nothing` | short, long, empty and non-base58 all refused, never zero-padded |
 
-**Done — 26 of 26 passing, `cargo test --test integration`, against a real
+**Done — 25 of 25 passing, `cargo test --test integration`, against a real
 sandbox node driven by a real NEAR Intents signature:**
 
 The fixture `fixtures/sandbox.quote.json` is a genuine signed 1Click quote for

@@ -35,7 +35,7 @@ unless it says so.
 cargo test
 ```
 
-**See:** 56 tests pass — 30 unit, 26 against a real sandbox node. No network, no
+**See:** 55 tests pass — 30 unit, 25 against a real sandbox node. No network, no
 key, no funds. Four of them are the point:
 
 | test | what it shows |
@@ -153,7 +153,7 @@ contract/src/quote.rs        the signed quote, the signature, the arithmetic
 contract/src/mandate.rs      the mandate, the typed refusals, the check
 contract/src/lib.rs          the vault
 contract/src/tests.rs        30 unit tests — every guarantee the spec claims
-contract/tests/integration.rs 26 tests, end to end against a real node
+contract/tests/integration.rs 25 tests, end to end against a real node
 client/src/lib/canonical.ts  canonicalisation — the one place it exists
 client/src/bin/bound.ts      what a live quote guarantees
 client/src/bin/post.ts       the owner

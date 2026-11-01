@@ -722,6 +722,46 @@ track. It also means the baseline Hallmark must beat is *established and
 public*: every one of those six passes `worst.quote.json`. That fixture is the
 differentiator, and a judge can reproduce it in one command.
 
+### 3.17 Live on mainnet
+
+Deployed and exercised end to end on 2026-11-01.
+
+| | |
+|---|---|
+| vault | **`hallmarkfi.near`** |
+| wasm | 235,304 bytes, sha256 `1e45410a…5f7c27a3` |
+| deploy + `new` | `5gPd4L1uG1uNGitZr3j6XPYtwzWg1RFsq8K41KsSCBpK` |
+| mandate #1 opened | `2EoBbkdjyZ1QUp61NAjsrsgiqjSptRNs8nFFgJWiqtm3` |
+| **the fill** | `HXSYahR3ZJnVHfGkvrB8tAqdzM38fDuwi4RXNgYYjNta` |
+| withdrawals | `FgmmC65k8zjY2KpbdZFAdt6qT7ro1Uwdn9FSpVbTqeyn`, `2Ko2TatsMiPYh5VvxXjvzZNGK1M5gN5mEJGvErENQpWM` |
+
+The receipt, straight off the chain:
+
+```
+EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
+  "data":[{"mandate_id":"1","filler":"d3bc151a…b7bd484",
+           "amount_in":"100000000000000000000000","delivered":"428390",
+           "cost_bps":115,"ceiling_bps":300}]}
+```
+
+0.1 wNEAR sold for 0.428390 USDT at a **realised all-in cost of 115 bps**
+against a ceiling of 300, proven against NEAR Intents' own signature, with the
+output in the vault before the input was credited to anyone.
+
+The round trip closes to the token: balances before the mandate and after both
+withdrawals are identical (0.130000 wNEAR, 0.518409 USDT), because the owner and
+the filler were the same account — the honest v1 case of §6.1.
+
+And the keyless proof surface answers on mainnet today:
+
+```
+quote_signer()                            ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc
+is_signed(worst.quote.json)               true
+worst_cost(worst.quote.json)              10000 bps
+realised_cost(worst, at full fill)          503 bps   <- 500 bps of unread appFees, priced
+dry_check(worst, floor, 30 bps ceiling)   REFUSED CostCeilingBreached { worst_bps: 10000, ceiling_bps: 30 }
+```
+
 ---
 
 ## §4 System architecture
@@ -975,7 +1015,14 @@ can be exercised with no key, no funds and no deposit**, which
 
 ### 5.7 Gas
 
-**Measured: 7.8 TGas for an entire fill**, end to end — the filler's
+**Mainnet, measured on the first live fill: 29.85 TGas** across every receipt in
+the transaction — the filler's `ft_transfer_call`, the token's hop, the
+verification, and both credits. Against a 300 TGas limit that is 10%.
+
+The sandbox figure below counts only the fill transaction's own burn, which is
+why it is smaller; both are real, they measure different brackets.
+
+**Sandbox: 7.8 TGas for an entire fill**, end to end — the filler's
 `ft_transfer_call`, the token's hop, `sha256` + `ed25519_verify` over the signed
 bytes, the invariant, and both credits. Against a 300 TGas limit that is 2.6%.
 
@@ -1317,18 +1364,15 @@ the end-to-end claim is **UNVERIFIED** and appears nowhere public.
 
 ## §14 Open items and known limits
 
-**UNVERIFIED — must be resolved before any public claim of end-to-end operation:**
+**UNVERIFIED:**
 
-1. A real fund → deliver → withdraw cycle on **mainnet**. Step 8. The same cycle
-   is verified end to end against a sandbox node with a real NEAR Intents
-   signature (§12), so what remains unverified is mainnet specifically: real
-   token contracts, real gas prices, real storage costs.
-2. That a filler sourcing via `depositType: INTENTS` can deliver into the vault
+1. That a filler sourcing via `depositType: INTENTS` can deliver into the vault
    within the quote's deadline in practice. ~10 s estimated (§3.6); not timed by
-   us end to end.
+   us end to end. Not load-bearing: the reference filler holds inventory
+   instead, which is the documented v1 (§6.4).
 
-*Resolved since the first draft:* gas (**7.8 TGas**, §5.7) and the full
-fund → fill → withdraw path (§12).
+*Resolved:* gas (§5.7), the sandbox fund → fill → withdraw path (§12), and
+**the mainnet round trip (§3.17)**.
 
 **ASSUMPTION:**
 

@@ -20,14 +20,20 @@ than a fee. The contract is 235,171 bytes, so:
 
 | | bytes | NEAR |
 |---|---|---|
-| contract code | 235,171 | **2.35171** |
+| contract code | 235,304 | **2.35304** |
 | account record | 182 | 0.00182 |
 | state after one fill | ~540 | 0.00540 |
-| **the vault must hold at least** | | **2.35893** |
+| **the vault must hold at least** | | **2.47** |
 
 That number cannot be negotiated down, only shrunk by shrinking the contract.
 Building with `--no-abi` saves 2 KB and nothing else is low-hanging, so treat
-**~2.4 NEAR as the real floor.**
+**2.5 NEAR as the real floor.**
+
+> **Measured the hard way.** Funding the vault with exactly 2.36 NEAR made the
+> deploy fail with `the remaining balance will not be enough to cover storage`,
+> asking for **0.1120767046792826 NEAR** more. The code lock is only part of it:
+> the deploy burns its own gas from the same account, and `new` writes contract
+> state. Fund with **2.5 NEAR** and it goes through first time.
 
 ### Everything else is small
 
@@ -184,7 +190,7 @@ pretty `you.near` name is optional and costs extra.
 ## §4 Create the vault account
 
 ```bash
-near account create-account fund-myself hallmarkfi.near '2.4 NEAR' \
+near account create-account fund-myself hallmarkfi.near '2.5 NEAR' \
   autogenerate-new-keypair save-to-keychain \
   sign-as <YOUR_ACCOUNT> \
   network-config mainnet sign-with-keychain send
@@ -256,8 +262,17 @@ near contract call-function as-transaction wrap.near near_deposit \
   sign-as YOU.near network-config mainnet sign-with-keychain send
 ```
 
-For the filler's USDT, swap ~$0.50 of NEAR on [Rhea](https://rhea.finance).
-Half a USDT is plenty for a 0.1 wNEAR order.
+For the filler's USDT, swap ~0.12 wNEAR on Rhea. **Pool 5470** is the one to
+use at this size — 1 bp fee, and it quotes 0.12 wNEAR → 0.5218 USDT. Pool 6063
+is far deeper (43,904 wNEAR / 194,056 USDT) at 30 bps if you need size. Of
+8,992 Rhea pools, 22 hold wNEAR + native USDT; the rest are dust.
+
+> **A pair that needed no DEX was tried and rejected.** `wNEAR → stNEAR` is
+> ideal on paper, because both legs come from native NEAR with a single call
+> (`wrap.near::near_deposit`, `meta-pool.near::deposit_and_stake`) and 1Click
+> signs it at 180 bps full / 278 bps worst. But Meta Pool's
+> `min_deposit_amount` is **1 NEAR**, which does not fit inside a 3 NEAR
+> budget once the vault takes 2.5. Hence the Rhea hop.
 
 If you are using one account as both owner and filler — which §0.1 explains is
 the honest v1 case — you only need that one account registered, and `FILLER.near`

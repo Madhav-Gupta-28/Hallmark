@@ -2,6 +2,8 @@
 
 **A not-held order that enforces its own execution bound.**
 
+> **Live on NEAR mainnet: [`hallmarkfi.near`](https://nearblocks.io/address/hallmarkfi.near)**
+
 A not-held order hands discretion over the time and price of your trade to
 somebody else. For a century the only thing protecting the client was a promise —
 the best execution obligation. NEAR Intents signs the economics of every fill, so
@@ -30,6 +32,31 @@ cd contract && cargo test
 
 - `malicious_quote_is_a_9999_bps_haircut_and_is_validly_signed`
 - `every_single_byte_is_covered_by_the_signature` — all 692 bytes, flipped one at a time
+
+## Ask the live contract, right now
+
+No key, no funds, no deposit — these are view calls on mainnet.
+
+```bash
+near contract call-function as-read-only hallmarkfi.near worst_cost \
+  json-args "$(python3 -c 'import json;print(json.dumps({"canonical":open("contract/fixtures/worst.canonical.json").read()}))')" \
+  network-config mainnet now
+```
+
+```
+quote_signer()                 ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc
+is_signed(malicious quote)     true          <- NEAR Intents really signed it
+worst_cost(...)                10000 bps     <- the guaranteed floor
+realised_cost(at full fill)    503 bps       <- the 500 bps of appFees, priced
+
+dry_check at the floor,  30 bps ceiling   REFUSED CostCeilingBreached { worst_bps: 10000, ceiling_bps: 30 }
+dry_check at full fill,  30 bps ceiling   REFUSED CostCeilingBreached { worst_bps: 503,   ceiling_bps: 30 }
+dry_check at full fill, 600 bps ceiling   ALLOWED at 503 bps realised all-in cost
+```
+
+That 503 is the part worth staring at. `appFees` is **not covered by the
+signature**, so the contract cannot read it — and prices it to the basis point
+anyway, because the fee's effect is already inside the signed `amountOutUsd`.
 
 ## The bound
 

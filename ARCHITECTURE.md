@@ -2117,6 +2117,19 @@ Then `security`, `business`, `open`. Not `agents`, not `realworld`, not
 
 ## §16 Sources
 
+**Every transaction hash in this document was re-checked on 2026-11-02** against
+`api.nearblocks.io` and, for the ones older than its 50-transaction window,
+against `archival-rpc.mainnet.near.org`: **16 of 16 on-chain.** The two other
+base58 strings of that shape — `8no2rMSjesYe97Jhi6RWKxRvvYsYARBVQZXtMDMyhvwp`
+and `FTTFigJiyLLbx9Um6FC17P8UvRwfuSA1DRMDeNZvTj33` — are the fixtures' **quote
+hashes** (§3.3), not transactions, and are labelled as such.
+
+> Worth noting for anyone re-running this: the public `rpc.mainnet.near.org`
+> prunes `tx` lookups, and both it and the archival endpoint rate-limit hard
+> enough that a loop over 18 hashes reports false negatives. The same hash came
+> back "on-chain" and "not found" minutes apart. One nearblocks request for the
+> account's transaction list is both faster and more reliable than 36 RPC calls.
+
 **Verified by us, 2026-11-01, reproducible from this repo**
 
 - `fixtures/mkfix.py` — canonicalisation + from-scratch RFC-8032 ed25519

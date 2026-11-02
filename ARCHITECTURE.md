@@ -1559,7 +1559,7 @@ state and nothing to unwind.
 ### 7.3 The judge
 
 ```
-1. git clone && cargo test                           # 55 tests, no network, no key
+1. git clone && cargo test                           # 58 tests, no network, no key
 2. cat fixtures/worst.quote.json                     # a validly signed 99.99% haircut
 3. near view hallmarkfi.near worst_cost     '{...}'  # 10000 bps
 4. near view hallmarkfi.near realised_cost  '{...}'  # 503 bps even at the full fill
@@ -1730,7 +1730,7 @@ Each one names what enforces it and what checks it.
 | 11 | An action cannot be performed with the wrong token | `open`/`fund` require the origin asset, `fill` the destination asset | `a_fill_in_the_wrong_token_is_refused` |
 | 12 | The USD marks a cost is computed from are no older than the owner allowed (§2.10) | `now_secs > signed_at + max_quote_age_secs` refuses, against the **signed** `timestamp` | `the_freshness_bound_is_exact_to_the_second`, `a_quote_older_than_the_mandate_allows_is_refused_on_chain` |
 | 13 | No field the counterparty chooses is ever used as a bound | `depositAddress` unread (§2.4); `deadline` is a deadline, never a freshness test (§2.10) | audited: `deadline` is compared only against itself; `max_quote_age_secs` is compared against `timestamp` |
-| 14 | The vault never stakes NEAR for state a stranger created (§2.11) | `open` deducts the measured cost from the opener's prepaid balance | `opening_a_mandate_has_to_be_paid_for`, `the_charge_for_a_mandate_covers_what_it_actually_stores` |
+| 14 | The vault never stakes NEAR for state anyone else created (§2.11) | every path that writes state ends in `settle_storage`, which charges the caller the **measured** growth | `the_vault_never_pays_for_state_someone_else_created`, `a_filler_pays_for_the_state_its_fill_creates`, `a_storage_deposit_pays_for_its_own_ledger_entry` |
 | 15 | The vault's storage is always covered by a prepayment that has not been refunded | `withdraw` removes the credit slot; `cancel` refunds nothing; `reap` refunds only the **measured** bytes freed, capped at what was paid | `a_withdrawal_releases_the_storage_it_was_using`, `the_vault_never_pays_for_state_someone_else_created`, `reaping_returns_only_the_storage_it_actually_frees` |
 | 16 | A signature is 64 bytes or it is refused | `decode_signature` returns `None` on any other length | `a_signature_is_sixty_four_bytes_or_nothing` |
 
@@ -1773,7 +1773,7 @@ Each one names what enforces it and what checks it.
 | `a_thirteenth_month_is_refused` | `should_panic` |
 | `a_signature_is_sixty_four_bytes_or_nothing` | short, long, empty and non-base58 all refused, never zero-padded |
 
-**Done — 25 of 25 passing, `cargo test --test integration`, against a real
+**Done — 28 of 28 passing, `cargo test --test integration`, against a real
 sandbox node driven by a real NEAR Intents signature:**
 
 The fixture `fixtures/sandbox.quote.json` is a genuine signed 1Click quote for
@@ -1805,7 +1805,6 @@ whose key nobody has.)
 | `a_quote_older_than_the_mandate_allows_is_refused_on_chain` | **§2.10** in a real runtime: `QuoteTooOld`, filler loses nothing, escrow untouched |
 | `fixture_is_still_fresh_enough_to_fill` | says in one line if the captured fixture has aged out, instead of making you read fifteen failures |
 | `opening_a_mandate_has_to_be_paid_for` | **§2.11**: no prepayment ⇒ refused and refunded; prepay ⇒ works, and the prepayment is spent exactly |
-| `the_charge_for_a_mandate_covers_what_it_actually_stores` | measures real `storage_usage` growth; fails if the charge is ever an underestimate |
 | `a_withdrawal_releases_the_storage_it_was_using` | the credit slot is removed, not zeroed |
 | `the_vault_never_pays_for_state_someone_else_created` | **the §2.11 invariant**: over three open+cancel cycles, what the owner was charged equals what the vault grew by, as an equality. Both earlier versions of the fix failed this |
 | `a_filler_pays_for_the_state_its_fill_creates` | an unknown filler with no prepayment is refused and refunded; with one, it is charged precisely what its fill created |
@@ -1860,7 +1859,7 @@ run in three does not support it.**
 | 1 | **done** — vault state + `ft_on_transfer` for the **origin** token | ✓ |
 | 2 | **done** — `ft_on_transfer` for the **destination** token + `credits` | ✓ |
 | 3 | **done** — `withdraw`, `cancel`, `get_mandates` | ✓ |
-| 4 | **done** — `near-workspaces` end-to-end, 25 tests; gas recorded in §5.7 | ✓ |
+| 4 | **done** — `near-workspaces` end-to-end, 28 tests; gas recorded in §5.7 | ✓ |
 | 5 | **done** — TypeScript client: canonicaliser (54 assertions), 1Click, vault | ✓ |
 | 6 | **done** — `bound`, `post`, and **three** fillers: the reference, one written from §2.1 alone, and one adapted from `near/agent-skills` with the diff shown. `npm run race` prices one mandate with all three (§6.2) | ✓ |
 | 7 | **done** — deployed to mainnet as `hallmarkfi.near`; v2 redeployed after the audit. Full-access key **still present**, deliberately (§10.2, and §2.10 is the reason) | ◐ |

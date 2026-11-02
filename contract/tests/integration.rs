@@ -117,16 +117,19 @@ async fn setup() -> anyhow::Result<World> {
     let owner = account(&w, "owner.near").await?;
     let filler = account(&w, "filler.near").await?;
 
-    // The opener pays for the state the opener creates, so prepay enough for
-    // the handful of mandates these tests open. Without this, `open` refuses —
-    // which is the point of `opening_a_mandate_has_to_be_paid_for`.
-    owner
-        .call(vault.id(), "storage_deposit")
-        .args_json(json!({}))
-        .deposit(NearToken::from_millinear(500))
-        .transact()
-        .await?
-        .into_result()?;
+    // Whoever creates state pays for it, so both sides prepay. Without this,
+    // `open` and `fill` refuse — which is the point of
+    // `opening_a_mandate_has_to_be_paid_for` and
+    // `a_filler_pays_for_the_state_its_fill_creates`, both of which use fresh
+    // accounts precisely so they can observe the refusal.
+    for who in [&owner, &filler] {
+        who.call(vault.id(), "storage_deposit")
+            .args_json(json!({}))
+            .deposit(NearToken::from_millinear(500))
+            .transact()
+            .await?
+            .into_result()?;
+    }
 
     // register everyone on both tokens, and fund the two sides
     for t in [&wnear, &eth] {
@@ -872,24 +875,31 @@ async fn opening_a_mandate_has_to_be_paid_for() -> anyhow::Result<()> {
         .json()?;
     assert_eq!(back.0, AMOUNT_IN, "a refused open must refund the transfer");
 
-    // Prepay, and it works.
+    // Prepay the recommended amount, and it works.
     let estimate: U128 = w.vault.view("storage_cost_estimate").args_json(json!({})).await?.json()?;
-    stranger
+    let credited: U128 = stranger
         .call(w.vault.id(), "storage_deposit")
         .args_json(json!({}))
         .deposit(NearToken::from_yoctonear(estimate.0))
         .transact()
         .await?
-        .into_result()?;
-    assert_eq!(
-        w.vault
-            .view("storage_balance_of")
-            .args_json(json!({"account_id": stranger.id()}))
-            .await?
-            .json::<U128>()?
-            .0,
-        estimate.0
+        .json()?;
+    // Less than deposited, because the deposit paid for its own ledger entry.
+    assert!(
+        credited.0 > 0 && credited.0 < estimate.0,
+        "a deposit of {} credited {}, which should be less by the entry's own cost",
+        estimate.0,
+        credited.0
     );
+    println!(
+        "  storage_cost_estimate {} -> credited {} (its ledger entry cost {} bytes)",
+        estimate.0,
+        credited.0,
+        (estimate.0 - credited.0) / 10u128.pow(19)
+    );
+
+    // Opening charges the measured cost of the record, and no more.
+    let bytes0 = w.vault.view_account().await?.storage_usage;
     stranger
         .call(w.wnear.id(), "ft_transfer_call")
         .args_json(json!({"receiver_id": w.vault.id(), "amount": U128(AMOUNT_IN), "msg": msg}))
@@ -898,37 +908,18 @@ async fn opening_a_mandate_has_to_be_paid_for() -> anyhow::Result<()> {
         .transact()
         .await?
         .into_result()?;
-
-    // the prepayment was spent, exactly
-    assert_eq!(
-        w.vault
-            .view("storage_balance_of")
-            .args_json(json!({"account_id": stranger.id()}))
-            .await?
-            .json::<U128>()?
-            .0,
-        0
-    );
-    Ok(())
-}
-
-/// What `open` charges must cover what `open` actually costs the vault, or the
-/// vault is subsidising state again and `MANDATE_RECORD_BYTES` is a lie.
-#[tokio::test]
-async fn the_charge_for_a_mandate_covers_what_it_actually_stores() -> anyhow::Result<()> {
-    let w = setup().await?;
-    let before = w.vault.view_account().await?.storage_usage;
-    open_mandate(&w, 200, AMOUNT_IN).await?;
-    let after = w.vault.view_account().await?.storage_usage;
-
-    let grew = after - before;
-    let estimate: U128 = w.vault.view("storage_cost_estimate").args_json(json!({})).await?.json()?;
-    let charged_bytes = estimate.0 / 10u128.pow(19); // 1e19 yoctoNEAR per byte
-    println!("  a mandate record grew the vault by {grew} bytes; it was charged for {charged_bytes}");
-    assert!(
-        (grew as u128) <= charged_bytes,
-        "a mandate grew state by {grew} bytes but only {charged_bytes} were charged"
-    );
+    let bytes1 = w.vault.view_account().await?.storage_usage;
+    let left: U128 = w
+        .vault
+        .view("storage_balance_of")
+        .args_json(json!({"account_id": stranger.id()}))
+        .await?
+        .json()?;
+    let grew = (bytes1 - bytes0) as u128 * 10u128.pow(19);
+    println!("  opening grew the vault {} bytes; the opener was charged for {} bytes",
+             bytes1 - bytes0, (credited.0 - left.0) / 10u128.pow(19));
+    assert_eq!(credited.0 - left.0, grew, "charged exactly what the record cost");
+    assert!(left.0 > 0, "the recommendation leaves change, which storage_withdraw returns");
     Ok(())
 }
 
@@ -961,16 +952,17 @@ async fn a_withdrawal_releases_the_storage_it_was_using() -> anyhow::Result<()> 
     Ok(())
 }
 
-/// Opening and cancelling in a loop must not drain the vault.
+/// **The invariant, measured.** Whatever the vault's state grew by, somebody
+/// paid for exactly that — never the vault itself.
 ///
-/// The first version of the §2.11 fix had `cancel` return the whole
-/// prepayment while leaving the record in place, so each cycle silently cost
-/// the vault 296 bytes and refunded the owner in full — a slower version of
-/// exactly the attack the fix exists to stop. It was caught by measuring real
-/// `storage_usage` rather than trusting the accounting, which is why this test
-/// measures both sides.
+/// This is the test that would have caught both earlier versions of the §2.11
+/// fix. The first let the vault stake NEAR for any mandate a stranger opened.
+/// The second charged a fixed 1,536 bytes and gave all of it back on `cancel`
+/// while the record stayed, so open/cancel in a loop still cost the vault 296
+/// bytes a go. Both are failures of the same assertion: measure the vault, and
+/// measure the payer, and insist they agree.
 #[tokio::test]
-async fn opening_and_cancelling_in_a_loop_does_not_drain_the_vault() -> anyhow::Result<()> {
+async fn the_vault_never_pays_for_state_someone_else_created() -> anyhow::Result<()> {
     let w = setup().await?;
     let paid0: U128 = w
         .vault
@@ -1000,10 +992,150 @@ async fn opening_and_cancelling_in_a_loop_does_not_drain_the_vault() -> anyhow::
     let grew = (bytes1 - bytes0) as u128 * 10u128.pow(19);
     let spent = paid0.0 - paid1.0;
     println!("  3 open+cancel cycles: vault grew {grew} yocto of storage, owner paid {spent}");
-    assert!(
-        spent >= grew,
-        "the vault grew by {grew} but the owner was only charged {spent}"
+    assert_eq!(
+        spent, grew,
+        "exact accounting: the owner must pay for precisely what the vault grew by"
     );
+    Ok(())
+}
+
+/// The same assertion across a *fill*, where the state is created by somebody
+/// other than the mandate's owner.
+///
+/// A fill creates credit slots, so without this the vault would stake NEAR for
+/// state a filler caused — and a filler can cause a lot of it, bounded only by
+/// the escrow. The filler settles for its own fills.
+#[tokio::test]
+async fn a_filler_pays_for_the_state_its_fill_creates() -> anyhow::Result<()> {
+    let w = setup().await?;
+    open_mandate(&w, 10_000, AMOUNT_IN).await?;
+
+    // A filler nobody has heard of, holding inventory but no prepaid storage.
+    let stranger = account(&w.worker, "stranger-filler.near").await?;
+    w.eth
+        .call("storage_deposit")
+        .args_json(json!({"account_id": stranger.id()}))
+        .deposit(NearToken::from_millinear(10))
+        .transact()
+        .await?
+        .into_result()?;
+    w.eth
+        .call("mint")
+        .args_json(json!({"account_id": stranger.id(), "amount": U128(EXPECTED_OUT * 2)}))
+        .transact()
+        .await?
+        .into_result()?;
+    let fill_msg = json!({
+        "action": "fill", "mandate_id": 1, "canonical": CANONICAL, "signature": sig_b58(),
+    })
+    .to_string();
+    let deliver = |who: &Account| {
+        who.call(w.eth.id(), "ft_transfer_call")
+            .args_json(json!({
+                "receiver_id": w.vault.id(), "amount": U128(EXPECTED_OUT), "msg": fill_msg
+            }))
+            .deposit(NearToken::from_yoctonear(1))
+            .max_gas()
+    };
+
+    // No prepaid storage: refused, and the delivery comes back.
+    let out = deliver(&stranger).transact().await?;
+    let failures = format!("{:?}", out.receipt_failures());
+    assert!(failures.contains("prepay storage first"), "got {failures}");
+    let back: U128 = w
+        .eth
+        .view("ft_balance_of")
+        .args_json(json!({"account_id": stranger.id()}))
+        .await?
+        .json()?;
+    assert_eq!(back.0, EXPECTED_OUT * 2, "a refused fill must refund the delivery");
+
+    // Prepay, and the fill lands — charged for exactly what it created.
+    stranger
+        .call(w.vault.id(), "storage_deposit")
+        .args_json(json!({}))
+        .deposit(NearToken::from_millinear(100))
+        .transact()
+        .await?
+        .into_result()?;
+    let paid0: U128 = w
+        .vault
+        .view("storage_balance_of")
+        .args_json(json!({"account_id": stranger.id()}))
+        .await?
+        .json()?;
+    let bytes0 = w.vault.view_account().await?.storage_usage;
+
+    deliver(&stranger).transact().await?.into_result()?;
+
+    let paid1: U128 = w
+        .vault
+        .view("storage_balance_of")
+        .args_json(json!({"account_id": stranger.id()}))
+        .await?
+        .json()?;
+    let bytes1 = w.vault.view_account().await?.storage_usage;
+    let grew = (bytes1 - bytes0) as u128 * 10u128.pow(19);
+    let spent = paid0.0 - paid1.0;
+    println!("  one fill: vault grew {grew} yocto of storage, filler paid {spent}");
+    assert_eq!(spent, grew, "the filler must pay for precisely what its fill created");
+    assert!(grew > 0, "a fill does create state - two credit slots");
+    Ok(())
+}
+
+/// Topping up an existing mandate creates no state, so it costs nothing.
+#[tokio::test]
+async fn funding_a_mandate_creates_no_state_and_is_charged_nothing() -> anyhow::Result<()> {
+    let w = setup().await?;
+    open_mandate(&w, 200, AMOUNT_IN).await?;
+    let paid0: U128 = w
+        .vault
+        .view("storage_balance_of")
+        .args_json(json!({"account_id": w.owner.id()}))
+        .await?
+        .json()?;
+
+    let msg = json!({ "action": "fund", "mandate_id": 1 }).to_string();
+    w.owner
+        .call(w.wnear.id(), "ft_transfer_call")
+        .args_json(json!({"receiver_id": w.vault.id(), "amount": U128(AMOUNT_IN), "msg": msg}))
+        .deposit(NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()?;
+
+    let paid1: U128 = w
+        .vault
+        .view("storage_balance_of")
+        .args_json(json!({"account_id": w.owner.id()}))
+        .await?
+        .json()?;
+    assert_eq!(paid1.0, paid0.0, "fund writes no new state, so it must cost nothing");
+    Ok(())
+}
+
+/// A storage deposit pays for its own ledger entry, so that entry is not
+/// subsidised by the vault either.
+#[tokio::test]
+async fn a_storage_deposit_pays_for_its_own_ledger_entry() -> anyhow::Result<()> {
+    let w = setup().await?;
+    let fresh = account(&w.worker, "fresh.near").await?;
+    let bytes0 = w.vault.view_account().await?.storage_usage;
+    let deposit = NearToken::from_millinear(10).as_yoctonear();
+
+    let credited: U128 = fresh
+        .call(w.vault.id(), "storage_deposit")
+        .args_json(json!({}))
+        .deposit(NearToken::from_yoctonear(deposit))
+        .transact()
+        .await?
+        .json()?;
+    let bytes1 = w.vault.view_account().await?.storage_usage;
+    let entry = (bytes1 - bytes0) as u128 * 10u128.pow(19);
+    println!("  a ledger entry is {} bytes; credited {} of {deposit}", bytes1 - bytes0, credited.0);
+    assert!(entry > 0, "the entry is real state");
+    assert_eq!(credited.0, deposit - entry, "the deposit must pay for its own entry");
     Ok(())
 }
 
@@ -1014,13 +1146,17 @@ async fn reaping_returns_only_the_storage_it_actually_frees() -> anyhow::Result<
     let w = setup().await?;
     open_mandate(&w, 200, AMOUNT_IN).await?;
 
-    // cancel alone returns nothing: the record, and its bytes, are still there
+    // `cancel` settles the net measured delta like everything else: it removes
+    // the open-id index entry and may create a credit slot for the escrow, so
+    // it can land either way. What it must NOT do is hand back the record's
+    // storage, because the record is still there.
     let before: U128 = w
         .vault
         .view("storage_balance_of")
         .args_json(json!({"account_id": w.owner.id()}))
         .await?
         .json()?;
+    let bytes0 = w.vault.view_account().await?.storage_usage;
     w.owner
         .call(w.vault.id(), "cancel")
         .args_json(json!({"mandate_id": 1}))
@@ -1033,7 +1169,12 @@ async fn reaping_returns_only_the_storage_it_actually_frees() -> anyhow::Result<
         .args_json(json!({"account_id": w.owner.id()}))
         .await?
         .json()?;
-    assert_eq!(after_cancel.0, before.0, "cancel must not refund live storage");
+    let bytes1 = w.vault.view_account().await?.storage_usage;
+    let settled = after_cancel.0 as i128 - before.0 as i128;
+    let shrank = (bytes0 as i128 - bytes1 as i128) * 10i128.pow(19);
+    println!("  cancel: vault changed by {} bytes, owner settled {}",
+             bytes1 as i128 - bytes0 as i128, settled);
+    assert_eq!(settled, shrank, "cancel settles exactly the net measured delta");
     assert!(
         w.vault
             .view("get_mandate")
@@ -1057,7 +1198,7 @@ async fn reaping_returns_only_the_storage_it_actually_frees() -> anyhow::Result<
     let freed = (bytes_before - bytes_after) as u128 * 10u128.pow(19);
     println!("  reap freed {freed} yocto of storage and refunded {}", refund.0);
     assert!(refund.0 > 0, "reaping must return something");
-    assert!(refund.0 <= freed, "refunded {} for {freed} freed", refund.0);
+    assert_eq!(refund.0, freed, "reaping returns precisely the bytes it freed");
     assert!(
         w.vault
             .view("get_mandate")
@@ -1198,5 +1339,73 @@ async fn only_the_owner_can_fund_and_only_a_live_mandate() -> anyhow::Result<()>
         .await?;
     let failures = format!("{:?}", out.receipt_failures());
     assert!(failures.contains("mandate has expired"), "got {failures}");
+    Ok(())
+}
+
+// ============================================================ the order book
+
+/// `get_mandates` reads an index of open ids, so what the order book costs
+/// tracks what the vault holds rather than what it remembers (§2.12).
+///
+/// Before the index, this call walked every mandate ever created and discarded
+/// the closed ones — so the only way a filler can find work got steadily more
+/// expensive as the vault succeeded, and would eventually exceed a view call's
+/// gas budget. This asserts the index and the records never disagree.
+async fn book(w: &World) -> anyhow::Result<(u32, Vec<(u64, serde_json::Value)>, u64)> {
+    let open: u32 = w.vault.view("open_mandate_count").args_json(json!({})).await?.json()?;
+    let listed: Vec<(u64, serde_json::Value)> =
+        w.vault.view("get_mandates").args_json(json!({})).await?.json()?;
+    let ever: u64 = w.vault.view("mandate_count").args_json(json!({})).await?.json()?;
+    Ok((open, listed, ever))
+}
+
+#[tokio::test]
+async fn the_order_book_tracks_what_is_open_not_what_ever_existed() -> anyhow::Result<()> {
+    let w = setup().await?;
+    let small = AMOUNT_IN / 16;
+    for _ in 0..8 {
+        open_mandate(&w, 200, small).await?;
+    }
+    let (open, listed, ever) = book(&w).await?;
+    assert_eq!((open, ever), (8, 8));
+    assert_eq!(listed.len(), 8);
+    assert_eq!(listed.iter().map(|(id, _)| *id).collect::<Vec<_>>(), (1..=8).collect::<Vec<_>>());
+
+    // close seven of the eight
+    for id in 1..=7u64 {
+        w.owner
+            .call(w.vault.id(), "cancel")
+            .args_json(json!({"mandate_id": id}))
+            .transact()
+            .await?
+            .into_result()?;
+    }
+    let (open, listed, ever) = book(&w).await?;
+    println!("  8 opened, 7 closed -> order book holds {open}, vault remembers {ever}");
+    assert_eq!(open, 1, "the index holds only the open one");
+    assert_eq!(ever, 8, "ids are never reused");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].0, 8);
+
+    // reaping a closed one does not disturb the book
+    w.owner
+        .call(w.vault.id(), "reap")
+        .args_json(json!({"mandate_id": 3}))
+        .transact()
+        .await?
+        .into_result()?;
+    let (open, listed, ever) = book(&w).await?;
+    assert_eq!((open, ever, listed.len()), (1, 8, 1));
+
+    // and pagination works off the index
+    open_mandate(&w, 200, small).await?;
+    let page: Vec<(u64, serde_json::Value)> = w
+        .vault
+        .view("get_mandates")
+        .args_json(json!({"from_index": 1, "limit": 1}))
+        .await?
+        .json()?;
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].0, 9, "from_index pages the open set, in id order");
     Ok(())
 }

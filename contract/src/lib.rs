@@ -21,7 +21,7 @@ pub use mandate::{check, Accepted, Mandate, Refusal};
 pub use quote::{cost_bps, is_signed_by_venue, worst_cost_bps, SignedQuote, QUOTE_SIGNER};
 
 use near_sdk::json_types::{U128, U64};
-use near_sdk::store::{IterableMap, LookupMap};
+use near_sdk::store::{IterableMap, IterableSet, LookupMap};
 use near_sdk::{
     env, ext_contract, near, require, serde_json, AccountId, Gas, NearToken, PanicOnDefault,
     Promise, PromiseError,
@@ -33,15 +33,6 @@ use near_sdk::{
 const GAS_FOR_FT_TRANSFER: Gas = Gas::from_tgas(30);
 const GAS_FOR_RESOLVE: Gas = Gas::from_tgas(10);
 const ONE_YOCTO: NearToken = NearToken::from_yoctonear(1);
-
-/// A `(who, asset)` credit slot, generously. The key is an account id (≤64) plus
-/// an asset id (≤71 for a 64-hex omni-bridge token), the value is 16 bytes, and
-/// the rest is map overhead.
-const CREDIT_SLOT_BYTES: u64 = 256;
-/// How many credit slots a mandate prepays for. `withdraw` *removes* a slot
-/// rather than zeroing it, so an honest mandate needs two at a time and this is
-/// slack rather than a limit.
-const CREDIT_SLOTS_PREPAID: u64 = 4;
 
 #[ext_contract(ext_ft)]
 #[allow(dead_code)] // the macro generates `ext_ft`; the trait itself is only its shape
@@ -64,9 +55,6 @@ pub struct MandateRecord {
     /// bps. By construction this can never exceed `terms.max_cost_bps`.
     pub worst_bps: u32,
     pub open: bool,
-    /// what opening this mandate cost its owner in storage staking, in
-    /// yoctoNEAR. Returned to their storage balance by `cancel`.
-    pub storage_paid: U128,
 }
 
 /// What a caller asks for when they send tokens in. Which variants are legal
@@ -86,6 +74,14 @@ enum Action {
 #[derive(PanicOnDefault)]
 pub struct Hallmark {
     mandates: IterableMap<u64, MandateRecord>,
+    /// The ids of the mandates that are still open.
+    ///
+    /// Without this, `get_mandates` walks every mandate ever created and throws
+    /// away the closed ones, so the only way a filler can find work gets
+    /// steadily more expensive as the vault succeeds and eventually exceeds a
+    /// view call's gas budget. This makes the order book cost what it holds
+    /// rather than what the vault remembers (ARCHITECTURE.md §2.12).
+    open_ids: IterableSet<u64>,
     /// (who, asset id) -> withdrawable balance. Payouts are pull, not push, so
     /// a counterparty who is not storage-registered on a token cannot brick a
     /// fill for anyone else.
@@ -107,9 +103,15 @@ impl Hallmark {
             // and borsh cannot read a v1 record into a v2 struct, so the new
             // maps get their own namespace rather than tripping over the old
             // bytes. §2.10.
-            mandates: IterableMap::new(b"M"),
-            credits: LookupMap::new(b"C"),
-            storage_balance: LookupMap::new(b"S"),
+            // v3 prefixes, one byte each. v2's `MandateRecord` carried a
+            // `storage_paid` field that exact accounting makes unnecessary, and
+            // borsh cannot read a v2 record into a v3 struct, so the new
+            // collections get their own namespace rather than tripping over the
+            // old bytes. v1 used `m`/`c`, v2 used `M`/`C`/`S`.
+            mandates: IterableMap::new(b"n"),
+            open_ids: IterableSet::new(b"p"),
+            credits: LookupMap::new(b"d"),
+            storage_balance: LookupMap::new(b"t"),
             next_id: 1,
         }
     }
@@ -127,18 +129,76 @@ impl Hallmark {
     // --------------------------------------------------------------- storage
 
     /// Prepay for the state you are about to create. One deposit covers many
-    /// mandates; whatever is left can be withdrawn.
+    /// mandates and many fills; whatever is left can be withdrawn.
+    ///
+    /// The deposit pays for its own ledger entry, so that entry is the one piece
+    /// of state in the contract nobody else subsidises either.
     #[payable]
     pub fn storage_deposit(&mut self, account_id: Option<AccountId>) -> U128 {
         let who = account_id.unwrap_or_else(env::predecessor_account_id);
         let amount = env::attached_deposit().as_yoctonear();
         require!(amount > 0, "attach a deposit");
-        let now = self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0) + amount;
-        self.storage_balance.insert(who, U128(now));
-        U128(now)
+
+        let before = env::storage_usage();
+        let current = self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0);
+        self.storage_balance.insert(who.clone(), U128(current + amount));
+        self.storage_balance.flush();
+        let entry_cost = bytes_to_near(env::storage_usage().saturating_sub(before));
+        require!(amount > entry_cost, "deposit does not cover its own ledger entry");
+
+        // The entry exists now, so rewriting it does not grow state again.
+        let credited = current + amount - entry_cost;
+        self.storage_balance.insert(who, U128(credited));
+        U128(credited)
+    }
+
+    /// Charge `who` for whatever state this call created, or credit them for
+    /// whatever it released.
+    ///
+    /// **One rule, applied at the end of every path that mutates state: whoever
+    /// causes a byte to be written pays for that byte.** Nothing is estimated
+    /// and nothing is rounded up into an allowance — the figure is the measured
+    /// difference in `env::storage_usage()`, so the vault's own balance can
+    /// never be consumed by state a third party created (ARCHITECTURE.md §2.11).
+    ///
+    /// `store` collections buffer their writes and flush when the call ends, so
+    /// every collection this contract touches is flushed first. Without that,
+    /// the measurement reads the state as it was before the call and the charge
+    /// comes out as zero.
+    fn settle_storage(&mut self, who: &AccountId, before: u64) {
+        self.mandates.flush();
+        self.open_ids.flush();
+        self.credits.flush();
+        let after = env::storage_usage();
+        let balance = self.storage_balance.get(who).map(|b| b.0).unwrap_or(0);
+
+        if after > before {
+            let owed = bytes_to_near(after - before);
+            require!(
+                balance >= owed,
+                "prepay storage first: call storage_deposit, and storage_cost_estimate() is a safe amount"
+            );
+            self.storage_balance.insert(who.clone(), U128(balance - owed));
+        } else if before > after {
+            let freed = bytes_to_near(before - after);
+            // Only credit an account that already has a ledger entry; creating
+            // one here would be state this call did not charge for. Unreachable
+            // in practice — every path that can free state required a balance to
+            // reach — and if it ever happened the bytes stay as vault headroom,
+            // which is the safe direction.
+            if self.storage_balance.contains_key(who) {
+                self.storage_balance.insert(who.clone(), U128(balance + freed));
+            }
+        }
     }
 
     /// Take back prepaid storage that no mandate is using.
+    ///
+    /// Debited first and restored by the callback if the transfer does not land,
+    /// for the same reason `withdraw` has one: a bare `transfer` that fails
+    /// would otherwise take the ledger entry down with it. It should never fail
+    /// — every prepayment adds the same NEAR to the contract's balance that it
+    /// adds to the ledger — but "should never" is not a guard.
     #[payable]
     pub fn storage_withdraw(&mut self, amount: Option<U128>) -> Promise {
         require!(env::attached_deposit() >= ONE_YOCTO, "attach 1 yoctoNEAR");
@@ -147,20 +207,42 @@ impl Hallmark {
         let want = amount.map(|a| a.0).unwrap_or(available);
         require!(want > 0 && want <= available, "not that much prepaid storage");
         self.storage_balance.insert(who.clone(), U128(available - want));
-        Promise::new(who).transfer(NearToken::from_yoctonear(want))
+
+        Promise::new(who.clone()).transfer(NearToken::from_yoctonear(want)).then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_RESOLVE)
+                .resolve_storage_withdraw(who, U128(want)),
+        )
+    }
+
+    /// Restores a prepaid balance if paying it out failed.
+    #[private]
+    pub fn resolve_storage_withdraw(
+        &mut self,
+        who: AccountId,
+        amount: U128,
+        #[callback_result] result: Result<(), PromiseError>,
+    ) -> bool {
+        if result.is_ok() {
+            return true;
+        }
+        let current = self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0);
+        self.storage_balance.insert(who, U128(current + amount.0));
+        false
     }
 
     pub fn storage_balance_of(&self, account_id: AccountId) -> U128 {
         self.storage_balance.get(&account_id).copied().unwrap_or(U128(0))
     }
 
-    /// What `open` will charge, so a client can prepay exactly once and know it
-    /// is enough. Deliberately a view: it needs no key and no deposit.
+    /// A deposit that comfortably covers one mandate and the fills against it.
+    ///
+    /// It is a **recommendation, not a price**: what the contract actually takes
+    /// is the measured cost of the state each call creates, and anything left
+    /// over stays withdrawable via `storage_withdraw`. Deliberately a view, so a
+    /// client can size a deposit with no key and no deposit of its own.
     pub fn storage_cost_estimate(&self) -> U128 {
-        U128(
-            env::storage_byte_cost().as_yoctonear()
-                * (MANDATE_RECORD_BYTES + CREDIT_SLOT_BYTES * CREDIT_SLOTS_PREPAID) as u128,
-        )
+        U128(env::storage_byte_cost().as_yoctonear() * RECOMMENDED_PREPAY_BYTES as u128)
     }
 
     // ------------------------------------------------------------- the one path
@@ -179,14 +261,21 @@ impl Hallmark {
         let asset = asset_id(&env::predecessor_account_id());
         let action: Action = serde_json::from_str(&msg).expect("msg is not a Hallmark action");
         require!(amount.0 > 0, "empty transfer");
+        let before = env::storage_usage();
 
         match action {
-            Action::Open { terms } => self.open(sender_id, asset, amount.0, terms),
-            Action::Fund { mandate_id } => self.fund(sender_id, mandate_id, asset, amount.0),
+            Action::Open { terms } => self.open(sender_id.clone(), asset, amount.0, terms),
+            Action::Fund { mandate_id } => {
+                self.fund(sender_id.clone(), mandate_id, asset, amount.0)
+            }
             Action::Fill { mandate_id, canonical, signature } => {
-                self.fill(sender_id, asset, amount.0, mandate_id, &canonical, &signature)
+                self.fill(sender_id.clone(), asset, amount.0, mandate_id, &canonical, &signature)
             }
         }
+        // A fill creates credit slots exactly as an open creates a record, so
+        // the filler pays for its own state too. Topping up creates nothing and
+        // therefore costs nothing.
+        self.settle_storage(&sender_id, before);
         U128(0)
     }
 
@@ -222,16 +311,6 @@ impl Hallmark {
             "the quote's recipient must be this vault, or the delivery cannot be verified"
         );
 
-        // The opener pays for the state the opener creates. Charged against a
-        // prepaid balance because `ft_on_transfer` carries no deposit.
-        let charge = self.storage_cost_estimate().0;
-        let prepaid = self.storage_balance.get(&owner).map(|b| b.0).unwrap_or(0);
-        require!(
-            prepaid >= charge,
-            "prepay storage first: call storage_deposit with at least storage_cost_estimate()"
-        );
-        self.storage_balance.insert(owner.clone(), U128(prepaid - charge));
-
         let id = self.next_id;
         self.next_id += 1;
         self.mandates.insert(
@@ -244,9 +323,9 @@ impl Hallmark {
                 fills: 0,
                 worst_bps: 0,
                 open: true,
-                storage_paid: U128(charge),
             },
         );
+        self.open_ids.insert(id);
         env::log_str(&format!(
             r#"EVENT_JSON:{{"standard":"hallmark","version":"1.0.0","event":"mandate_opened","data":[{{"mandate_id":"{id}","owner":"{owner}","escrow":"{amount}"}}]}}"#
         ));
@@ -324,11 +403,15 @@ impl Hallmark {
         let key = (who.clone(), asset.clone());
         let amount = self.credits.get(&key).map(|b| b.0).unwrap_or(0);
         require!(amount > 0, "nothing to withdraw");
-        // Removed, not zeroed. A zeroed slot still occupies storage the vault
-        // paid for, so a filler could mint slots faster than the mandate that
-        // prepaid for them. Removing makes an honest round trip
-        // storage-neutral.
+        // Removed, not zeroed: a zeroed slot still occupies storage somebody
+        // paid for. The bytes are only *really* gone once the payout lands, so
+        // the refund rides along with the callback rather than being credited
+        // here — otherwise a failed payout would restore the slot after its
+        // storage had already been handed back.
+        let before = env::storage_usage();
         self.credits.remove(&key);
+        self.credits.flush();
+        let freed = bytes_to_near(before.saturating_sub(env::storage_usage()));
 
         ext_ft::ext(token_account(&asset))
             .with_attached_deposit(ONE_YOCTO)
@@ -337,23 +420,31 @@ impl Hallmark {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_RESOLVE)
-                    .resolve_withdraw(who, asset, U128(amount)),
+                    .resolve_withdraw(who, asset, U128(amount), U128(freed)),
             )
     }
 
     /// If the transfer failed the credit is restored, so a withdrawal can never
-    /// lose a balance.
+    /// lose a balance. If it succeeded, the storage that slot was using goes
+    /// back to the account that was holding it.
     #[private]
     pub fn resolve_withdraw(
         &mut self,
         who: AccountId,
         asset: String,
         amount: U128,
+        freed: U128,
         #[callback_result] result: Result<(), PromiseError>,
     ) -> bool {
         if result.is_ok() {
+            if freed.0 > 0 && self.storage_balance.contains_key(&who) {
+                let balance = self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0);
+                self.storage_balance.insert(who, U128(balance + freed.0));
+            }
             return true;
         }
+        // The slot comes back, so its storage was never actually released and
+        // must not be refunded.
         let key = (who, asset);
         let current = self.credits.get(&key).map(|b| b.0).unwrap_or(0);
         self.credits.insert(key, U128(current + amount.0));
@@ -363,13 +454,14 @@ impl Hallmark {
     /// Close a mandate and credit the unspent escrow back to its owner. Owner
     /// only. Fills already settled are untouched.
     ///
-    /// The record **stays** — a settled mandate is its own receipt — and so does
-    /// the storage prepayment, because the state is still there. `reap` is what
-    /// returns it, and only once the bytes are actually gone.
+    /// The record **stays** — a settled mandate is its own receipt — so the
+    /// storage it occupies is still occupied. `reap` is what releases it, and
+    /// only once the bytes are actually gone.
     pub fn cancel(&mut self, mandate_id: u64) {
         let rec = self.mandates.get(&mandate_id).expect("no such mandate").clone();
         require!(env::predecessor_account_id() == rec.owner, "not your mandate");
         require!(rec.open, "mandate is already closed");
+        let before = env::storage_usage();
 
         if rec.escrow.0 > 0 {
             self.credit(&rec.owner, &rec.terms.origin_asset, rec.escrow.0);
@@ -377,39 +469,32 @@ impl Hallmark {
         let rec = self.mandates.get_mut(&mandate_id).unwrap();
         rec.escrow = U128(0);
         rec.open = false;
+        self.open_ids.remove(&mandate_id);
+        // Returning the escrow can create a credit slot, so the owner settles
+        // for it like anyone else.
+        self.settle_storage(&env::predecessor_account_id(), before);
         env::log_str(&format!(
             r#"EVENT_JSON:{{"standard":"hallmark","version":"1.0.0","event":"mandate_closed","data":[{{"mandate_id":"{mandate_id}"}}]}}"#
         ));
     }
 
-    /// Delete a closed mandate's record and return the storage it actually
-    /// frees. Owner only.
+    /// Delete a closed mandate's record and return the storage it frees. Owner
+    /// only, and only once the mandate is closed.
     ///
-    /// The refund is the **measured** delta, capped at what was paid. An earlier
-    /// version had `cancel` return the whole prepayment while leaving the
-    /// 296-byte record in place, which made opening and cancelling in a loop a
-    /// slower version of exactly the attack §2.11 exists to stop. Measuring
-    /// rather than assuming is the only way this is safe: whatever is not
-    /// refunded is still covering bytes that are still there.
+    /// The record is kept until the owner asks for it to go, because a settled
+    /// mandate is a receipt a judge or a counterparty may want to read. What
+    /// comes back is the measured delta, by the same rule as everything else.
     pub fn reap(&mut self, mandate_id: u64) -> U128 {
         let rec = self.mandates.get(&mandate_id).expect("no such mandate").clone();
-        require!(env::predecessor_account_id() == rec.owner, "not your mandate");
+        let who = env::predecessor_account_id();
+        require!(who == rec.owner, "not your mandate");
         require!(!rec.open, "cancel the mandate first");
-        require!(rec.storage_paid.0 > 0, "already reaped");
 
-        // `store` collections buffer their writes and flush when the call ends,
-        // so `storage_usage()` right after a `remove` still reports the old
-        // figure and the refund would come out as zero. Flush, then measure.
         let before = env::storage_usage();
         self.mandates.remove(&mandate_id);
-        self.mandates.flush();
-        let freed = before.saturating_sub(env::storage_usage()) as u128
-            * env::storage_byte_cost().as_yoctonear();
-        let refund = freed.min(rec.storage_paid.0);
-
-        let prepaid = self.storage_balance.get(&rec.owner).map(|b| b.0).unwrap_or(0);
-        self.storage_balance.insert(rec.owner.clone(), U128(prepaid + refund));
-        U128(refund)
+        let was = self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0);
+        self.settle_storage(&who, before);
+        U128(self.storage_balance.get(&who).map(|b| b.0).unwrap_or(0).saturating_sub(was))
     }
 
     fn credit(&mut self, who: &AccountId, asset: &str, amount: u128) {
@@ -423,19 +508,22 @@ impl Hallmark {
     // The proof surface. Every guarantee in ARCHITECTURE.md can be exercised
     // here with no key, no funds and no deposit.
 
-    /// What fillers read.
+    /// The order book: open mandates only, in id order.
+    ///
+    /// Reads the open-id index rather than scanning every mandate ever created,
+    /// so what this costs tracks what the vault is *holding* rather than what it
+    /// remembers (§2.12).
     pub fn get_mandates(
         &self,
         from_index: Option<u64>,
         limit: Option<u64>,
     ) -> Vec<(u64, MandateRecord)> {
-        let from = from_index.unwrap_or(0);
-        self.mandates
-            .iter()
-            .filter(|(_, r)| r.open)
-            .skip(from as usize)
+        let mut ids: Vec<u64> = self.open_ids.iter().copied().collect();
+        ids.sort_unstable();
+        ids.into_iter()
+            .skip(from_index.unwrap_or(0) as usize)
             .take(limit.unwrap_or(50) as usize)
-            .map(|(id, r)| (*id, r.clone()))
+            .filter_map(|id| self.mandates.get(&id).map(|r| (id, r.clone())))
             .collect()
     }
 
@@ -443,10 +531,16 @@ impl Hallmark {
         self.mandates.get(&mandate_id).cloned()
     }
 
-    /// How many mandates have ever been opened. `get_mandates` scans from the
-    /// start, so a caller that needs to page knows the bound.
+    /// How many mandates have ever been opened, including closed and reaped
+    /// ones. Ids are never reused.
     pub fn mandate_count(&self) -> u64 {
         self.next_id - 1
+    }
+
+    /// How many are open right now — the length of the order book, and the
+    /// bound on what `get_mandates` costs.
+    pub fn open_mandate_count(&self) -> u32 {
+        self.open_ids.len()
     }
 
     pub fn get_credit(&self, account_id: AccountId, asset: String) -> U128 {
@@ -509,10 +603,18 @@ impl Hallmark {
     }
 }
 
-/// A mandate record, borsh-encoded, rounded up. Measured by
-/// `opening_a_mandate_is_paid_for_by_its_owner`, which fails if it is ever an
-/// underestimate.
-const MANDATE_RECORD_BYTES: u64 = 512;
+/// A mandate record measures ~300 bytes and a credit slot ~145, so this covers
+/// a mandate, its index entry, and several fills with room to spare. Nothing in
+/// the contract charges this figure — see `storage_cost_estimate`.
+const RECOMMENDED_PREPAY_BYTES: u64 = 1_024;
+
+/// NEAR stakes a fixed amount of an account's balance per byte of state it
+/// holds. This is the only conversion in the contract, and every storage charge
+/// and refund goes through it.
+fn bytes_to_near(bytes: u64) -> u128 {
+    bytes as u128 * env::storage_byte_cost().as_yoctonear()
+}
+
 /// A sanity bound, not a policy. The contract's job is to enforce the age the
 /// owner committed to, not to pick it — a tight bound is the client's default
 /// (300 s) and is visible in `get_mandates` for anyone to read. What this stops

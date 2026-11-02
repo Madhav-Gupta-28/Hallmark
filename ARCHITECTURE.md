@@ -1323,22 +1323,26 @@ the classic off-by-one-day bug) and
 #[near(contract_state)]
 pub struct Hallmark {
     mandates:        IterableMap<u64, MandateRecord>,
+    open_ids:        IterableSet<u64>,                      // the order book — §2.12
     credits:         LookupMap<(AccountId, String), U128>,  // (who, token) → claimable
     storage_balance: LookupMap<AccountId, U128>,            // prepaid, per account
     next_id:         u64,
 }
 
 pub struct MandateRecord {
-    owner:        AccountId,
-    terms:        Mandate,
-    escrow:       U128,   // remaining origin base units
-    delivered:    U128,   // destination base units credited so far
-    fills:        u32,
-    worst_bps:    u32,    // worst realised cost across this mandate's fills
-    open:         bool,
-    storage_paid: U128,   // returned to the owner's balance by `cancel`
+    owner:     AccountId,
+    terms:     Mandate,
+    escrow:    U128,   // remaining origin base units
+    delivered: U128,   // destination base units credited so far
+    fills:     u32,
+    worst_bps: u32,    // worst realised cost across this mandate's fills
+    open:      bool,
 }
 ```
+
+Measured, not estimated: a record is **296 bytes**, an open-id index entry
+**~190**, a credit slot **145**, and a prepaid-storage row **74**. Every one of
+those is charged to whoever caused it (§2.11).
 
 `IterableMap` for mandates because fillers must enumerate them; `LookupMap` for
 credits because nobody needs to iterate those and iteration is what makes NEAR
@@ -1356,13 +1360,15 @@ Checked against `contract/src/lib.rs`; nothing is exported that is not listed.
 | `storage_withdraw(amount?)` | call, payable | take back what no mandate is using |
 | `ft_on_transfer` | call | **the only path that moves value.** NEP-141 calls it; `msg` carries the action |
 | `withdraw(asset)` | call, payable | pull a credited balance; pull-not-push by design (§4.1) |
-| `resolve_withdraw` | private | restores the credit if the payout failed |
+| `resolve_withdraw` | private | restores the credit if the payout failed; returns the slot's storage if it did not |
+| `resolve_storage_withdraw` | private | restores a prepaid balance if paying it out failed |
 | `cancel(mandate_id)` | call | owner only; credits the unspent escrow back. Keeps the record and its storage |
 | `reap(mandate_id)` | call | owner only, closed mandates only; deletes the record and refunds the storage it frees (§2.11) |
 | `get_mandates(from_index, limit)` | **view** | the order book — open mandates only |
 | `get_mandate(mandate_id)` | **view** | one record, open or closed |
 | `get_credit(account_id, asset)` | **view** | what an account can withdraw |
-| `mandate_count()` | **view** | how many have ever been opened, so a caller can page |
+| `mandate_count()` | **view** | how many have ever been opened; ids are never reused |
+| `open_mandate_count()` | **view** | the length of the order book (§2.12) |
 | `storage_balance_of(account_id)` | **view** | prepaid storage |
 | `storage_cost_estimate()` | **view** | what `open` will charge, before paying it |
 | `quote_age_secs(canonical)` | **view** | how old the venue's signature is, as the chain sees it (§2.10) |
@@ -1372,8 +1378,8 @@ Checked against `contract/src/lib.rs`; nothing is exported that is not listed.
 | `dry_check(canonical, signature, terms, delivered)` | **view** | allowed or refused, and why |
 | `quote_signer()` | **view** | the key the contract trusts |
 
-Twenty methods exported in total, and nothing exported that is not in the table
-above — checked by extracting every `pub fn` from the `#[near] impl` and diffing
+Twenty-three methods exported in total, and nothing exported that is not in the
+table above — checked by extracting every `pub fn` from the `#[near] impl` and diffing
 it against this section.
 
 `ft_on_transfer`'s `msg` is a tagged enum, and **which variant is legal depends
@@ -1923,6 +1929,21 @@ races (§12).
    execution.
 10. **Liveness depends on 1Click.** If the API stops signing, Hallmark stops
    filling. It never stops *refusing*, which is the safe direction.
+
+   > **Observed, not theorised.** On 2026-11-02 the 1Click API returned
+   > **HTTP 521** (a Cloudflare "origin down") for an extended period —
+   > `/v0/tokens` and `/v0/quote` both. During the outage: no quote could be
+   > obtained, so **no fill could happen**; and every keyless view on
+   > `hallmarkfi.near` kept answering, so the vault kept *refusing* exactly as
+   > it would have anyway. The failure mode is the documented one.
+   >
+   > It also found a real gap on our side: `post.ts` resolved asset symbols
+   > through `/v0/tokens`, so **posting a mandate — which needs nothing from
+   > 1Click at all — failed with the outage.** Depending on a venue to learn
+   > that wNEAR has 24 decimals is a bug. `nearAsset` now takes a full
+   > `nep141:…` id with no network call, and falls back to reading `ft_metadata`
+   > off the token contract itself. Mandate #1 on v3 was posted during the
+   > outage to prove it.
 11. **The filler needs capital** (§6.4). This is the deliberate cost of closing
     the `depositAddress` hole.
 12. **Three fillers, all written by us or adapted by us** — there is no

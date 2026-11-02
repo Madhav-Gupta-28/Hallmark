@@ -37,11 +37,16 @@ Building with `--no-abi` saves 2 KB and nothing else is low-hanging, so treat
 > the deploy burns its own gas from the same account, and `new` writes contract
 > state. Fund with **2.5 NEAR** and it goes through first time.
 
-### The mandate's own storage, 0.0154 NEAR
+### The mandate's own storage, about 0.003 NEAR
 
-Opening a mandate costs the opener about **0.01536 NEAR** of storage staking,
-prepaid with `storage_deposit` and returned by `cancel` (§2.11). One payment
-covers however many mandates you open and close in sequence.
+Whoever creates state on the vault pays for it, exactly — see §2.11. Opening a
+mandate writes a ~300 byte record, so it costs the opener about **0.003 NEAR**,
+and `reap` gives it back once the record is deleted. Filling charges the filler
+for the credit slots the fill creates, on the same rule.
+
+You prepay once with `storage_deposit` and the contract deducts what each call
+actually uses, so one deposit covers many mandates and many fills.
+`storage_withdraw` returns whatever is left.
 
 ### Everything else is small
 
@@ -64,7 +69,7 @@ Almost all of it — **unless you run §11.**
 | | NEAR | recoverable? |
 |---|---|---|
 | vault storage lock | 2.57 | **yes** — `delete-account beneficiary YOU` returns the whole balance |
-| mandate storage | 0.0154 | **mostly** — `cancel`, then `reap`, then `storage_withdraw` |
+| mandate storage | ~0.003 | **yes** — `cancel`, then `reap`, then `storage_withdraw` |
 | `storage_deposit` × 4 | 0.005 | yes — `storage_unregister` on each token |
 | the trade legs | 0.2 | yes — unwrap the wNEAR, swap the USDT back |
 | gas, burned | ~0.09 | no |
@@ -302,15 +307,21 @@ a cheap denial-of-service. Ask the contract what it will charge, then prepay it:
 ```bash
 near contract call-function as-read-only hallmarkfi.near storage_cost_estimate \
   json-args '{}' network-config mainnet now
-# "15360000000000000000000"   -> 0.01536 NEAR
+# "10240000000000000000000"   -> 0.01024 NEAR
 
 near contract call-function as-transaction hallmarkfi.near storage_deposit \
-  json-args '{}' prepaid-gas '30 Tgas' attached-deposit '0.0154 NEAR' \
+  json-args '{}' prepaid-gas '30 Tgas' attached-deposit '0.0103 NEAR' \
   sign-as YOU.near network-config mainnet sign-with-keychain send
 ```
 
-Paid once, not per mandate: the next `open` reuses whatever is left, and
-`reap(mandate_id)` on a cancelled mandate returns the rest.
+`storage_cost_estimate` is a **recommendation, not a price**: it comfortably
+covers one mandate and the fills against it. What the contract takes is the
+measured cost of the state each call creates — about 0.003 NEAR for a mandate —
+and the remainder stays yours. `storage_withdraw` returns it, `reap` returns a
+deleted record's share, and the next `open` reuses whatever is sitting there.
+
+**A filler needs one of these too**, because a fill creates credit slots. One
+deposit per filler, reusable.
 `npm run post` does all of this for you and skips it when the balance already
 covers the next mandate — this section is here so the number is not a surprise.
 

@@ -85,11 +85,39 @@ export async function getTokens(): Promise<TokenInfo[]> {
 }
 
 /**
+ * Decimals for the NEAR-settled assets this repo actually uses, so posting a
+ * mandate does not depend on the venue being up.
+ *
+ * Observed on 2026-11-02: `1Click` answered HTTP 521 for an extended period and
+ * every call that went through `/v0/tokens` failed with it — including posting a
+ * mandate, which needs nothing from 1Click at all. Depending on a venue to
+ * learn that wNEAR has 24 decimals is a gap, not a feature. An explicit
+ * `nep141:…` id now skips the lookup entirely.
+ */
+const KNOWN: Record<string, { symbol: string; decimals: number }> = {
+  "nep141:wrap.near": { symbol: "wNEAR", decimals: 24 },
+  "nep141:usdt.tether-token.near": { symbol: "USDT", decimals: 6 },
+  "nep141:usdc.near": { symbol: "USDC", decimals: 6 },
+  "nep141:eth.bridge.near": { symbol: "ETH", decimals: 18 },
+};
+
+/**
  * Resolve a ticker to the asset settling on NEAR, which is what a vault can
  * hold. `NEAR` is accepted as an alias for `wNEAR`, since that is what anyone
  * types. Of 210 listed assets, 34 settle on NEAR.
+ *
+ * A full `nep141:…` asset id is returned as-is, with no network call — which is
+ * what you want when the venue is down, and what a filler reading a mandate
+ * already has in hand.
  */
 export async function nearAsset(symbol: string): Promise<TokenInfo> {
+  if (symbol.startsWith("nep141:")) {
+    const known = KNOWN[symbol];
+    if (known) return { assetId: symbol, blockchain: "near", ...known };
+    // Unknown id: ask the token contract itself rather than the venue.
+    const meta = await nep141Metadata(symbol.slice("nep141:".length));
+    return { assetId: symbol, blockchain: "near", ...meta };
+  }
   const want = symbol.toLowerCase() === "near" ? "wnear" : symbol.toLowerCase();
   const onNear = (await getTokens()).filter((t) => t.blockchain === "near");
   const hit = onNear.find((t) => t.symbol.toLowerCase() === want);
@@ -98,6 +126,33 @@ export async function nearAsset(symbol: string): Promise<TokenInfo> {
     throw new Error(`no NEAR-settled asset for ${symbol}. Known: ${known}`);
   }
   return hit;
+}
+
+/** `ft_metadata` straight off the token, keyless. No dependency on 1Click. */
+export async function nep141Metadata(
+  tokenAccountId: string,
+  rpc = process.env.NEAR_RPC ?? "https://rpc.mainnet.near.org",
+): Promise<{ symbol: string; decimals: number }> {
+  const res = await fetch(rpc, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "query",
+      params: {
+        request_type: "call_function",
+        finality: "final",
+        account_id: tokenAccountId,
+        method_name: "ft_metadata",
+        args_base64: Buffer.from("{}").toString("base64"),
+      },
+    }),
+  });
+  const body = await res.json();
+  if (body.result?.error) throw new Error(`ft_metadata on ${tokenAccountId}: ${body.result.error}`);
+  const meta = JSON.parse(Buffer.from(body.result.result).toString());
+  return { symbol: meta.symbol, decimals: meta.decimals };
 }
 
 /**

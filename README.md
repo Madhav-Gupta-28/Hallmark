@@ -121,7 +121,29 @@ canonical bytes, and `web/index.html` is short enough to read in full.
 
 Deploys to any static host as-is.
 
-## 5. Post a mandate, and fill one
+## 5. Watch three different agents price the same mandate
+
+```bash
+cd client && npm run race
+```
+
+**See:** three independently-written fillers looking at one live signed quote,
+disagreeing about strategy and landing inside the same bound — and the invariant
+computed three ways, by the reference client, by an implementation written from
+the spec alone, and by the contract.
+
+| | strategy | written from |
+|---|---|---|
+| `src/bin/fill.ts` | splits the spread | the architecture |
+| `src/fillers/edge.ts` | patient — needs a minimum edge, computes the cost itself | **§2.1 and §5.3 alone**, without reading `fill.ts` |
+| `src/fillers/adapted.ts` | the official NEAR Intents agent flow, pointed at a vault | [`near/agent-skills`](https://github.com/near/agent-skills), skill `near-intents` |
+
+`adapted.ts` is NEAR's own `rules/server-example.md` with four changes, marked
+`[1]`..`[4]` in the source. The biggest one: the official agent sends the
+*origin* asset to a `depositAddress`; a filler sends the *destination* asset to
+the vault, because `depositAddress` is not covered by the venue's signature.
+
+## 6. Post a mandate, and fill one
 
 Needs a key and funds. Mainnet only — there is no Intents testnet.
 
@@ -131,9 +153,14 @@ HALLMARK_ACCOUNT=you.near HALLMARK_KEY=ed25519:... \
   npm run post -- NEAR USDT 0.1 --ceiling 300 --max-quote-age 300
 
 # anyone, repeatedly
-npm run fill -- --dry        # price every open mandate, send nothing
+npm run fill -- --dry            # price every open mandate, send nothing
+npm run fill:edge -- --audit     # the independent filler, nothing sent
+npm run fill:adapted -- --dry    # the adapted official agent, nothing sent
 HALLMARK_ACCOUNT=filler.near HALLMARK_KEY=ed25519:... npm run fill
 ```
+
+A filler prepays storage too — whoever creates state pays for it, including the
+credit slots a fill creates. One deposit, reusable.
 
 **See:** [`DEPLOY.md`](DEPLOY.md) — step by step, with the real costs, and what
 comes back.
@@ -143,7 +170,8 @@ comes back.
 | | |
 |---|---|
 | a whole fill, on mainnet | **30.25 TGas** — 10% of one transaction's limit |
-| opening a mandate | **0.01536 NEAR** of storage, reusable, and `reap` returns what it frees |
+| opening a mandate | the **measured** cost of its record, ~0.003 NEAR, returned by `reap` |
+| filling one | the measured cost of the credit slots it creates, charged to the filler |
 | the contract | 257,314 bytes, which NEAR stakes 2.57 NEAR against |
 
 ## Layout

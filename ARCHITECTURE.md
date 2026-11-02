@@ -496,82 +496,139 @@ cannot write state at all.** Not just new mandates: every `fill`, every
 protocol could stop it, and after the full-access key is deleted (§10.2) nobody
 could clear the junk.
 
-The fix is the oldest rule on NEAR, which v1 skipped: **whoever creates state
-pays for it.**
+The fix is the oldest rule on NEAR, which v1 skipped, in one sentence:
+
+> **Whoever causes a byte to be written pays for that byte, exactly.**
 
 | method | kind | effect |
 |---|---|---|
-| `storage_deposit(account_id?)` | call, payable | prepay. One deposit covers many mandates |
-| `storage_withdraw(amount?)` | call, payable | take back whatever no mandate is using |
+| `storage_deposit(account_id?)` | call, payable | prepay. One deposit covers many mandates and many fills, and it pays for its own ledger entry |
+| `storage_withdraw(amount?)` | call, payable | take back whatever is not in use |
 | `storage_balance_of(account_id)` | **view** | what is prepaid |
-| `storage_cost_estimate()` | **view** | exactly what `open` will charge, before paying it |
-| `reap(mandate_id)` | call | delete a closed record and return the storage it actually frees |
+| `storage_cost_estimate()` | **view** | a *recommended* deposit — see below |
+| `reap(mandate_id)` | call | delete a closed record and get back the storage it frees |
 
-`open` deducts the charge from the opener's prepaid balance and refuses with
-*"prepay storage first"* if it is short. Attacker leverage goes from roughly
-10× to exactly 1×, which is the only number that is actually safe.
+There is exactly one implementation of the rule, `settle_storage`, and every
+path that mutates state ends in it:
 
-> **Correction kept — the first version of this fix had a smaller copy of the
-> same bug.** `cancel` returned the *whole* prepayment while leaving the record
-> in place. A mandate record measures **296 bytes**, so opening and cancelling
-> in a loop cost the vault 296 bytes a cycle and refunded the owner in full:
-> about 5× leverage instead of 10×, which is not a fix. It was caught by
-> printing real `storage_usage` deltas rather than trusting the arithmetic.
+```rust
+fn settle_storage(&mut self, who: &AccountId, before: u64) {
+    self.mandates.flush();
+    self.open_ids.flush();
+    self.credits.flush();
+    let after = env::storage_usage();
+    if after > before {
+        let owed = bytes_to_near(after - before);
+        require!(balance >= owed, "prepay storage first: …");
+        // deduct
+    } else if before > after {
+        // credit back bytes_to_near(before - after)
+    }
+}
+```
+
+Nothing is estimated and nothing is rounded into an allowance. The figure is the
+**measured** difference in `env::storage_usage()`, so:
+
+- `open` charges the owner for the record and its index entry — ~300 bytes;
+- `fill` charges **the filler** for the credit slots the fill creates, which is
+  what makes a mandate's exposure to fillers bounded rather than unbounded;
+- `fund` creates nothing, so it costs nothing;
+- `withdraw` releases a slot and returns its bytes — but only in the callback,
+  **after the payout actually lands**, because a failed payout puts the slot
+  back and its storage was therefore never released;
+- `cancel` settles the **net**: it removes the open-id index entry and may
+  create a credit slot for the returned escrow, so it can land either way —
+  measured, 39 bytes come *back*, because the index entry is larger than the
+  slot. What it never does is hand back the record's storage, because the record
+  is still there;
+- `reap` returns precisely the bytes deleting the record frees.
+
+Attacker leverage goes from roughly 10× to exactly **1×**, which is the only
+number that is actually safe, and `storage_cost_estimate()` stops being a price
+and becomes a recommendation: deposit ~0.01 NEAR, get charged what you use,
+withdraw the rest.
+
+> **Two corrections kept, because both earlier versions of this fix were wrong
+> and both were caught the same way — by measuring instead of reasoning.**
 >
-> `cancel` now returns nothing — the record is still there, and a settled
-> mandate is its own receipt — and a separate `reap` deletes a closed record and
-> refunds **the measured delta, capped at what was paid**. Measuring rather than
-> assuming is what makes it safe: whatever is not refunded is still covering
-> bytes that are still there.
+> **(a)** The first attempt charged a fixed `512 + 4 × 256` bytes at `open` and
+> had `cancel` return the whole prepayment while leaving the **296-byte** record
+> in place. Opening and cancelling in a loop therefore still cost the vault 296
+> bytes a cycle and refunded the owner in full: 5× leverage instead of 10×,
+> which is not a fix. A mandate record measures 296 bytes and a credit slot 145;
+> neither number was knowable without running it.
 >
-> One more trap inside the trap: `near_sdk::store` collections buffer their
-> writes and flush when the call ends, so `storage_usage()` immediately after a
-> `remove` still reports the old figure and the refund came out as **zero**.
-> `reap` calls `self.mandates.flush()` before measuring.
+> **(b)** The second attempt kept the fixed charge but split `cancel` and
+> `reap`. That closed the loop but left ~0.0118 NEAR per cycle unrefunded and
+> still had a residual hole: the allowance covered about seven credit slots, and
+> a mandate could attract more fillers than that. Exact accounting removes the
+> hole and the overcharge together, and deletes three magic constants and a
+> struct field with them.
+>
+> The test that would have caught both is now the first one in the list:
+> `the_vault_never_pays_for_state_someone_else_created` asserts
+> `charged == grew`, as an equality, not an inequality.
 
-One related change, in the same spirit: `withdraw` now **removes** its credit
-slot rather than writing a zero into it. A zeroed slot still occupies storage
-the vault paid for, and a filler could mint slots faster than the mandate that
-prepaid for them. Removing makes an honest round trip storage-neutral.
+**The one piece of inexactness that remains, stated.** A fill charges the filler
+for *both* credit slots it creates — its own and the owner's. When the owner
+later withdraws, the owner is credited for releasing a slot the filler paid for:
+about 0.00145 NEAR, moving from filler to owner. It is a transfer between
+participants and never a loss to the vault, so the invariant holds; and it
+cannot be farmed, because every such transfer requires a fill, and a fill costs
+the filler a real delivery and earns it the spread — orders of magnitude more
+than 0.00145 NEAR either way. Attributing slots to payers would need a per-slot
+payer field, which is itself more state than the problem is worth.
 
-The cost to an honest owner is one extra transaction, once, of
-**0.01536 NEAR** — the same shape as the `storage_deposit` every NEP-141 token
-already requires before it will hold a balance for you. `post.ts` does it
-automatically and skips it when the balance already covers the next mandate.
+Seven tests pin this, all of them on-chain and all of them **measuring** the
+vault rather than trusting the arithmetic:
 
-**The charge is deliberately conservative, and the surplus is not refunded.**
-Measured on mainnet across a full `open → cancel → reap → storage_withdraw`
-cycle:
+| test | asserts |
+|---|---|
+| `the_vault_never_pays_for_state_someone_else_created` | over three open+cancel cycles, `charged == grew`, exactly |
+| `a_filler_pays_for_the_state_its_fill_creates` | a filler with no prepayment is refused and refunded; with one, it is charged precisely what its fill created |
+| `funding_a_mandate_creates_no_state_and_is_charged_nothing` | `fund` is free because it writes nothing new |
+| `a_storage_deposit_pays_for_its_own_ledger_entry` | the deposit covers its own row |
+| `opening_a_mandate_has_to_be_paid_for` | no prepayment ⇒ refused and refunded |
+| `a_withdrawal_releases_the_storage_it_was_using` | the slot is removed, not zeroed |
+| `reaping_returns_only_the_storage_it_actually_frees` | `cancel` returns nothing, `reap` returns exactly the bytes freed, and reaping twice refuses |
 
-| | bytes | NEAR |
-|---|---|---|
-| charged at `open` | 1,536 | 0.01536 |
-| the mandate record itself | 296 | 0.00296 |
-| one credit slot, measured | 145 | 0.00145 |
-| returned by `reap` | 359 | 0.00359 |
+### 2.12 The order book costs what the vault holds, not what it remembers
 
-So an owner pays about **0.0118 NEAR per mandate cycle** that does not come
-back. That buys slack for the credit slots a mandate's fills will create: 1,024
-bytes of allowance against ~145 bytes a slot is room for **about seven**.
+v1 and v2 answered `get_mandates` by walking **every mandate ever created** and
+discarding the closed ones:
 
-Why a fixed allowance rather than exact accounting: a credit slot is created by
-a *fill*, and `ft_on_transfer` carries no deposit, so a filler cannot be charged
-in NEAR at the moment it creates one. A mandate with more than ~7 distinct
-fillers who never withdraw would exceed its allowance and the vault would
-subsidise the excess. That is **a stated limit, not a closed hole** (§14): each
-extra slot costs the filler a real token delivery and the forfeiture of the
-credit it earned, so the leverage runs the wrong way for an attacker — which is
-the property that matters, and is why this is left as slack rather than as a
-second accounting system.
+```rust
+self.mandates.iter().filter(|(_, r)| r.open).skip(from).take(limit)
+```
 
-Six tests pin this, all of them on-chain:
-`opening_a_mandate_has_to_be_paid_for`,
-`the_charge_for_a_mandate_covers_what_it_actually_stores` (which fails if the
-charge is ever an underestimate of real measured bytes),
-`a_withdrawal_releases_the_storage_it_was_using`,
-`cancelling_returns_the_prepaid_storage`,
-`unused_prepaid_storage_can_be_taken_back`, and
-`only_the_owner_can_fund_and_only_a_live_mandate`.
+That is O(all mandates), not O(what is open). It is correct and it gets slower
+forever. With ten mandates it is instant; with fifty thousand, the call has to
+load and decode fifty thousand records to hand back fifty, and a view call has a
+gas budget — so past some size **the only way a filler can find work stops
+answering at all**, and so does the proof page.
+
+Not a security hole: with storage now prepaid (§2.11) nobody can inflate that
+number cheaply, so it is a wall the product only hits by succeeding. Which is
+exactly why it is worth fixing before launch rather than after.
+
+The fix is an index of the ids that are open:
+
+```rust
+open_ids: IterableSet<u64>,
+```
+
+`open` inserts, `cancel` removes, and `get_mandates` reads the index and fetches
+only those records — so the cost tracks the length of the **book**, which is
+bounded by real economic activity, instead of the vault's whole history. Ids are
+never reused, `mandate_count()` still reports how many have ever existed, and
+`open_mandate_count()` reports the book's length so a caller can size a page.
+
+`the_order_book_tracks_what_is_open_not_what_ever_existed` opens eight, closes
+seven, reaps one, and asserts the index and the records never disagree —
+including that pagination runs off the index and in id order.
+
+
 ---
 
 ## §3 Verified chain facts
@@ -1078,6 +1135,9 @@ storage-registered on a token cannot brick a fill.
 | `client/src/bin/bound.ts` | TypeScript | what a live quote actually guarantees. No key, no funds |
 | `client/src/bin/post.ts` | TypeScript | the owner: prepay storage, post a mandate |
 | `client/src/bin/fill.ts` | TypeScript | the reference filler: read mandates → quote → deliver |
+| `client/src/fillers/edge.ts` | TypeScript | an independent filler, written from §2.1 and §5.3 alone |
+| `client/src/fillers/adapted.ts` | TypeScript | NEAR's own official Intents agent, pointed at a vault (§6.2) |
+| `client/src/fillers/race.ts` | TypeScript | all three price one mandate; cross-checks the arithmetic three ways |
 | `web/index.html` | one static file | the proof page. **No framework, no backend, no dependency, zero external scripts** |
 | `test-token/` | Rust | NEP-141 + full NEP-145, so a payout can be made to fail on purpose |
 
@@ -1367,14 +1427,18 @@ all of its work.** Hallmark's guarantee is not "someone will trade for me"; it i
 "I need not trust whoever does." One owner and one agent is already a complete
 product. No network is required for the mechanism to be sound (§1.5).
 
-**2. The demonstrated supply side today is one reference filler**
-(`client/src/bin/fill.ts`), and the plan is three: a second written
-independently, competing for the same mandate, plus one adapted from NEAR's own
-official agent material, with the diff shown so a judge can see how a
-stranger's agent becomes a filler. The second and third are **outstanding** —
-build order step 6 is marked ◐ for this reason, and §14 lists it. An earlier
-draft of this section described all three in the present tense, which was a
-claim about the future written as a statement about the repo.
+**2. The demonstrated supply side is three fillers, and no more is claimed.**
+They are deliberately not three copies of each other:
+
+| | strategy | written from | what it proves |
+|---|---|---|---|
+| `bin/fill.ts` | splits the spread — delivers halfway between the venue's floor and its expected fill | the architecture | the reference. Asks the contract for a verdict before spending anything |
+| `fillers/edge.ts` | **patient**: fills only when the spread it keeps clears a floor it sets itself, and computes the cost itself instead of asking the contract | **§2.1 and §5.3 alone**, without reading `fill.ts` | an independent implementation of the invariant. It prints its own number beside the contract's on every live quote, so the agreement is checkable rather than asserted — and it exits non-zero if they ever differ |
+| `fillers/adapted.ts` | the official NEAR Intents agent flow, pointed at a vault | `near/agent-skills`, skill `near-intents` | what a stranger's agent must change to become a filler. The diff is the claim |
+
+`npm run race` has all three price the same live mandate side by side, and
+cross-checks the arithmetic three ways — the reference client, the independent
+implementation, and the contract itself.
 
 > **Correction kept — the artifact to adapt is not what this section called
 > it.** Earlier drafts said "NEAR's own official DeFi starter prompt". Searched
@@ -1389,11 +1453,32 @@ claim about the future written as a statement about the repo.
 >
 > That is a better anchor than a prompt, and it sharpens the point: the skill
 > teaches an agent the flow `/v0/tokens → /v0/quote (dry) → /v0/quote (wet) →
-> deposit tx → /v0/status`. **A Hallmark filler is that flow with the deposit
-> step pointed at a vault instead of a `depositAddress`, plus reading open
-> mandates.** The honest size of that diff is the ~20 lines already recorded
-> below, and it is work that has not been done yet rather than work being
-> claimed.
+> deposit tx → /v0/deposit/submit → /v0/status`. **A Hallmark filler is that
+> flow with the deposit step pointed at a vault instead of a `depositAddress`,
+> plus reading open mandates.**
+
+**Built: `client/src/fillers/adapted.ts`.** It is `rules/server-example.md`'s
+`executeSwap` with four changes and nothing else, marked `[1]`..`[4]` in the
+source:
+
+| # | the official agent | a Hallmark filler | why |
+|---|---|---|---|
+| 1 | is **told** what to swap | reads `get_mandates()` — a keyless view — and takes the pair, size and ceiling from the mandate | the work comes from the chain |
+| 2 | `recipient` is the agent | `recipient` is the **vault** | `recipient` is inside the signature, so a quote addressed elsewhere is refused `WrongRecipient` |
+| 3 | `dry: false`, then sends the **origin** asset to `quote.depositAddress` | `dry: true`, then sends the **destination** asset to the vault with the signed quote in `msg` | **the load-bearing one.** `depositAddress` is unsigned (§2.4), so a filler should not trust it and the vault must not |
+| 4 | `submitDeposit` then `pollStatus` until `SUCCESS \| FAILED \| REFUNDED` | neither — the fill settles inside `ft_on_transfer`, so the receipt *is* the terminal state | nothing to poll, and nothing in flight |
+
+Unchanged: the API base, the quote request shape, `slippageTolerance`, asset ids
+from `/v0/tokens`, and reading `amountOut` / `minAmountOut` off a signed quote.
+An agent that already speaks 1Click keeps all of it.
+
+One thing the adaptation exposes that is worth saying out loud: **the official
+flow uses 1Click as an execution venue; a filler uses it as a price oracle whose
+word can be proved.** Same API, opposite direction of trust.
+
+> **Correction kept.** An earlier claim said any official-prompt agent becomes a
+> filler "by changing one line." That is false. The diff above is four changes
+> across roughly 40 lines — plus a reason to care.
 
 > **Correction kept.** An earlier claim said any official-prompt agent becomes a
 > filler "by changing one line." That is false. It is roughly **20 lines** — read
@@ -1629,7 +1714,7 @@ Each one names what enforces it and what checks it.
 | 12 | The USD marks a cost is computed from are no older than the owner allowed (§2.10) | `now_secs > signed_at + max_quote_age_secs` refuses, against the **signed** `timestamp` | `the_freshness_bound_is_exact_to_the_second`, `a_quote_older_than_the_mandate_allows_is_refused_on_chain` |
 | 13 | No field the counterparty chooses is ever used as a bound | `depositAddress` unread (§2.4); `deadline` is a deadline, never a freshness test (§2.10) | audited: `deadline` is compared only against itself; `max_quote_age_secs` is compared against `timestamp` |
 | 14 | The vault never stakes NEAR for state a stranger created (§2.11) | `open` deducts the measured cost from the opener's prepaid balance | `opening_a_mandate_has_to_be_paid_for`, `the_charge_for_a_mandate_covers_what_it_actually_stores` |
-| 15 | The vault's storage is always covered by a prepayment that has not been refunded | `withdraw` removes the credit slot; `cancel` refunds nothing; `reap` refunds only the **measured** bytes freed, capped at what was paid | `a_withdrawal_releases_the_storage_it_was_using`, `opening_and_cancelling_in_a_loop_does_not_drain_the_vault`, `reaping_returns_only_the_storage_it_actually_frees` |
+| 15 | The vault's storage is always covered by a prepayment that has not been refunded | `withdraw` removes the credit slot; `cancel` refunds nothing; `reap` refunds only the **measured** bytes freed, capped at what was paid | `a_withdrawal_releases_the_storage_it_was_using`, `the_vault_never_pays_for_state_someone_else_created`, `reaping_returns_only_the_storage_it_actually_frees` |
 | 16 | A signature is 64 bytes or it is refused | `decode_signature` returns `None` on any other length | `a_signature_is_sixty_four_bytes_or_nothing` |
 
 ---
@@ -1705,9 +1790,13 @@ whose key nobody has.)
 | `opening_a_mandate_has_to_be_paid_for` | **§2.11**: no prepayment ⇒ refused and refunded; prepay ⇒ works, and the prepayment is spent exactly |
 | `the_charge_for_a_mandate_covers_what_it_actually_stores` | measures real `storage_usage` growth; fails if the charge is ever an underestimate |
 | `a_withdrawal_releases_the_storage_it_was_using` | the credit slot is removed, not zeroed |
-| `opening_and_cancelling_in_a_loop_does_not_drain_the_vault` | measures both sides over three cycles; the first version of the §2.11 fix failed this |
-| `reaping_returns_only_the_storage_it_actually_frees` | `cancel` refunds nothing, `reap` refunds the measured delta, a reaped mandate is gone, reaping twice refuses |
+| `the_vault_never_pays_for_state_someone_else_created` | **the §2.11 invariant**: over three open+cancel cycles, what the owner was charged equals what the vault grew by, as an equality. Both earlier versions of the fix failed this |
+| `a_filler_pays_for_the_state_its_fill_creates` | an unknown filler with no prepayment is refused and refunded; with one, it is charged precisely what its fill created |
+| `funding_a_mandate_creates_no_state_and_is_charged_nothing` | `fund` writes nothing new, so it costs nothing |
+| `a_storage_deposit_pays_for_its_own_ledger_entry` | the deposit covers its own row — 74 bytes, measured |
+| `reaping_returns_only_the_storage_it_actually_frees` | `cancel` settles the net delta and keeps the record; `reap` returns exactly the bytes freed; a reaped mandate is gone; reaping twice refuses |
 | `reap_is_owner_only_and_needs_a_closed_mandate` | authority, and ordering |
+| `the_order_book_tracks_what_is_open_not_what_ever_existed` | **§2.12**: eight opened, seven closed, one reaped — the index and the records never disagree, ids are never reused, and pagination runs off the index in id order |
 | `unused_prepaid_storage_can_be_taken_back` | `storage_withdraw`, and that `open` then refuses |
 | `only_the_owner_can_fund_and_only_a_live_mandate` | a stranger's top-up is refused and refunded; an expired mandate takes no money |
 
@@ -1756,15 +1845,18 @@ run in three does not support it.**
 | 3 | **done** — `withdraw`, `cancel`, `get_mandates` | ✓ |
 | 4 | **done** — `near-workspaces` end-to-end, 25 tests; gas recorded in §5.7 | ✓ |
 | 5 | **done** — TypeScript client: canonicaliser (54 assertions), 1Click, vault | ✓ |
-| 6 | **done** — `bound`, `post` and the reference filler. A **second** filler, and one adapted from `near/agent-skills`, still to come (§6.2) | ◐ |
+| 6 | **done** — `bound`, `post`, and **three** fillers: the reference, one written from §2.1 alone, and one adapted from `near/agent-skills` with the diff shown. `npm run race` prices one mandate with all three (§6.2) | ✓ |
 | 7 | **done** — deployed to mainnet as `hallmarkfi.near`; v2 redeployed after the audit. Full-access key **still present**, deliberately (§10.2, and §2.10 is the reason) | ◐ |
 | 8 | **done** — real mainnet fill, end to end, twice: v1 at 115 bps and v2 at 105 bps (§3.17) | ✓ |
 | 9 | **done** — proof page, static, every figure a live view call | ✓ |
 | 10 | **done** — README rewritten as "do X — see Y" steps, every number re-measured | ✓ |
 | 11 | **done** — full line-by-line audit of contract + client against this file; §2.10 and §2.11 found and closed; v2 redeployed and re-exercised on mainnet | ✓ 2026-11-02 |
+| 12 | **done** — §2.11 re-done as exact accounting, §2.12 order-book index, three fillers; v3 redeployed and re-exercised on mainnet | ✓ 2026-11-02 |
 
-**What is actually left:** step 6's two extra fillers, and step 7's key deletion,
-which is a one-way door and belongs immediately before submission. Everything
+**What is actually left:** step 7's key deletion, which is a one-way door. The
+decision taken is to delete it **after the winners are announced**, i.e. after
+2026-11-20 — not before judging, because §2.10 is the standing argument for
+keeping the ability to fix a bug found in something already live. Everything
 else in this table is done and verified on mainnet.
 
 **On deferring the ~$5 mainnet fill:** it was first priority while `appFees` was
@@ -1818,36 +1910,30 @@ races (§12).
 
 **Known limits, stated rather than hidden:**
 
-6. **The mandate storage charge is slack, not exact accounting** (§2.11). An
-   owner does not get about 0.0118 NEAR per cycle back, and a mandate with more
-   than ~7 distinct fillers who never withdraw would have the vault subsidise
-   the excess. Uneconomic to exploit — each slot costs a real delivery and the
-   credit earned by it — but it is arithmetic, not a proof.
-7. **`get_mandates` scans from the start of the map**, so it is O(total
-   mandates) rather than O(limit). With storage now prepaid (§2.11) that is a
-   scaling note and no longer a griefing vector, but a vault with many thousands
-   of mandates will need an index of open ones. `mandate_count()` exposes the
-   bound.
-8. **First-come-first-served means the filler delivers near the floor.** The
+6. **One sub-cent transfer between participants is not attributed** (§2.11, end):
+   a fill charges the filler for the owner's credit slot, and the owner is
+   credited ~0.00145 NEAR for releasing it. Never a loss to the vault, and it
+   cannot be farmed, because every such transfer requires a real delivery.
+7. **First-come-first-served means the filler delivers near the floor.** The
    owner gets their ceiling, not the best price available. An auction window —
    collect deliveries for N blocks, settle the best — is the natural next
    version and is **not** claimed for v1.
-9. **1Click signer-key compromise is unmitigated** (§10.1).
-10. **No independent price benchmark exists** (§3.12). A bound, never best
+8. **1Click signer-key compromise is unmitigated** (§10.1).
+9. **No independent price benchmark exists** (§3.12). A bound, never best
    execution.
-11. **Liveness depends on 1Click.** If the API stops signing, Hallmark stops
+10. **Liveness depends on 1Click.** If the API stops signing, Hallmark stops
    filling. It never stops *refusing*, which is the safe direction.
-12. **The filler needs capital** (§6.4). This is the deliberate cost of closing
+11. **The filler needs capital** (§6.4). This is the deliberate cost of closing
     the `depositAddress` hole.
-13. **One reference filler, not an ecosystem.** `client/src/bin/fill.ts`. A
-    second, independently written one and one adapted from `near/agent-skills`
-    are both still outstanding (§6.2, build order 6); §6's "three fillers" is a
-    plan, not a count.
-14. **Immutable means unpatchable** (§10.2) — and §2.10 is the argument for
+12. **Three fillers, all written by us or adapted by us** — there is no
+    third-party filler ecosystem and none is claimed (§6.2, point 5). What the
+    three do demonstrate is that the mandate does not care who fills it, and
+    that an independent reading of §2.1 agrees with the contract on live quotes.
+13. **Immutable means unpatchable** (§10.2) — and §2.10 is the argument for
     deleting that key as late as possible. An audit found a critical bug in a
     contract that was already live; had the key been gone, it could not have
     been fixed.
-15. **Mainnet only.** No Intents testnet exists or is planned. Dev accounts,
+14. **Mainnet only.** No Intents testnet exists or is planned. Dev accounts,
     tiny amounts, `dry: true` quotes wherever possible.
 
 ---

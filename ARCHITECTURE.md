@@ -1023,6 +1023,50 @@ The quote is validly signed in all three cases and inside its own deadline. With
 the age bound widened to 30 days v3 allows it again at 60 bps, so the refusal is
 the freshness check and nothing else.
 
+**The v3 round trip, filled by NEAR's own official agent, adapted:**
+
+| step | tx | |
+|---|---|---|
+| mandate #1 opened | `Fymth8dhDi6BpnLf7R7SkGJWcV1wiupWrqhtaP2NVAZq` | 0.04 wNEAR → USDT, 300 bps, 300 s — posted **during the 1Click outage**, because posting needs nothing from the venue |
+| **the fill** | `GkEZhvx9iwq4eF8wUWrsS4fUsUxiV2h3AFZGppJnrsix` | **74 bps** against a 300 bps ceiling, quote **1 second** old, 30.48 TGas, by `fillers/adapted.ts` |
+| withdraw USDT | `6kjsYmbbjExWj9ogKrBVtr8BPHNorDxCkefzzyH3TQQN` | |
+| withdraw wNEAR | `CqF5BbxpooA1WMNUvnWFjQxzCWMfEK6rSc5uM9RatGu6` | |
+
+```
+EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
+  "data":[{"mandate_id":"1","filler":"d3bc151a…b7bd484",
+           "amount_in":"40000000000000000000000","delivered":"157389",
+           "cost_bps":74,"ceiling_bps":300}]}
+```
+
+Balances before the mandate and after both withdrawals are identical —
+0.040000 wNEAR, 0.518409 USDT — and every credit is zero.
+
+**And the storage round-trips to the byte**, which is the §2.11 invariant
+observed on mainnet rather than in a sandbox:
+
+```
+prepaid after opening            426 bytes
+prepaid after the fill           123 bytes   <- 303 charged to the FILLER for two credit slots
+prepaid after both withdrawals   426 bytes   <- both slots released, both refunded
+```
+
+**Three fillers priced the same mandate** (`npm run race`), against one live
+signed quote, one second old:
+
+```
+fill.ts     (reference)          119 bps   delivers 0.156681   splits the spread
+edge.ts     (independent)        169 bps   delivers 0.155894   needs 40 bps of edge
+adapted.ts  (official agent)      69 bps   delivers 0.157469   delivers the expected fill
+all three implementations of the invariant agree: yes
+```
+
+All three inside the owner's 300 bps ceiling, disagreeing only about strategy.
+And the cross-check that matters, `npm run agree`: **39 comparisons** across all
+three fixtures, from each signed floor to twice each expected fill, between the
+reference client, the independent implementation, and the live contract — **0
+disagreements, 0 bps maximum gap.**
+
 **Exact storage accounting, measured on v3:**
 
 | | |
@@ -1062,12 +1106,6 @@ output in the vault before the input was credited to anyone. The round trip
 closed to the token: balances before the mandate and after both withdrawals were
 identical (0.130000 wNEAR, 0.518409 USDT) and every credit zero, because the
 owner and the filler were the same account — the honest v1 case of §6.1.
-
-> **UNVERIFIED on v3 specifically: a live fill.** The storage and order-book
-> changes do not touch the fill path, and the sandbox suite exercises it against
-> a real runtime with a real signature — but the mainnet fill above was executed
-> by v2. A v3 mainnet fill is blocked on the 1Click outage recorded in §14
-> item 10, and is the one thing in this section carried rather than re-proved.
 
 And the keyless proof surface answers on v3 today:
 
@@ -1488,6 +1526,27 @@ source:
 Unchanged: the API base, the quote request shape, `slippageTolerance`, asset ids
 from `/v0/tokens`, and reading `amountOut` / `minAmountOut` off a signed quote.
 An agent that already speaks 1Click keeps all of it.
+
+**And one change that is not an adaptation at all — a `[0]` fix to the official
+example, because it does not run.** `rules/server-example.md`'s `getQuote` sends
+only `dry`, `swapType`, `slippageTolerance` and its five parameters. Against the
+live API on 2026-11-02 that is **HTTP 400**:
+
+```
+depositType should not be empty … refundType should not be empty …
+recipientType should not be empty … deadline must be a valid ISO 8601 date string
+```
+
+`rules/api-quote.md` documents all four with defaults — `ORIGIN_CHAIN`,
+`DESTINATION_CHAIN`, `ORIGIN_CHAIN`, `~10 min` — which is presumably why the
+example omits them. The network requires them. This is §0's rule arriving in
+NEAR's own material: **where the documentation disagrees with the network, the
+network wins**, and the disagreement gets recorded. `adapted.ts` sends all four
+explicitly, marked `[0]` to keep it separate from the four Hallmark changes.
+
+That this was found by *running* the official example rather than reading it is
+the same discipline that found §2.10 and §2.11 — and it is worth noting that an
+agent following the skill verbatim would fail its first quote.
 
 One thing the adaptation exposes that is worth saying out loud: **the official
 flow uses 1Click as an execution venue; a filler uses it as a price oracle whose

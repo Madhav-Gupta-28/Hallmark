@@ -11,7 +11,8 @@
     "fill": "tsx src/bin/fill.ts",
     "fill:edge": "tsx src/fillers/edge.ts",
     "fill:adapted": "tsx src/fillers/adapted.ts",
-    "race": "tsx src/fillers/race.ts"
+    "race": "tsx src/fillers/race.ts",
+    "agree": "tsx src/fillers/agree.ts"
   },
   "dependencies": {
     "@near-js/crypto": "^1.4.1",

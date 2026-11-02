@@ -78,6 +78,22 @@ async function fetchTokens(): Promise<Token[]> {
   return res.json();
 }
 
+/**
+ * `[0]` — a correction to the official example, before any Hallmark change.
+ *
+ * `rules/server-example.md`'s `getQuote` sends only `dry`, `swapType`,
+ * `slippageTolerance` and the five params below. Run verbatim against the live
+ * API on 2026-11-02 that is **HTTP 400**:
+ *
+ *   depositType should not be empty … refundType should not be empty …
+ *   recipientType should not be empty … deadline must be a valid ISO 8601 date
+ *
+ * `rules/api-quote.md` lists all four with defaults (`ORIGIN_CHAIN`,
+ * `DESTINATION_CHAIN`, `ORIGIN_CHAIN`, `~10min`), so the example omits them —
+ * but the network requires them. Documentation disagreeing with the network is
+ * the thing ARCHITECTURE.md §0 is about, and the network wins. They are sent
+ * explicitly here.
+ */
 async function getQuote(params: {
   originAsset: string;
   destinationAsset: string;
@@ -98,6 +114,11 @@ async function getQuote(params: {
       dry: true,
       swapType: "EXACT_INPUT",
       slippageTolerance: 100,
+      // [0] required by the API, documented as optional. See above.
+      depositType: "ORIGIN_CHAIN",
+      refundType: "ORIGIN_CHAIN",
+      recipientType: "DESTINATION_CHAIN",
+      deadline: new Date(Date.now() + 36e5).toISOString(),
       ...params,
     }),
   });

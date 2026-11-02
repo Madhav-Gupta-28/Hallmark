@@ -99,15 +99,14 @@ impl Hallmark {
     #[init]
     pub fn new() -> Self {
         Self {
-            // v2 prefixes. v1 shipped a `Mandate` without `max_quote_age_secs`,
-            // and borsh cannot read a v1 record into a v2 struct, so the new
-            // maps get their own namespace rather than tripping over the old
-            // bytes. §2.10.
-            // v3 prefixes, one byte each. v2's `MandateRecord` carried a
-            // `storage_paid` field that exact accounting makes unnecessary, and
-            // borsh cannot read a v2 record into a v3 struct, so the new
-            // collections get their own namespace rather than tripping over the
-            // old bytes. v1 used `m`/`c`, v2 used `M`/`C`/`S`.
+            // v3 prefixes, one byte each.
+            //
+            // Adding a field to a borsh struct means old records cannot be read
+            // back, so each version gets its own namespace rather than
+            // misreading the previous one's bytes. v1 used `m`/`c`; v2 added
+            // `max_quote_age_secs` to `Mandate` (§2.10) and used `M`/`C`/`S`;
+            // v3 dropped the `storage_paid` field that exact accounting makes
+            // unnecessary (§2.11) and added the open-id index (§2.12).
             mandates: IterableMap::new(b"n"),
             open_ids: IterableSet::new(b"p"),
             credits: LookupMap::new(b"d"),
@@ -116,10 +115,14 @@ impl Hallmark {
         }
     }
 
-    /// Replace v1's state wholesale. There is no admin key and no upgrade path
-    /// once the full-access key is gone (§10.2); this exists only so the v1
-    /// deployment can be superseded in place before that key is deleted, and it
-    /// is `#[private]` so only the account itself can call it.
+    /// Replace the previous version's state wholesale.
+    ///
+    /// There is no admin key and no upgrade path once the full-access key is
+    /// gone (§10.2); this exists only so a deployment can be superseded in place
+    /// while that key is still held, and it is `#[private]` so nobody but the
+    /// account itself can call it. It has been used twice: v1 → v2 and v2 → v3,
+    /// both times because an audit found something in a contract that was
+    /// already live.
     #[private]
     #[init(ignore_state)]
     pub fn migrate() -> Self {

@@ -1754,14 +1754,18 @@ run in three does not support it.**
 | 1 | **done** — vault state + `ft_on_transfer` for the **origin** token | ✓ |
 | 2 | **done** — `ft_on_transfer` for the **destination** token + `credits` | ✓ |
 | 3 | **done** — `withdraw`, `cancel`, `get_mandates` | ✓ |
-| 4 | **done** — `near-workspaces` end-to-end, 23 tests; gas recorded in §5.7 | ✓ |
-| 5 | **done** — TypeScript client: canonicaliser (44 assertions), 1Click, vault | ✓ |
-| 6 | **done** — `bound`, `post` and the reference filler; adapted official-prompt filler still to come | ◐ |
-| 7 | deploy to mainnet, dev account, tiny amounts; **delete the full-access key** | §10.2 |
-| 8 | **one real ~$5 mainnet fill**, end to end | the last unknown |
+| 4 | **done** — `near-workspaces` end-to-end, 25 tests; gas recorded in §5.7 | ✓ |
+| 5 | **done** — TypeScript client: canonicaliser (54 assertions), 1Click, vault | ✓ |
+| 6 | **done** — `bound`, `post` and the reference filler. A **second** filler, and one adapted from `near/agent-skills`, still to come (§6.2) | ◐ |
+| 7 | **done** — deployed to mainnet as `hallmarkfi.near`; v2 redeployed after the audit. Full-access key **still present**, deliberately (§10.2, and §2.10 is the reason) | ◐ |
+| 8 | **done** — real mainnet fill, end to end, twice: v1 at 115 bps and v2 at 105 bps (§3.17) | ✓ |
 | 9 | **done** — proof page, static, every figure a live view call | ✓ |
-| 10 | README as "do X — see Y" steps; no marketing | spec requirement |
-| 11 | **done** — full line-by-line audit of contract + client against this file; §2.10 and §2.11 found and closed; v2 redeployed and re-exercised on mainnet | ✓ 2026-11-01 |
+| 10 | **done** — README rewritten as "do X — see Y" steps, every number re-measured | ✓ |
+| 11 | **done** — full line-by-line audit of contract + client against this file; §2.10 and §2.11 found and closed; v2 redeployed and re-exercised on mainnet | ✓ 2026-11-02 |
+
+**What is actually left:** step 6's two extra fillers, and step 7's key deletion,
+which is a one-way door and belongs immediately before submission. Everything
+else in this table is done and verified on mainnet.
 
 **On deferring the ~$5 mainnet fill:** it was first priority while `appFees` was
 the compensation rail. §3.8 settled the fee question from live state at zero

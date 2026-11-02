@@ -1839,9 +1839,10 @@ races (§12).
    filling. It never stops *refusing*, which is the safe direction.
 12. **The filler needs capital** (§6.4). This is the deliberate cost of closing
     the `depositAddress` hole.
-13. **One reference filler, not an ecosystem.** `client/src/bin/fill.ts`. The
-    adapted official-prompt filler is still outstanding (§6.2, build order 6),
-    and §6's claim of "three fillers" is a plan, not a count.
+13. **One reference filler, not an ecosystem.** `client/src/bin/fill.ts`. A
+    second, independently written one and one adapted from `near/agent-skills`
+    are both still outstanding (§6.2, build order 6); §6's "three fillers" is a
+    plan, not a count.
 14. **Immutable means unpatchable** (§10.2) — and §2.10 is the argument for
     deleting that key as late as possible. An audit found a critical bug in a
     contract that was already live; had the key been gone, it could not have

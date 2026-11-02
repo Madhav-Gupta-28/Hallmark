@@ -997,51 +997,57 @@ differentiator, and a judge can reproduce it in one command.
 
 ### 3.17 Live on mainnet
 
-Deployed and exercised end to end twice: **v1 on 2026-11-01**, and **v2 on
-2026-11-02** after the audit found §2.10 and §2.11.
+Deployed and exercised end to end three times: **v1 on 2026-11-01**, **v2 on
+2026-11-02** after the audit found §2.10 and §2.11, and **v3 the same day** once
+measuring showed §2.11's first fix was still inexact and §2.12 was a wall worth
+removing before launch.
 
 | | |
 |---|---|
 | vault | **`hallmarkfi.near`** |
-| wasm (v2) | 257,314 bytes, sha256 `52b7dcf9…7cf6dd8c` |
-| v2 deploy + `migrate` | `8ndzKy5DWr4d6SorwgFKDGi8fB4RJHQv7dvcusmpqx4d` |
+| wasm (v3) | 274,159 bytes, sha256 `bb5a1d00…5523f833` |
+| v3 deploy + `migrate` | `HosgeB2W1j2nyYvbyGWigdVsXuGRanraJBfMhypkhGZw` |
+| v2 deploy (superseded) | `8ndzKy5DWr4d6SorwgFKDGi8fB4RJHQv7dvcusmpqx4d` |
 | v1 deploy (superseded) | `5gPd4L1uG1uNGitZr3j6XPYtwzWg1RFsq8K41KsSCBpK` |
 
-**The v1 exploit, demonstrated against v1 and then against v2.** The same four
-arguments, the same keyless `dry_check`, one day apart:
+**The v1 exploit, demonstrated against v1 and then against every version
+since.** The same four arguments, the same keyless `dry_check`:
 
 ```
 v1, 2026-11-01   ALLOWED at 60 bps realised all-in cost, filler earns 10000000 origin units
 v2, 2026-11-02   REFUSED QuoteTooOld { signed_at_secs: 1793297130, now_secs: 1793557929, max_age_secs: 300 }
+v3, 2026-11-02   REFUSED QuoteTooOld { signed_at_secs: 1793297130, now_secs: 1793639177, max_age_secs: 300 }
 ```
 
-The quote is validly signed in both cases and three days inside its own
-deadline. With the age bound widened to 30 days v2 allows it again at 60 bps, so
-the refusal is the freshness check and nothing else.
+The quote is validly signed in all three cases and inside its own deadline. With
+the age bound widened to 30 days v3 allows it again at 60 bps, so the refusal is
+the freshness check and nothing else.
 
-**The v2 round trip**, driven entirely by the CLIs in `client/src/bin`:
+**Exact storage accounting, measured on v3:**
+
+| | |
+|---|---|
+| `storage_deposit` | `9W9cxb2uG9Srq8Y7jfN5EwmVTS195YEG6ycTWJFUBUzf` — 0.01024 NEAR, the *recommendation* |
+| mandate #1 opened | `Fymth8dhDi6BpnLf7R7SkGJWcV1wiupWrqhtaP2NVAZq` — 0.04 wNEAR → USDT, 300 bps, 300 s |
+| charged | **598 of 1,024 bytes**: 74 for the ledger row, 296 for the record, 228 for the open-id index entry |
+| still withdrawable | 426 bytes — 0.00426 NEAR, which v2 would have kept |
+
+Mandate #1 on v3 is **open now**, and `open_mandate_count()` answers `1` against
+a `mandate_count()` of `1`.
+
+**The v2 round trip** (the mechanism is unchanged in v3, and the sandbox suite
+re-covers all of it):
 
 | step | tx | |
 |---|---|---|
-| `storage_deposit` | `5cp6cDVQDG4X3sVmnQ72sACSeEXrKNwRAdSFtQU21o6e` | 0.01536 NEAR, prepaid by the owner |
-| mandate #1 opened | `6isjCxafsGRorNixKCPpwuXGqWb6hk73gQTYiVbV6Cse` | 0.1 wNEAR → USDT, 300 bps, 300 s |
 | **the fill** | `44QgFYjtPFzmLtGonoMQKXEZVcB4moGGQDrH1Pt2ErAi` | **105 bps**, quote **1 second** old, 30.25 TGas |
 | withdraw USDT | `BX2Cdkrc38zLZXkccV8Vup74kg6D7bpwxXFFQFV6fFKB` | |
 | withdraw wNEAR | `GKyc767VFH3f84697C9k2AXy3xH8TpWqD4sFhczktFUF` | |
-| `cancel` | `8PT2WWLV9Sgn5qhihfmKUjNwrSEvFECwHxmPLX2u455Y` | storage prepayment returned: 0 → 0.01536 NEAR |
-| mandate #2 opened | `9zv1iEghZmssMtGacfumUJY1wDjVTihmkBSqbJvW3f7s` | 0.03 wNEAR, **open now** |
 | **a real stale fill, attempted** | `3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc` | quote banked for 326 s against a 300 s bound. `REFUSED QuoteTooOld`; the USDT was refunded and neither escrow nor credit moved |
 | a fake-token fill, attempted | `BBrcmc6uqzrY4Dko1ary9Zn6VoiYBCY4tbxHwDSnNXAn` | `ft_on_transfer` called directly, no token involved — refused |
-| `reap` redeploy | `2zUdcMfGTgUfpD8NGDVDUosj31Gv3S1gqkxV779Tmi8D` | code only, no `migrate`: the struct layout did not change, so mandate #2 survived |
-| mandate #3: open → cancel → reap → `storage_withdraw` | `5aLHjteFnfTCtTAg14rGGX16q5mozghAHxew4Xejv8r5` … | the whole storage lifecycle, measured in §2.11 |
+| clearing v2's state before migrating | `CgDwCdzXorSHj7SZPr517TEPnSadA2bBuigdwc8BZkUh`, `8Q5hgyfAn6Mc57rhqZuoocJ8URQ3zQYUrfDT1pzuujZR`, `GbGqDdGJ5b4o6ZxPsez4xdZZmJLDVuGkgNkstimzzHhA` | cancel → withdraw → reap, so the v3 migration stranded nothing |
 
-**A refused fill is a successful transaction.** `3JKAnmbAnQKM…` has outer status
-`SuccessValue` and the refusal in receipt 1 — NEP-141 catches the panic and
-refunds, which is what makes the refund work. The reference filler read only the
-outer status and called that fill filled; `receiptFailure()` in
-`client/src/lib/hallmark.ts` is the fix, and §9 records the trap.
-
-The receipt, straight off the chain:
+The v2 receipt, straight off the chain:
 
 ```
 EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
@@ -1052,20 +1058,25 @@ EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
 
 0.1 wNEAR sold for 0.424919 USDT at a **realised all-in cost of 105 bps**
 against a ceiling of 300, proven against NEAR Intents' own signature, with the
-output in the vault before the input was credited to anyone.
+output in the vault before the input was credited to anyone. The round trip
+closed to the token: balances before the mandate and after both withdrawals were
+identical (0.130000 wNEAR, 0.518409 USDT) and every credit zero, because the
+owner and the filler were the same account — the honest v1 case of §6.1.
 
-The round trip closes to the token: balances before the mandate and after both
-withdrawals are identical (0.130000 wNEAR, 0.518409 USDT) and every credit is
-zero, because the owner and the filler were the same account — the honest v1
-case of §6.1.
+> **UNVERIFIED on v3 specifically: a live fill.** The storage and order-book
+> changes do not touch the fill path, and the sandbox suite exercises it against
+> a real runtime with a real signature — but the mainnet fill above was executed
+> by v2. A v3 mainnet fill is blocked on the 1Click outage recorded in §14
+> item 10, and is the one thing in this section carried rather than re-proved.
 
-And the keyless proof surface answers on mainnet today:
+And the keyless proof surface answers on v3 today:
 
 ```
 quote_signer()                                ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc
-storage_cost_estimate()                       0.01536 NEAR
+mandate_count() / open_mandate_count()        1 / 1
+storage_cost_estimate()                       0.01024 NEAR   <- a recommendation, not a price
 is_signed(worst.quote.json)                   true
-quote_age_secs(worst.quote.json)              97868   (1.13 days)
+quote_age_secs(worst.quote.json)              179116   (2.07 days)
 worst_cost(worst.quote.json)                  10000 bps
 realised_cost(worst, at full fill)              503 bps   <- 500 bps of unread appFees, priced
 dry_check(worst, 300 s age bound)             REFUSED QuoteTooOld { … max_age_secs: 300 }

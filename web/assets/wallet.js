@@ -25,7 +25,7 @@
    themselves. The wallet is a convenience over that, never a substitute for it.
    ========================================================================= */
 
-import { VAULT } from "./hallmark.js?v=dd791cd6";
+import { VAULT } from "./hallmark.js?v=067aeb46";
 
 /* Pinned exact versions. `@near-wallet-selector` is NEAR's own library; the
    two wallets are the ones that need no prior setup (MyNearWallet, web) and

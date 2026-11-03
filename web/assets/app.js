@@ -18,7 +18,7 @@ import {
   rows, esc, units, age, near, parseUnits, tokenOf, cliFor,
   txStorageDeposit, txOpen, txFill, txWithdraw, txCancel, txReap, txStorageWithdraw,
   VAULT, EXPLORER, UNSIGNED,
-} from "./hallmark.js?v=dd791cd6";
+} from "./hallmark.js?v=067aeb46";
 
 const $ = (s) => document.querySelector(s);
 const NS_PER_DAY = 86_400_000_000_000n;
@@ -67,7 +67,7 @@ let W = null;                 // the wallet module, once imported
 let ME = null;                // the signed-in account id
 
 async function walletModule() {
-  if (!W) W = await import("./wallet.js?v=eeab6b56");
+  if (!W) W = await import("./wallet.js?v=929f9312");
   return W;
 }
 

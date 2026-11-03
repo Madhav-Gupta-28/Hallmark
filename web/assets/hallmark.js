@@ -16,19 +16,34 @@
 export const VAULT = "hallmarkfi.near";
 
 /**
- * Three endpoints, tried in order.
+ * Three endpoints, tried in order, each measured rather than assumed.
  *
  * The public NEAR RPC sits behind Cloudflare and rate-limits bursts, which a
  * page firing a dozen parallel view calls will trip — the browser reports it as
  * a bare "Failed to fetch" with no status, so it reads like the chain is down
  * when it is not. Every call below therefore goes through a queue that bounds
- * concurrency, retries with backoff, and fails over. All three answer
- * `Access-Control-Allow-Origin: *`, so none of this needs a server.
+ * concurrency, retries with backoff, and fails over.
+ *
+ * The list is ordered by what actually answers:
+ *
+ *   free.rpc.fastnear.com   works; the one NEAR's own docs now point at
+ *   rpc.mainnet.near.org    works, but intermittently returns -429 with a
+ *                           deprecation notice under load, so it is no longer
+ *                           first
+ *   near.drpc.org           works
+ *
+ * `1rpc.io/near` was here and has been removed: it **does not implement the
+ * `query` method at all** ("the method query does not exist/is not available"),
+ * so every failover to it was a guaranteed-wasted round trip that merely
+ * delayed reaching an endpoint that works.
+ *
+ * All three answer `Access-Control-Allow-Origin: *`, verified, so none of this
+ * needs a server.
  */
 export const RPCS = [
-  "https://rpc.mainnet.near.org",
   "https://free.rpc.fastnear.com",
-  "https://1rpc.io/near",
+  "https://rpc.mainnet.near.org",
+  "https://near.drpc.org",
 ];
 export const RPC = RPCS[0];
 export const API = "https://1click.chaindefuser.com";

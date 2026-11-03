@@ -1336,7 +1336,7 @@ parallel view calls trips it, and the browser reports that as a bare
 `Failed to fetch` with no status — which reads like the chain is down when it is
 not. Several pages showed exactly that. Every call now goes through a queue that
 bounds concurrency to three, retries with backoff, fails over across
-`rpc.mainnet.near.org`, `free.rpc.fastnear.com` and `1rpc.io/near`, and caches
+`free.rpc.fastnear.com`, `rpc.mainnet.near.org` and `near.drpc.org`, and caches
 identical reads for eight seconds. All three answer
 `Access-Control-Allow-Origin: *`, so none of it needs a server.
 

@@ -129,9 +129,20 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type FinalError = Error & { final?: boolean };
 
-/** One JSON-RPC request, queued, retried, and failed over. */
+/**
+ * One JSON-RPC request, queued, retried, and failed over. `method` defaults to
+ * `query`, which is all the reference uses; the frontend also reads `tx`.
+ *
+ * `timeoutMs` (default: none, as in the reference) bounds each attempt, so a
+ * node that holds the connection open fails over instead of stalling. `tx`
+ * needs it: asked with `wait_until` about a transaction it does not have — not
+ * archival, or not yet seen — a node waits rather than answering; measured on
+ * rpc.mainnet.near.org and free.rpc.fastnear.com, 2026-11-03, >20 s each.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function rpc(params: Record<string, unknown>, label: string): Promise<any> {
+export async function rpc(
+  params: Record<string, unknown>, label: string, method = "query", timeoutMs?: number,
+): Promise<any> {
   await slot();
   try {
     let lastErr: Error | undefined;
@@ -141,7 +152,8 @@ async function rpc(params: Record<string, unknown>, label: string): Promise<any>
         const r = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params }),
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+          signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
         });
         if (r.status === 429 || r.status >= 500) throw new Error(`HTTP ${r.status}`);
         const b = await r.json();
@@ -209,6 +221,32 @@ export async function viewAt<T = unknown>(
     value: JSON.parse(new TextDecoder().decode(new Uint8Array(res.result))) as T,
     blockHeight: res.block_height,
   };
+}
+
+/**
+ * A keyless view on any contract — the token contracts, for balances and
+ * storage registration. Not in the reference, which only ever reads the vault.
+ * Same queue, failover and short cache as `view`.
+ */
+export async function viewOn<T = unknown>(
+  accountId: string, method: string, args: Record<string, unknown> = {},
+): Promise<T> {
+  const key = `on:${accountId}:${method}${JSON.stringify(args)}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL) return hit.p as Promise<T>;
+  const p = rpc({
+    request_type: "call_function", finality: "final", account_id: accountId,
+    method_name: method,
+    args_base64: btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(args)))),
+  }, `${accountId}.${method}`).then((res) => JSON.parse(new TextDecoder().decode(new Uint8Array(res.result))) as T);
+  cache.set(key, { at: Date.now(), p });
+  p.catch(() => cache.delete(key));
+  return p;
+}
+
+/** Drop cached reads, e.g. after a transaction lands, so the next read is fresh. */
+export function forgetCache(): void {
+  cache.clear();
 }
 
 export interface AccountView {

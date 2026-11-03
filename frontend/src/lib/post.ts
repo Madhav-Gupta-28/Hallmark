@@ -94,16 +94,26 @@ export async function preflight(signer: string, originAsset: string): Promise<Pr
     viewOn<unknown>(token, "storage_balance_of", { account_id: VAULT }),
     viewAccount(signer),
   ]);
-  // `amount` is the whole balance; `locked` is staked. Storage staking is taken
-  // from `amount`, so leave room for it plus gas when judging what is spendable.
-  const STORAGE_BYTE = 10n ** 19n;
-  const reserved = BigInt(acct.storage_usage) * STORAGE_BYTE;
-  const free = BigInt(acct.amount) - reserved;
   return {
     estimate, prepaid, tokenBalance,
     vaultRegistered: vaultStorage !== null,
-    nearAvailable: (free > 0n ? free : 0n).toString(),
+    nearAvailable: spendable(acct),
   };
+}
+
+/**
+ * NEAR an account can spend, yocto. `amount` is the whole liquid balance, and
+ * the account's own storage stake is taken from it, so that part is not
+ * spendable.
+ */
+export function spendable(acct: { amount: string; storage_usage: number }): string {
+  const free = BigInt(acct.amount) - BigInt(acct.storage_usage) * 10n ** 19n;
+  return (free > 0n ? free : 0n).toString();
+}
+
+/** NEAR available to `signer` right now, yocto. */
+export async function nearAvailable(signer: string): Promise<string> {
+  return spendable(await viewAccount(signer));
 }
 
 /** Gas headroom for the batch: 30 + 100 TGas at well under 0.001 NEAR per 100 TGas today. */
@@ -118,10 +128,17 @@ export function blockers(p: Preflight, txs: Tx[], amount: string, symbol: string
     const have = dp === null ? `${p.tokenBalance} base units` : `${fmt(p.tokenBalance, dp)} ${symbol}`;
     out.push(`you hold ${have}, less than the amount to escrow.`);
   }
-  const deposit = txs.flatMap((t) => t.actions).reduce((s, a) => s + BigInt(a.deposit), 0n);
-  if (BigInt(p.nearAvailable) < deposit + GAS_HEADROOM)
-    out.push(`this needs about ${near(deposit + GAS_HEADROOM, 4)} NEAR for deposits and gas; ${near(p.nearAvailable, 4)} is available.`);
+  const n = depositBlocker(p.nearAvailable, txs);
+  if (n) out.push(n);
   return out;
+}
+
+/** Any batch: is there NEAR for its attached deposits plus gas? */
+export function depositBlocker(nearAvail: string, txs: Tx[]): string | null {
+  const deposit = txs.flatMap((t) => t.actions).reduce((s, a) => s + BigInt(a.deposit), 0n);
+  return BigInt(nearAvail) < deposit + GAS_HEADROOM
+    ? `this needs about ${near(deposit + GAS_HEADROOM, 4)} NEAR for deposits and gas; ${near(nearAvail, 4)} is available.`
+    : null;
 }
 
 const fmt = (v: string, dp: number) => {

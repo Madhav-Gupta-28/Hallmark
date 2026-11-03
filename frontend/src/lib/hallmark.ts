@@ -470,6 +470,22 @@ export const txFill = (
   }],
 });
 
+/**
+ * Top up an open mandate's escrow: the transfer of the origin asset IS the
+ * top-up. Not in the reference, which never exposed `Action::Fund`. The
+ * contract accepts it only from the owner, on an open, unexpired mandate, in
+ * the mandate's origin asset.
+ */
+export const txFund = (originAsset: string, mandateId: number, amount: string | bigint): Tx => ({
+  receiverId: tokenOf(originAsset),
+  actions: [{
+    methodName: "ft_transfer_call",
+    args: { receiver_id: VAULT, amount: String(amount),
+            msg: JSON.stringify({ action: "fund", mandate_id: mandateId }) },
+    gas: TGAS(100), deposit: ONE_YOCTO,
+  }],
+});
+
 export const txWithdraw = (asset: string): Tx => ({
   receiverId: VAULT,
   actions: [{ methodName: "withdraw", args: { asset }, gas: TGAS(60), deposit: ONE_YOCTO }],

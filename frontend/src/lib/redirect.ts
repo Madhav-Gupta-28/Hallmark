@@ -14,16 +14,16 @@
  * The only reliable signal is the outcome — the amount the vault kept, and
  * the vault's own `mandate_opened` event.
  */
-import { rpc, VAULT, type MandateTerms, type Tx } from "./hallmark";
+import { rpc, VAULT, type Tx } from "./hallmark";
 
 const KEY = "hallmark:pending-sign";
 
+/** What was handed to the wallet: enough to read the outcome on return. */
 export interface Pending {
-  kind: "open";
+  /** a short label for what was asked, e.g. "open", "withdraw" */
+  kind: string;
   signer: string;
   txs: Tx[];
-  terms: MandateTerms;
-  amount: string;
   at: number;
 }
 
@@ -64,7 +64,12 @@ type ExecStatus = { SuccessValue?: string; Failure?: unknown; SuccessReceiptId?:
 
 export interface ExecutionOutcome {
   status: ExecStatus;
-  transaction: { hash: string; receiver_id: string; actions: Array<{ FunctionCall?: { method_name: string } }> };
+  transaction: {
+    hash: string;
+    receiver_id: string;
+    /** `args` is base64 JSON, as the RPC returns it */
+    actions: Array<{ FunctionCall?: { method_name: string; args?: string } }>;
+  };
   receipts_outcome: Array<{ id: string; outcome: { executor_id: string; logs: string[]; status: ExecStatus } }>;
 }
 
@@ -102,37 +107,99 @@ export type Interpreted =
   | { kind: "storage_deposit"; ok: true; credited: string }
   | { kind: "open"; ok: true; mandateId: number; escrowed: string }
   | { kind: "open"; ok: false; reason: string }
+  | { kind: "fund"; ok: true; mandateId: number; added: string }
+  | { kind: "fund"; ok: false; reason: string }
+  | { kind: "withdraw" | "storage_withdraw"; ok: true }
+  | { kind: "withdraw" | "storage_withdraw"; ok: false; reason: string }
+  | { kind: "cancel"; ok: true; mandateId: number }
+  | { kind: "reap"; ok: true; refunded: string }
   | { kind: "other"; ok: boolean; reason?: string };
 
-/** What a Hallmark transaction did, read from its outcome rather than assumed. */
-export function interpret(o: ExecutionOutcome): Interpreted {
-  const method = o.transaction.actions[0]?.FunctionCall?.method_name;
-  const top = panicOf(o.status);
+const successValue = (st: ExecStatus): unknown =>
+  typeof st === "object" && st.SuccessValue !== undefined ? (st.SuccessValue === "" ? null : b64json(st.SuccessValue)) : undefined;
 
-  if (method === "storage_deposit" && o.transaction.receiver_id === VAULT) {
-    if (top) return { kind: "other", ok: false, reason: top };
-    const v = typeof o.status === "object" && o.status.SuccessValue ? b64json(o.status.SuccessValue) : undefined;
-    return { kind: "storage_deposit", ok: true, credited: String(v ?? "") };
+/** The vault's own receipts: a panic there is a refusal, with the contract's reason. */
+function vaultPanic(o: ExecutionOutcome): string | null {
+  for (const r of o.receipts_outcome) {
+    if (r.outcome.executor_id !== VAULT) continue;
+    const p = panicOf(r.outcome.status);
+    if (p) return p;
   }
+  return null;
+}
+
+function vaultEvent(o: ExecutionOutcome, name: string): Record<string, unknown> | null {
+  for (const r of o.receipts_outcome) {
+    if (r.outcome.executor_id !== VAULT) continue;
+    for (const log of r.outcome.logs) {
+      if (!log.startsWith("EVENT_JSON:")) continue;
+      try {
+        const ev = JSON.parse(log.slice("EVENT_JSON:".length));
+        if (ev.standard === "hallmark" && ev.event === name) return ev.data?.[0] ?? {};
+      } catch { /* not ours */ }
+    }
+  }
+  return null;
+}
+
+/**
+ * What a Hallmark transaction did, read from its outcome rather than assumed.
+ * Each action has its own honest success signal:
+ *   - open: the vault's `mandate_opened` event;
+ *   - fund: no event exists, so the vault receipt must not panic AND the token
+ *     must report the whole amount used (a refusal is refunded, used = 0);
+ *   - withdraw / storage_withdraw: the resolve callback's bool — `false` means
+ *     the payout failed and the vault restored the balance;
+ *   - cancel: no panic (the `mandate_closed` event confirms it);
+ *   - reap: the refunded storage it returns.
+ */
+export function interpret(o: ExecutionOutcome): Interpreted {
+  const call = o.transaction.actions[0]?.FunctionCall;
+  const method = call?.method_name;
+  const args = (call?.args ? b64json(call.args) : undefined) as Record<string, unknown> | undefined;
+  const top = panicOf(o.status);
+  const toVault = o.transaction.receiver_id === VAULT;
 
   if (method === "ft_transfer_call") {
-    if (top) return { kind: "open", ok: false, reason: top };
-    // The vault's own receipt: a panic there is the refusal, with its reason.
-    for (const r of o.receipts_outcome) {
-      if (r.outcome.executor_id !== VAULT) continue;
-      const p = panicOf(r.outcome.status);
-      if (p) return { kind: "open", ok: false, reason: p };
-      for (const log of r.outcome.logs) {
-        if (!log.startsWith("EVENT_JSON:")) continue;
-        const ev = JSON.parse(log.slice("EVENT_JSON:".length));
-        if (ev.standard === "hallmark" && ev.event === "mandate_opened") {
-          const d = ev.data?.[0] ?? {};
-          return { kind: "open", ok: true, mandateId: Number(d.mandate_id), escrowed: String(d.escrow) };
-        }
-      }
+    let msg: Record<string, unknown> = {};
+    try { msg = JSON.parse(String(args?.msg ?? "{}")); } catch { /* not ours */ }
+    const action = msg.action ?? "open";           // older outcomes without args: the only kind posted before
+    const refusal = top ?? vaultPanic(o);
+
+    if (action === "fund") {
+      const id = Number(msg.mandate_id);
+      if (refusal) return { kind: "fund", ok: false, reason: refusal };
+      const used = String(successValue(o.status) ?? "");
+      if (args?.amount !== undefined && used !== String(args.amount))
+        return { kind: "fund", ok: false, reason: `the token reports ${used || "nothing"} of ${String(args.amount)} used — refunded` };
+      return { kind: "fund", ok: true, mandateId: id, added: used };
     }
+    if (refusal) return { kind: "open", ok: false, reason: refusal };
+    const d = vaultEvent(o, "mandate_opened");
+    if (d) return { kind: "open", ok: true, mandateId: Number(d.mandate_id), escrowed: String(d.escrow) };
     return { kind: "open", ok: false, reason: "the vault did not report opening a mandate" };
   }
 
+  if (!toVault) return top ? { kind: "other", ok: false, reason: top } : { kind: "other", ok: true };
+
+  if (method === "storage_deposit") {
+    if (top) return { kind: "other", ok: false, reason: top };
+    return { kind: "storage_deposit", ok: true, credited: String(successValue(o.status) ?? "") };
+  }
+  if (method === "withdraw" || method === "storage_withdraw") {
+    const failed = top ?? vaultPanic(o);
+    if (failed) return { kind: method, ok: false, reason: failed };
+    return successValue(o.status) === true
+      ? { kind: method, ok: true }
+      : { kind: method, ok: false, reason: "the payout did not land, so the vault restored the balance" };
+  }
+  if (method === "cancel") {
+    if (top) return { kind: "other", ok: false, reason: top };
+    return { kind: "cancel", ok: true, mandateId: Number(args?.mandate_id ?? vaultEvent(o, "mandate_closed")?.mandate_id) };
+  }
+  if (method === "reap") {
+    if (top) return { kind: "other", ok: false, reason: top };
+    return { kind: "reap", ok: true, refunded: String(successValue(o.status) ?? "0") };
+  }
   return top ? { kind: "other", ok: false, reason: top } : { kind: "other", ok: true };
 }

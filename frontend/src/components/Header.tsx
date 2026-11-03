@@ -4,13 +4,13 @@ import { short } from "@/lib/hallmark";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/wallet/WalletProvider";
 
-const LINKS = [
-  ["/book", "The book"],
-  ["/post", "Post a mandate"],
-] as const;
-
 export function Header() {
   const w = useWallet();
+  const LINKS = [
+    ["/book", "The book"],
+    ["/post", "Post a mandate"],
+    [w.accountId ? `/account/${w.accountId}` : "/account", w.accountId ? "Your position" : "Positions"],
+  ] as const;
   return (
     <header className="border-b">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">

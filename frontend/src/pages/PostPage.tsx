@@ -1,26 +1,31 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmTxDialog, SummaryRows, type Ask } from "@/components/ConfirmTxDialog";
+import { Clause, Entry, Heading, Source } from "@/components/doc";
 import { SigningResult, useSigned } from "@/components/SigningResult";
 import { TxPreview } from "@/components/TxPreview";
-import { near, units, view, type MandateTerms, type Tx } from "@/lib/hallmark";
+import { near, units, VAULT, view, type MandateTerms, type Tx } from "@/lib/hallmark";
 import {
-  blockers, DEFAULTS, FALLBACK_ESTIMATE, openTxs, preflight, readForm, type FormInput,
+  blockers, DEFAULTS, FALLBACK_ESTIMATE, NS_PER_DAY, openTxs, preflight, readForm, type FormInput,
 } from "@/lib/post";
 import { tokensQuery } from "@/lib/queries";
 import { meta, type TokenTable } from "@/lib/tokens";
 import { useWallet } from "@/wallet/WalletProvider";
 
+/** Which blank an error from `readForm` is about, so that blank can be marked in red. */
+function blameOf(error: string | null): keyof FormInput | "pair" | null {
+  if (!error) return null;
+  if (/asset|differ|nep141/.test(error)) return "pair";
+  if (/ceiling/.test(error)) return "bps";
+  if (/freshness/.test(error)) return "ageS";
+  if (/expiry/.test(error)) return "days";
+  return "amount";
+}
+
 export function PostPage() {
   const w = useWallet();
   const tokens = useQuery(tokensQuery);
   const table = useMemo(() => tokens.data ?? {}, [tokens.data]);
-
   const [signed, setSigned] = useSigned();
 
   const [form, setForm] = useState<FormInput>({ ...DEFAULTS });
@@ -32,6 +37,7 @@ export function PostPage() {
     try { return { ok: true as const, ...readForm(form, table, stamp) }; }
     catch (e) { return { ok: false as const, error: (e as Error).message }; }
   }, [form, table, stamp]);
+  const blame = blameOf(parsed.ok ? null : parsed.error);
 
   const estimate = useQuery({
     queryKey: ["vault", "storage_cost_estimate"],
@@ -48,6 +54,11 @@ export function PostPage() {
     ? openTxs(parsed.terms, parsed.amount, pre.data?.prepaid ?? "0", pre.data?.estimate ?? estimate.data ?? FALLBACK_ESTIMATE)
     : [];
   const inTok = meta(table, form.origin);
+  const outTok = meta(table, form.dest);
+  const days = Number(form.days);
+  const expiry = Number.isInteger(days) && days > 0
+    ? new Date(Number((BigInt(stamp) * 1_000_000n + BigInt(days) * NS_PER_DAY) / 1_000_000n)).toISOString().slice(0, 10)
+    : "—";
 
   const [ask, setAsk] = useState<Ask | null>(null);
   const review = () => {
@@ -55,98 +66,102 @@ export function PostPage() {
     const now = Date.now();                          // re-stamp expiry at the moment of review
     setStamp(now);
     const p = readForm(form, table, now);
-    const signer = w.accountId;
     const frozen = openTxs(p.terms, p.amount, pre.data?.prepaid ?? "0", pre.data?.estimate ?? estimate.data ?? FALLBACK_ESTIMATE);
-    setAsk(postAsk(signer, p.terms, p.amount, frozen, table));
+    setAsk(postAsk(w.accountId, p.terms, p.amount, frozen, table));
   };
 
-  return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <header className="mb-8 space-y-3">
-        <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Owner · NEAR mainnet · real funds</p>
-        <h1 className="text-3xl font-semibold tracking-tight">Post a mandate</h1>
-        <p className="max-w-2xl text-muted-foreground">
-          Escrow an input token together with the worst all-in cost you will accept. From then on the bound is a
-          condition the contract checks on every fill. Two transactions at most: prepay the storage your record
-          will occupy, then transfer the input to the vault with your terms in <code>msg</code> — the transfer
-          <i> is</i> the escrow. Both are shown in full, with the CLI equivalent, before anything is signed.
-        </p>
-      </header>
+  const blank = (k: keyof FormInput, width: string, mode: "decimal" | "numeric") => (
+    <input
+      className="blank" style={{ width }} inputMode={mode} value={form[k]} aria-label={k}
+      aria-invalid={blame === k} onChange={(e) => set(k)(e.target.value)} spellCheck={false}
+    />
+  );
 
+  return (
+    <main className="doc">
       {signed && <SigningResult signed={signed} />}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Terms</CardTitle>
-            <CardDescription>Defaults are deliberately tiny: 0.01 wNEAR for USDT, 300 bps, 300 s, 7 days.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <TokenField label="You give" value={form.origin} onChange={set("origin")} table={table} />
-              <TokenField label="You want" value={form.dest} onChange={set("dest")} table={table} />
-            </div>
-            {tokens.isError && (
-              <p className="text-xs text-muted-foreground">
-                1Click's token list is unavailable, so only the pair the vault is known to hold is offered.
-              </p>
-            )}
-            <Field label="Amount to escrow" hint={`${inTok.symbol} · also the largest single fill`}>
-              <Input inputMode="decimal" value={form.amount} onChange={(e) => set("amount")(e.target.value)} />
-            </Field>
-            {w.accountId && pre.data && inTok.dp !== null && (
-              <p className="-mt-2 text-xs text-muted-foreground">
-                you hold {units(pre.data.tokenBalance, inTok.dp, 6)} {inTok.symbol}
-              </p>
-            )}
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Worst all-in cost" hint="bps · 100 = 1%">
-                <Input inputMode="numeric" value={form.bps} onChange={(e) => set("bps")(e.target.value)} />
-              </Field>
-              <Field label="Max quote age" hint="seconds">
-                <Input inputMode="numeric" value={form.ageS} onChange={(e) => set("ageS")(e.target.value)} />
-              </Field>
-              <Field label="Expires in" hint="days">
-                <Input inputMode="numeric" value={form.days} onChange={(e) => set("days")(e.target.value)} />
-              </Field>
-            </div>
+      <section className="pt-10">
+        <div className="label text-faint">Draw up an agreement · NEAR mainnet · real funds</div>
+        <h1 className="mt-3 font-serif text-[clamp(40px,7vw,88px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
+          Put your terms <span className="hl">in writing.</span>
+        </h1>
+        <p className="mt-5 max-w-[700px] text-[19px]">
+          Fill in the blanks. From the moment you sign, the bound is not a promise anyone made you — it is a condition
+          the contract checks on every fill, and cannot be talked out of. The defaults are deliberately tiny.
+        </p>
+      </section>
 
-            <dl className="divide-y rounded-md border px-3 text-sm">
-              <Line k="storage estimate" v={estimate.data ? `${near(estimate.data, 5)} NEAR` : "…"} />
-              <Line k="your prepaid storage" v={
-                !w.accountId ? <span className="text-muted-foreground">connect to check</span>
-                  : pre.data ? `${near(pre.data.prepaid, 5)} NEAR` : pre.isError ? "unavailable" : "…"} />
-              <Line k="storage_deposit needed?" v={
-                !w.accountId ? <span className="text-muted-foreground">assumed yes until connected</span>
-                  : pre.data ? (txs.length > 1 ? "yes — first transaction" : "no — already prepaid") : "…"} />
-            </dl>
-            <p className="text-xs text-muted-foreground">
-              The estimate is a recommendation, not a price: the vault charges the measured bytes each call writes,
-              and anything left stays withdrawable with <code>storage_withdraw</code>.
-            </p>
-
-            {!parsed.ok && <p className="text-sm text-destructive">{parsed.error}</p>}
-            {pre.isError && <p className="text-sm text-destructive">Could not check your account: {pre.error.message}</p>}
-
-            <Button className="w-full" disabled={!parsed.ok || (!!w.accountId && !pre.data)} onClick={review}>
-              {w.accountId ? `Review ${txs.length === 1 ? "the transaction" : `${txs.length} transactions`} and sign…` : "Connect a wallet to post"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>The exact transactions</CardTitle>
-            <CardDescription>
-              What the button will ask your wallet to sign, and the same thing as a command you can run instead —
-              no wallet connection needed for that.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {parsed.ok ? <TxPreview txs={txs} signer={w.accountId} /> : <p className="text-sm text-muted-foreground">Fix the terms to see them.</p>}
-          </CardContent>
-        </Card>
+      <Heading kicker="The agreement">Agreement to exchange</Heading>
+      <div className="text-[clamp(19px,2.2vw,24px)] leading-[2.1]">
+        <p>
+          I, <span className="hand text-[1.3em]">{w.accountId ?? "the undersigned"}</span>, escrow{" "}
+          {blank("amount", "7ch", "decimal")}{" "}
+          <TokenBlank value={form.origin} onChange={set("origin")} table={table} invalid={blame === "pair"} />{" "}
+          with <code className="text-[0.8em]">{VAULT}</code>, to be exchanged for{" "}
+          <TokenBlank value={form.dest} onChange={set("dest")} table={table} invalid={blame === "pair"} />.
+        </p>
       </div>
+      {w.accountId && pre.data && inTok.dp !== null && (
+        <p className="typed text-[13px] text-faint">↳ you hold {units(pre.data.tokenBalance, inTok.dp, 6)} {inTok.symbol}</p>
+      )}
+      {tokens.isError && (
+        <p className="typed text-[13px] text-faint">↳ 1Click's token list is unavailable, so only the pair the vault is known to hold is offered.</p>
+      )}
+
+      <div className="mt-6 text-[clamp(18px,2vw,21px)]">
+        <Clause no="§1" title="Ceiling">
+          I will pay no more than {blank("bps", "6ch", "numeric")} basis points all-in on any fill
+          <span className="typed text-[0.75em] text-faint"> (100 = 1%)</span>, measured on what actually arrives.
+        </Clause>
+        <Clause no="§1a" title="Size">
+          Any filler may take up to the whole escrow in a single fill.
+        </Clause>
+        <Clause no="§3" title="Freshness">
+          No quote signed more than {blank("ageS", "6ch", "numeric")} seconds before the fill shall be honoured.
+        </Clause>
+        <Clause no="§7" title="Term">
+          This agreement expires in {blank("days", "4ch", "numeric")} days, on <b className="typed text-sign">{expiry}</b>.
+        </Clause>
+        <Clause no="§8" title="Recipient">
+          Every quote must name <code>{VAULT}</code> as its recipient — the vault, never me, or the contract refuses
+          to open the agreement.
+        </Clause>
+      </div>
+      {!parsed.ok && <p className="mt-4 text-[18px]"><span className="stamp mr-2">defect</span> {parsed.error}</p>}
+
+      <Heading kicker="Schedule C">Storage</Heading>
+      <div className="grid gap-x-12 md:grid-cols-2">
+        <div>
+          <Entry k="Recommended prepayment" v={<span className="typed">{estimate.data ? `${near(estimate.data, 5)} NEAR` : "…"}</span>} />
+          <Entry k="Already prepaid by you" v={<span className="typed">{!w.accountId ? "connect to check" : pre.data ? `${near(pre.data.prepaid, 5)} NEAR` : pre.isError ? "unavailable" : "…"}</span>} />
+          <Entry k="storage_deposit first?" v={<span className="typed">{!w.accountId ? "assumed yes" : pre.data ? (txs.length > 1 ? "yes" : "no — already prepaid") : "…"}</span>} />
+        </div>
+        <p className="py-2 text-[17px]">
+          Whoever causes a byte to be written pays for that byte. The estimate is a recommendation, not a price: the
+          vault charges what your record actually measures, and the rest stays yours to withdraw.
+        </p>
+      </div>
+      {pre.isError && <p className="typed mt-3 text-[14px] text-seal">Could not read your account: {pre.error.message}</p>}
+
+      <Heading kicker="Annex">The exact transactions</Heading>
+      <p className="mb-6 max-w-[760px] text-[18px]">
+        What signing will send — and the same thing as a command you can run yourself, with no wallet connected.
+        {inTok.symbol && outTok.symbol && <> Two transactions at most: prepay storage, then transfer the {inTok.symbol} to the vault
+          with these terms attached. The transfer <i>is</i> the escrow.</>}
+      </p>
+      {parsed.ok ? <TxPreview txs={txs} signer={w.accountId} /> : <p className="typed text-faint">Correct the defect above to see them.</p>}
+
+      <section className="mt-14 flex flex-wrap items-end justify-between gap-8 border-t-[6px] border-double border-ink pt-8">
+        <div className="min-w-[260px] flex-1">
+          <div className="hand text-[30px] leading-none">{w.accountId ?? " "}</div>
+          <div className="sigline mt-1">Signature of the owner · applied by your wallet, after you read every byte</div>
+        </div>
+        <button className="btn btn-sign" disabled={!parsed.ok || (!!w.accountId && !pre.data)} onClick={review}>
+          {w.accountId ? `Review and sign ${txs.length === 1 ? "1 transaction" : `${txs.length} transactions`}` : "Connect a wallet to sign"}
+        </button>
+      </section>
+      <Source>No signature is requested until you have read the execution page, re-checked against the chain.</Source>
 
       {ask && (
         <ConfirmTxDialog
@@ -154,34 +169,31 @@ export function PostPage() {
           onSigned={(hashes, pending) => setSigned({ cb: { kind: "signed", hashes }, pending })}
         />
       )}
-    </div>
+    </main>
   );
 }
 
 /* ------------------------------------------------------------- confirmation */
 
 /** The open, as the shared confirm dialog asks it: summary, frozen txs, a fresh chain check. */
-function postAsk(
-  signer: string, terms: MandateTerms, amount: string,
-  txs: Tx[], table: TokenTable,
-): Ask {
+function postAsk(signer: string, terms: MandateTerms, amount: string, txs: Tx[], table: TokenTable): Ask {
   const inTok = meta(table, terms.origin_asset);
   const outTok = meta(table, terms.destination_asset);
   const storage = txs.find((t) => t.actions[0].methodName === "storage_deposit");
   return {
     kind: "open",
-    title: "Confirm before signing",
+    title: "Agreement to exchange",
     signer, txs,
     returnPath: "/post",
     summary: (
       <SummaryRows rows={{
-        "escrowed into the vault": <b>{inTok.dp === null ? amount : units(amount, inTok.dp, 6)} {inTok.symbol}</b>,
-        "in exchange for": outTok.symbol,
-        "worst all-in cost": `${terms.max_cost_bps} bps`,
-        "quotes older than": `${terms.max_quote_age_secs} s are refused`,
-        "expires": new Date(Number(BigInt(terms.expiry_ns) / 1_000_000n)).toISOString().replace("T", " ").slice(0, 16) + " UTC",
-        "storage prepaid": storage ? `${near(storage.actions[0].deposit, 5)} NEAR (withdrawable when unused)` : "none — already prepaid",
-        "quote recipient": <code>{terms.recipient}</code>,
+        "escrowed into the vault": <b className="typed">{inTok.dp === null ? amount : units(amount, inTok.dp, 6)} {inTok.symbol}</b>,
+        "in exchange for": <b>{outTok.symbol}</b>,
+        "§1 worst all-in cost": <span className="typed">{terms.max_cost_bps} bps</span>,
+        "§3 quotes older than": <span className="typed">{terms.max_quote_age_secs} s are refused</span>,
+        "§7 expires": <span className="typed">{new Date(Number(BigInt(terms.expiry_ns) / 1_000_000n)).toISOString().replace("T", " ").slice(0, 16)} UTC</span>,
+        "storage prepaid": <span className="typed">{storage ? `${near(storage.actions[0].deposit, 5)} NEAR (withdrawable when unused)` : "none — already prepaid"}</span>,
+        "§8 quote recipient": <code>{terms.recipient}</code>,
       }} />
     ),
     check: async () => blockers(await preflight(signer, terms.origin_asset), txs, amount, inTok.symbol, inTok.dp),
@@ -190,38 +202,19 @@ function postAsk(
 
 /* ------------------------------------------------------------------ fields */
 
-function TokenField({ label, value, onChange, table }: {
-  label: string; value: string; onChange: (v: string) => void; table: TokenTable;
-}) {
+/** A token chosen in a blank: a native select, dressed as the agreement's handwriting. */
+function TokenBlank({ value, onChange, table, invalid }: {
+  value: string; onChange: (v: string) => void; table: TokenTable; invalid: boolean;
+}): ReactNode {
   const ids = Object.keys(table).sort((a, b) => table[a].symbol.localeCompare(table[b].symbol));
   if (!ids.includes(value)) ids.unshift(value);
   return (
-    <Field label={label}>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {ids.map((id) => <SelectItem key={id} value={id}>{meta(table, id).symbol}</SelectItem>)}
-        </SelectContent>
-      </Select>
-    </Field>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-function Line({ k, v }: { k: string; v: ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 py-1.5">
-      <dt className="text-muted-foreground">{k}</dt>
-      <dd className="text-right">{v}</dd>
-    </div>
+    <select
+      className="blank cursor-pointer appearance-none pr-[1.1em]" value={value} aria-invalid={invalid}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ backgroundImage: "linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%)", backgroundPosition: "right .35em center, right .1em center", backgroundSize: ".25em .25em", backgroundRepeat: "no-repeat" }}
+    >
+      {ids.map((id) => <option key={id} value={id}>{meta(table, id).symbol}</option>)}
+    </select>
   );
 }

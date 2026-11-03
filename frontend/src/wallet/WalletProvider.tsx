@@ -8,7 +8,6 @@
  * the book or a mandate never downloads it.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -122,32 +121,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={value}>
       {children}
       <Dialog open={picking} onOpenChange={setPicking}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Connect a NEAR wallet</DialogTitle>
-            <DialogDescription>
-              Mainnet. Connecting signs nothing and moves nothing; every transaction is shown in full and needs
-              your explicit confirmation first. Reading never needs a wallet.
+        <DialogContent className="sheet rounded-none border-2 border-ink p-7 shadow-[10px_10px_0_var(--ink)] sm:max-w-lg">
+          <DialogHeader className="text-left">
+            <p className="label text-faint">Identification of a party · NEAR mainnet</p>
+            <DialogTitle className="font-serif text-[32px] font-extrabold leading-tight">Who is signing?</DialogTitle>
+            <DialogDescription className="text-[17px] text-ink">
+              Connecting signs nothing and moves nothing. Every transaction is shown in full, and needs your explicit
+              confirmation, before a wallet is asked for anything. Reading never needs a wallet.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2">
+          <div className="mt-2 grid gap-4">
             {/* static list, so the picker renders without loading the selector */}
             {([
-              ["my-near-wallet", "MyNearWallet", "web wallet — signs on mynearwallet.com and redirects back here"],
+              ["my-near-wallet", "MyNearWallet", "web wallet — signs on mynearwallet.com and returns you here"],
               ["meteor-wallet", "Meteor", "browser extension or popup — signs without leaving this page"],
             ] as const).map(([id, name, how]) => (
-              <Button
-                key={id} variant="outline" className="h-auto justify-start py-3 text-left"
+              <button
+                key={id} className="btn h-auto justify-start whitespace-normal py-3 text-left normal-case"
                 disabled={busy !== null} onClick={() => void connect(id)}
               >
-                <span className="flex flex-col items-start gap-0.5">
-                  <span className="font-medium">{busy === id ? `Opening ${name}…` : name}</span>
-                  <span className="text-xs font-normal text-muted-foreground">{how}</span>
+                <span className="flex flex-col items-start gap-1">
+                  <span className="text-[16px] uppercase">{busy === id ? `opening ${name}…` : name}</span>
+                  <span className="font-serif text-[15px] font-medium tracking-normal">{how}</span>
                 </span>
-              </Button>
+              </button>
             ))}
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p className="typed text-[14px] text-seal">{error}</p>}
         </DialogContent>
       </Dialog>
     </Ctx.Provider>

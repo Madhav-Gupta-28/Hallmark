@@ -9,12 +9,10 @@
  * record is cleared only once it is held in state (StrictMode runs effects
  * twice; a read-and-clear in one step would lose the signer).
  */
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { A, L, Seal, Stamp } from "@/components/doc";
 import { EXPLORER, forgetCache, near, short } from "@/lib/hallmark";
 import {
   clearPending, interpret, loadPending, readCallback, txOutcome, withoutCallback,
@@ -64,67 +62,74 @@ export function SigningResult({ signed }: { signed: Signed }) {
 
   if (signed.cb.kind === "error") {
     return (
-      <Alert variant="destructive" className="mb-8">
-        <AlertTitle>The wallet did not sign</AlertTitle>
-        <AlertDescription>
-          {signed.cb.message || signed.cb.code} ({signed.cb.code}). Nothing was sent.
-        </AlertDescription>
-      </Alert>
+      <section className="mb-10 mt-8 flex flex-wrap items-center gap-6 border-y-[6px] border-double border-ink py-6">
+        <Seal slam top="not signed" big="✗" bottom="nothing sent" size={120} tilt={-10} />
+        <div>
+          <p className="label text-faint">Record of execution</p>
+          <p className="mt-1 text-[20px]"><b>The wallet did not sign.</b> {signed.cb.message || signed.cb.code}{" "}
+            <span className="typed text-[13px] text-faint">({signed.cb.code})</span></p>
+          <p className="text-[17px]">Nothing was sent, and nothing moved.</p>
+        </div>
+      </section>
     );
   }
 
   return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle>What happened on chain</CardTitle>
-        <CardDescription>
-          Read from each transaction's final outcome{signer ? <> as sent by <b>{signer}</b></> : null} — not assumed
-          from the wallet's say-so. A transfer can succeed while the vault refuses it; the token then refunds.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        {!signer && <p className="text-muted-foreground">Connect the signing account to read the outcomes.</p>}
-        {hashes.map((h, i) => {
-          const o = outcomes[i];
-          return (
-            <div key={h} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-3">
-              <a className="font-mono text-xs underline" href={`${EXPLORER}/txns/${h}`} target="_blank" rel="noreferrer">{short(h, 10)}</a>
-              {o.isPending && signer && <span className="text-muted-foreground">waiting for finality…</span>}
-              {o.isError && <span className="text-destructive">could not read it: {o.error.message}</span>}
-              {o.data && <OutcomeLine r={o.data} />}
-            </div>
-          );
-        })}
-      </CardContent>
-    </Card>
+    <section className="mb-10 mt-8 border-y-[6px] border-double border-ink py-6">
+      <p className="label text-faint">Record of execution</p>
+      <h2 className="mt-1 font-serif text-[clamp(26px,3.6vw,38px)] font-extrabold leading-tight">What happened on chain</h2>
+      <p className="mt-2 max-w-[760px] text-[17px]">
+        Read from each transaction's final outcome{signer ? <> as sent by <b className="typed">{signer}</b></> : null} —
+        not taken on the wallet's word. A transfer can succeed while the vault refuses it; the token then refunds it.
+      </p>
+      {!signer && <p className="typed mt-3 text-[14px] text-faint">Connect the signing account to read the outcomes.</p>}
+      <table className="ledger mt-5">
+        <tbody>
+          {hashes.map((h, i) => {
+            const o = outcomes[i];
+            return (
+              <tr key={h}>
+                <td className="w-[11rem]"><A href={`${EXPLORER}/txns/${h}`} className="typed text-[14px]">{short(h, 8)}</A></td>
+                <td>
+                  {o.isPending && signer && <span className="typed text-[14px] text-faint">waiting for finality…</span>}
+                  {o.isError && <span className="typed text-[14px] text-seal">could not read it: {o.error.message}</span>}
+                  {o.data && <OutcomeLine r={o.data} />}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
-const Ok = ({ children }: { children: string }) => <Badge className="bg-emerald-600">{children}</Badge>;
-const No = ({ children }: { children: string }) => <Badge variant="destructive">{children}</Badge>;
+const Ok = ({ children }: { children: string }) => <Stamp ink="blue">{children}</Stamp>;
+const No = ({ children }: { children: string }) => <Stamp>{children}</Stamp>;
+const Then = ({ children }: { children: ReactNode }) => <span className="ml-3 text-[17px]">{children}</span>;
 
 function OutcomeLine({ r }: { r: Interpreted }) {
   switch (r.kind) {
     case "storage_deposit":
-      return <><Ok>storage prepaid</Ok><span className="text-muted-foreground">balance now {near(r.credited, 5)} NEAR</span></>;
+      return <><Ok>storage prepaid</Ok><Then>your prepaid balance is now {near(r.credited, 5)} NEAR.</Then></>;
     case "open":
       return r.ok
-        ? <><Ok>mandate opened</Ok><Link className="underline" to={`/mandate/${r.mandateId}`}>Mandate #{r.mandateId} →</Link></>
-        : <><No>not opened</No><span>{r.reason}. The token refunded the transfer.</span></>;
+        ? <><Ok>agreement in force</Ok><Then><L to={`/mandate/${r.mandateId}`}>Agreement §{r.mandateId} →</L></Then></>
+        : <><No>not opened</No><Then>{r.reason}. The token refunded the transfer.</Then></>;
     case "fund":
       return r.ok
-        ? <><Ok>escrow topped up</Ok><Link className="underline" to={`/mandate/${r.mandateId}`}>Mandate #{r.mandateId} →</Link></>
-        : <><No>not topped up</No><span>{r.reason}. The token refunded the transfer.</span></>;
+        ? <><Ok>escrow topped up</Ok><Then><L to={`/mandate/${r.mandateId}`}>Agreement §{r.mandateId} →</L></Then></>
+        : <><No>not topped up</No><Then>{r.reason}. The token refunded the transfer.</Then></>;
     case "withdraw":
     case "storage_withdraw":
       return r.ok
-        ? <Ok>{r.kind === "withdraw" ? "withdrawn" : "storage withdrawn"}</Ok>
-        : <><No>not paid out</No><span>{r.reason}</span></>;
+        ? <Ok>{r.kind === "withdraw" ? "paid out" : "storage paid out"}</Ok>
+        : <><No>not paid out</No><Then>{r.reason}</Then></>;
     case "cancel":
-      return <><Ok>mandate cancelled</Ok><span className="text-muted-foreground">#{r.mandateId}; unspent escrow is now a credit</span></>;
+      return <><Ok>agreement closed</Ok><Then>§{r.mandateId}; its unspent escrow is now a credit you can withdraw.</Then></>;
     case "reap":
-      return <><Ok>record reaped</Ok><span className="text-muted-foreground">{near(r.refunded, 5)} NEAR of storage returned to your prepaid balance</span></>;
+      return <><Ok>record reaped</Ok><Then>{near(r.refunded, 5)} NEAR of storage returned to your prepaid balance.</Then></>;
     default:
-      return r.ok ? <Badge variant="secondary">succeeded</Badge> : <><No>failed</No><span>{r.reason}</span></>;
+      return r.ok ? <Ok>succeeded</Ok> : <><No>failed</No><Then>{r.reason}</Then></>;
   }
 }

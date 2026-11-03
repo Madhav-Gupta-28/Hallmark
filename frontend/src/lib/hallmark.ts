@@ -41,6 +41,13 @@ export const VAULT = "hallmarkfi.near";
  *   One unpinned call timed out (10 s) in the first probe, which is why it sits
  *   last rather than second.
  *
+ *   ORDER ALSO DIFFERS — measured 2026-11-04, five `open_mandate_count` views
+ *   each: rpc.mainnet.near.org answered every one, but in 3.6–4.6 s;
+ *   free.rpc.fastnear.com in 0.5–1.0 s; near.drpc.org in 0.7–1.1 s. Failover
+ *   only triggers on errors, so a slow-but-answering first endpoint made every
+ *   page wait ~4 s per call (Exhibit A took 17 s). Fastest first; the official
+ *   endpoint stays as the last resort.
+ *
  *   Also tried and rejected that day: near.lava.build (410, discontinued),
  *   rpc.ankr.com/near and near.blockpi.network (API key required),
  *   endpoints.omniatech.io (521), near-mainnet.public.blastapi.io and
@@ -50,11 +57,11 @@ export const VAULT = "hallmarkfi.near";
  *   free.rpc.fastnear.com, so they add no independence.
  */
 export const RPCS = [
-  "https://rpc.mainnet.near.org",
   "https://free.rpc.fastnear.com",
   "https://near.drpc.org",
+  "https://rpc.mainnet.near.org",
 ] as const;
-export const RPC = RPCS[0];
+export const RPC = RPCS[0];                // the first tried, not "the official" one
 export const API = "https://1click.chaindefuser.com";
 export const SIGNER = "ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc";
 export const EXPLORER = "https://nearblocks.io";

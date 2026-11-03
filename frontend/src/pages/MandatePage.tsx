@@ -1,91 +1,171 @@
 import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Amount, Row } from "@/components/fields";
-import { MandateCard } from "@/components/MandateCard";
-import { age, fixtures, units, VAULT, type MandateRecord, type MandateTerms } from "@/lib/hallmark";
-import { captureTerms, liveQuote, parseCheck, priceQuote, type Verdict } from "@/lib/price";
+import { useParams } from "react-router-dom";
+import { A, Clause, Entry, Heading, L, Seal, Source, Stamp } from "@/components/doc";
+import { Amount } from "@/components/fields";
+import {
+  age, EXPLORER, fixtures, short, units, VAULT, type MandateRecord, type MandateTerms,
+} from "@/lib/hallmark";
+import {
+  captureTerms, liveQuote, parseCheck, priceQuote, refusalOf, type ParsedCheck, type Verdict,
+} from "@/lib/price";
 import { mandateQuery, tokensQuery } from "@/lib/queries";
 import { meta, type TokenMeta, type TokenTable } from "@/lib/tokens";
 import { cn } from "@/lib/utils";
+
+const NS_PER_DAY = 86_400_000_000_000n;
 
 export function MandatePage() {
   const raw = useParams().id ?? "";
   const valid = /^\d+$/.test(raw);
   const id = valid ? Number(raw) : -1;
-
   const mandate = useQuery({ ...mandateQuery(id), enabled: valid });
   const tokens = useQuery(tokensQuery);
   const table = tokens.data ?? {};
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <Button asChild variant="ghost" size="sm" className="mb-6 -ml-2">
-        <Link to="/book"><ArrowLeft /> The open book</Link>
-      </Button>
-
-      <header className="mb-8 space-y-2">
-        <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          Mandate · <code>get_mandate</code> on {VAULT}
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight">Mandate #{raw}</h1>
-      </header>
-
-      {!valid && <Problem title="Not a mandate id">Mandate ids are whole numbers, starting at 1.</Problem>}
-
-      {valid && mandate.isPending && (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-          <Skeleton className="h-96" /><Skeleton className="h-96" />
-        </div>
-      )}
-
-      {mandate.isError && <Problem title="Could not read the mandate">{mandate.error.message}</Problem>}
-
+    <main className="doc">
+      <p className="label pt-8"><L to="/book">← the register</L></p>
+      {!valid && <Refusal title={`"${raw}" is not an agreement number`}>Agreements are numbered from 1.</Refusal>}
+      {valid && mandate.isPending && <p className="typed mt-10 text-faint">asking {VAULT} for agreement §{id}…</p>}
+      {mandate.isError && <Refusal title="The agreement could not be read">{mandate.error.message}</Refusal>}
       {mandate.isSuccess && mandate.data === null && (
-        <Problem title={`No mandate #${id}`}>
-          The vault has no record under this id. Either it was never opened, or its owner cancelled it and
-          then reaped the record to recover its storage. Ids are never reused.
-        </Problem>
+        <Refusal title={`No agreement §${id}`}>
+          The vault holds no record under this number. Either it was never drawn up, or its owner cancelled it and
+          then reaped the record to recover its storage. Numbers are never reused.
+        </Refusal>
       )}
-
       {mandate.isSuccess && mandate.data && (
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-          <MandateCard id={id} m={mandate.data} table={table} readAt={mandate.dataUpdatedAt} />
-          <PricePanel id={id} m={mandate.data} table={table} />
-        </div>
+        <>
+          <Agreement id={id} m={mandate.data} table={table} readAt={mandate.dataUpdatedAt} />
+          <Compliance id={id} m={mandate.data} table={table} />
+        </>
       )}
+    </main>
+  );
+}
+
+function Refusal({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col items-start gap-8 py-14 sm:flex-row sm:items-center">
+      <Seal slam top="refused" big="§?" bottom="not found" size={160} />
+      <div>
+        <h1 className="font-serif text-[clamp(30px,5vw,56px)] font-extrabold leading-none">{title}</h1>
+        <p className="mt-4 max-w-[620px] text-[19px]">{children}</p>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------ the agreement */
+
+function Agreement({ id, m, table, readAt }: { id: number; m: MandateRecord; table: TokenTable; readAt: number }) {
+  const t = m.terms;
+  const inTok = meta(table, t.origin_asset);
+  const outTok = meta(table, t.destination_asset);
+  const left = (BigInt(t.expiry_ns) - BigInt(readAt) * 1_000_000n) / NS_PER_DAY;
+  const expires = new Date(Number(BigInt(t.expiry_ns) / 1_000_000n));
+  const pct = t.max_cost_bps ? Math.min(100, (m.worst_bps / t.max_cost_bps) * 100) : 0;
+  const v = (x: ReactNode) => <b className="typed text-sign">{x}</b>;
+
+  return (
+    <section className="relative">
+      <div className="label mt-6 text-faint">Agreement §{id} · {m.open ? (left > 0n ? "in force" : "expired") : "closed"}</div>
+      <h1 className="mt-3 font-serif text-[clamp(40px,7.4vw,96px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
+        {inTok.symbol} <span className="font-medium italic">for</span> {outTok.symbol}.
+      </h1>
+      <div className="pointer-events-none absolute right-0 top-2 hidden md:block">
+        {m.open
+          ? <Seal ink="blue" top="in force" big={`§${id}`} bottom={`${t.max_cost_bps} bps ceiling`} size={150} tilt={9} />
+          : <Seal top="closed" big={`§${id}`} bottom="no further fills" size={150} tilt={9} />}
+      </div>
+
+      <div className="mt-8 grid gap-x-12 md:grid-cols-2">
+        <Entry k="Owner" v={<L to={`/account/${m.owner}`} className="typed">{short(m.owner, 12)}</L>} />
+        <Entry k="Enforced by" v={<A href={`${EXPLORER}/address/${VAULT}`}>{VAULT}</A>} />
+      </div>
+
+      <Heading kicker="The terms, as written on chain">Clauses</Heading>
+      <Clause no="§1" title="Ceiling">
+        The owner will pay no more than {v(`${t.max_cost_bps} bps`)} all-in on any fill, measured on what actually arrives.
+      </Clause>
+      <Clause no="§1a" title="Size">
+        No single fill may take more than {v(<Amount v={t.max_fill} tok={inTok} />)} of the escrow.
+      </Clause>
+      <Clause no="§3" title="Freshness">
+        No quote signed more than {v(`${t.max_quote_age_secs} s`)} ({age(t.max_quote_age_secs)}) before the fill is honoured.
+      </Clause>
+      <Clause no="§7" title="Term">
+        In force until {v(expires.toISOString().replace("T", " ").slice(0, 16) + " UTC")}
+        {m.open && (left > 0n ? <> — {left} days from now.</> : <> — <Stamp>expired</Stamp></>)}
+      </Clause>
+      <Clause no="§8" title="Recipient">
+        Every quote must name {v(t.recipient)} as its recipient, or the delivery cannot be verified.
+      </Clause>
+
+      <Heading kicker="Schedule A">Performance to date</Heading>
+      <div className="grid gap-x-12 md:grid-cols-2">
+        <div>
+          <Entry k="Escrow remaining" v={<span className="typed text-[20px]"><Amount v={m.escrow} tok={inTok} /></span>} />
+          <Entry k="Delivered to the owner" v={<span className="typed text-[20px]"><Amount v={m.delivered} tok={outTok} /></span>} />
+          <Entry k="Fills" v={<span className="typed text-[20px]">{m.fills}</span>} />
+        </div>
+        <div>
+          <Entry k="Worst fill ever taken" v={m.fills ? <b className="typed text-[20px] text-sign">{m.worst_bps} bps</b> : <span className="text-faint">none yet</span>} />
+          {m.fills > 0 && (
+            <div className="py-3">
+              <Ruler marks={[{ at: pct, label: `${m.worst_bps} taken`, ink: "blue" }]} />
+              <p className="typed mt-1 text-[12.5px] text-faint">Can never exceed the ceiling: the contract refuses any fill that would.</p>
+            </div>
+          )}
+        </div>
+      </div>
+      <Source>get_mandate({id}) on {VAULT}, read {new Date(readAt).toLocaleTimeString()}, re-read every 30 s.</Source>
+    </section>
+  );
+}
+
+/** A ruler from 0 to the ceiling, with marks. Marks past the ceiling pin to its end, in red. */
+function Ruler({ marks }: { marks: Array<{ at: number; label: string; ink: "blue" | "red" }> }) {
+  // Marks closer than ~12% (or both pinned past the ceiling) would print over
+  // each other, so each label climbs one line above the one before it.
+  const placed = [...marks].sort((a, b) => a.at - b.at).map((mk, i, all) => {
+    const at = Math.min(100, mk.at);
+    let lift = 0;
+    for (let j = 0; j < i; j++) if (Math.abs(Math.min(100, all[j].at) - at) < 12) lift++;
+    return { ...mk, at, lift };
+  });
+  const top = Math.max(0, ...placed.map((p) => p.lift));
+  return (
+    <div className="relative mb-7 h-4 border-2 border-ink" style={{ marginTop: `${28 + top * 18}px` }}>
+      {[25, 50, 75].map((x) => <span key={x} className="absolute -bottom-0.5 h-2 w-px bg-ink" style={{ left: `${x}%` }} />)}
+      <span className="label absolute -right-1 top-5 text-[11px]">ceiling</span>
+      <span className="label absolute -left-1 top-5 text-[11px]">0</span>
+      {placed.map((mk) => (
+        <span key={mk.label} className="absolute bottom-0 flex flex-col items-center" style={{ left: `${mk.at}%`, transform: "translateX(-50%)" }}>
+          <span className={cn("typed whitespace-nowrap text-[12px] font-bold", mk.ink === "red" ? "text-seal" : "text-sign")}
+            style={{ marginBottom: `${mk.lift * 18}px` }}>{mk.label}</span>
+          <span className={cn("block h-7 w-[3px]", mk.ink === "red" ? "bg-seal" : "bg-sign")} />
+        </span>
+      ))}
     </div>
   );
 }
 
-function Problem({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Alert variant="destructive">
-      <AlertTitle>{title}</AlertTitle>
-      <AlertDescription>{children}</AlertDescription>
-    </Alert>
-  );
-}
+/* -------------------------------------------------- the test of compliance */
 
-/* ------------------------------------------------------------ price a fill */
+type From = "live" | "capture";
+interface Priced { source: From; terms: MandateTerms; useLive: boolean; note?: string; verdict: Verdict }
 
-function PricePanel({ id, m, table }: { id: number; m: MandateRecord; table: TokenTable }) {
+function Compliance({ id, m, table }: { id: number; m: MandateRecord; table: TokenTable }) {
   const price = useMutation({
     mutationKey: ["price", id],
-    mutationFn: async (source: Source): Promise<Priced> => {
+    mutationFn: async (source: From): Promise<Priced> => {
       if (source === "live") {
         const { canonical, signature } = await liveQuote(m);
         return { source, terms: m.terms, useLive: true, verdict: await priceQuote(canonical, signature, m.terms) };
       }
-      // app.js's "#pfx": the worst capture, which needs nothing from the venue.
-      const FX = await fixtures();
-      const f = FX.worst;
+      const f = (await fixtures()).worst;
       const { terms, useLive } = captureTerms(f.canonical, m);
       return { source, terms, useLive, note: f.note, verdict: await priceQuote(f.canonical, f.signature, terms) };
     },
@@ -93,254 +173,140 @@ function PricePanel({ id, m, table }: { id: number; m: MandateRecord; table: Tok
   const busy = price.isPending;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Price a fill</CardTitle>
-        <CardDescription>
-          Fetches a real signed quote from NEAR Intents for this mandate's pair and size, then asks the vault
-          what it would do with it. The contract verifies the venue's signature, reads four signed fields, and
-          answers. No oracle, no price taken on trust, nothing signed by you and nothing sent.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {!m.open && (
-          <Alert>
-            <AlertTitle>This mandate is closed</AlertTitle>
-            <AlertDescription>
-              The contract refuses every fill against a closed mandate before it checks anything else, so there
-              is no live fill to price. The captured quote below still shows how the vault judges one.
-            </AlertDescription>
-          </Alert>
+    <section>
+      <Heading kicker="Part II">Test of compliance</Heading>
+      <p className="max-w-[760px] text-[19px]">
+        Would a fill against this agreement be honoured right now? Fetch a real, freshly signed quote from NEAR
+        Intents for this exact pair and size, and the contract answers: it verifies the venue's signature, reads
+        four signed numbers, and rules at two delivery sizes. Nothing is signed by you and nothing is sent.
+      </p>
+      {!m.open && (
+        <p className="mt-4 max-w-[760px] text-[19px]">
+          <Stamp>closed</Stamp> The contract refuses every fill against a closed agreement before reading anything
+          else, so there is no live fill to test. Exhibit A still shows how it rules.
+        </p>
+      )}
+      <div className="mt-6 flex flex-wrap gap-4">
+        {m.open && (
+          <button className="btn btn-ink" onClick={() => price.mutate("live")} disabled={busy}>
+            {busy && price.variables === "live" ? "asking the venue, then the vault…" : "Obtain a live quote"}
+          </button>
         )}
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-3">
-            {m.open && (
-              <Button onClick={() => price.mutate("live")} disabled={busy}>
-                {busy && price.variables === "live" ? "Asking the venue, then the vault…" : "Get a live quote"}
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => price.mutate("capture")} disabled={busy}>
-              {busy && price.variables === "capture" ? "Replaying the capture…" : "Use the malicious capture instead"}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            ↳ the second button needs nothing from the venue — it replays a genuinely signed capture carrying a
-            500 bps hidden fee, so you can see a refusal even if 1Click is down.
-          </p>
-          {price.isSuccess && (
-            <p className="text-xs text-muted-foreground">
-              answered {new Date(price.submittedAt).toLocaleTimeString()}
-              {price.data.source === "live" && <> · a quote ages out of this mandate after {age(m.terms.max_quote_age_secs)}</>}
-            </p>
-          )}
+        <button className="btn" onClick={() => price.mutate("capture")} disabled={busy}>
+          {busy && price.variables === "capture" ? "replaying…" : "Use Exhibit A instead"}
+        </button>
+      </div>
+      <p className="typed mt-3 text-[13px] text-faint">
+        ↳ Exhibit A needs nothing from the venue: a genuinely signed capture with a hidden 500 bps fee, so you can
+        see a refusal even when 1Click is down.
+      </p>
+
+      {price.isError && (
+        <div className="mt-8 flex items-center gap-6">
+          <Stamp>no finding</Stamp>
+          <p className="text-[18px]">{price.error.message}. Nothing was signed and nothing moved.</p>
         </div>
-
-        {price.isError && (
-          <Problem title="No verdict">
-            {price.error.message}. Nothing was signed and nothing moved.
-            {price.variables === "live" && " Try the captured quote instead — it needs no venue."}
-          </Problem>
-        )}
-
-        {price.isSuccess && price.data.source === "capture" && <CaptureBanner p={price.data} id={id} />}
-        {price.isSuccess && (
-          <VerdictView
-            mandateId={price.data.useLive ? id : null}
-            r={price.data.verdict}
-            terms={price.data.terms}
-            table={table}
-          />
-        )}
-
-        {price.isIdle && m.open && (
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            Nothing has been asked of the chain yet. The answer fills in with the venue's signature, the signed
-            numbers, both cost figures, and the contract's own verdict at two delivery sizes — each a keyless
-            view call you can repeat yourself.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      )}
+      {price.isSuccess && <Findings p={price.data} id={id} table={table} at={price.submittedAt} />}
+    </section>
   );
 }
 
-function VerdictView({ mandateId, r, terms: t, table }: {
-  mandateId: number | null; r: Verdict; terms: MandateTerms; table: TokenTable;
-}) {
+function Findings({ p, id, table, at }: { p: Priced; id: number; table: TokenTable; at: number }) {
+  const r = p.verdict;
+  const t = p.terms;
   const inTok = meta(table, t.origin_asset);
   const outTok = meta(table, t.destination_asset);
-  const ceil = t.max_cost_bps;
-  const stale = r.ageSecs > t.max_quote_age_secs;
-  const scale = Math.max(ceil, r.worstBps, 1);
-
   const floor = parseCheck(r.atFloor);
   const full = parseCheck(r.atFull);
+  const stale = r.ageSecs > t.max_quote_age_secs;
+  const scale = (bps: number) => (t.max_cost_bps ? (bps / t.max_cost_bps) * 100 : 100);
+  const reason = full.reason ?? floor.reason;
 
   return (
-    <div className="space-y-5">
-      <dl className="divide-y text-sm">
-        <Row k="signed by NEAR Intents?" v={r.signed
-          ? <Good>yes — valid ed25519 over these exact bytes</Good>
-          : <Bad>NO — these are not the bytes the venue signed</Bad>} />
-        <Row k="unsigned field inside the signed bytes?" v={r.leaked.length ? <Bad>{r.leaked.join(", ")}</Bad> : <Good>none</Good>} />
-        <Row k="in" v={<>${Number(r.q.amountInUsd).toFixed(4)} · <Amount v={r.q.amountIn} tok={inTok} /></>} />
-        <Row k="out, if honoured in full" v={<>${Number(r.q.amountOutUsd).toFixed(4)} · <Amount v={r.q.amountOut} tok={outTok} /></>} />
-        <Row k="out, guaranteed floor" v={<Amount v={r.q.minAmountOut} tok={outTok} />} />
-        <Row
-          k={<>signed at <span className="text-xs">← by the venue, inside the signature</span></>}
-          v={<>{r.q.timestamp} {stale ? <Bad>{age(r.ageSecs)} ago</Bad> : <Good>{age(r.ageSecs)} ago</Good>}</>}
-        />
-        <Row
-          k={<>deadline <span className="text-xs">← chosen by whoever asked</span></>}
-          v={<span className="text-muted-foreground">{r.q.deadline}</span>}
-        />
-        <Row k="size against this mandate's cap" v={r.fillable
-          ? <Good>within {capText(t.max_fill, inTok)}</Good>
-          : <Bad>over the {capText(t.max_fill, inTok)} cap</Bad>} />
-        <Row k="cost if honoured in full" v={<span className={cn("text-xl font-semibold", r.fullBps > ceil && "text-destructive")}>{r.fullBps} bps</span>} />
-        <Row k="guaranteed-worst all-in cost" v={<span className={cn("text-xl font-semibold", r.worstBps > ceil ? "text-destructive" : "text-emerald-600")}>{r.worstBps} bps</span>} />
-      </dl>
+    <div className="mt-10">
+      {p.source === "capture" && (
+        <div className="mb-6 max-w-[820px] border-l-4 border-seal pl-5 text-[18px]">
+          <p><b>Exhibit A.</b> {p.note} It is genuinely signed by NEAR Intents. Its 500 bps fee sits in{" "}
+            <code>appFees</code>, which the venue does not sign and the contract never reads — it does not need to,
+            because the cost is already inside the signed numbers.</p>
+          <p className="mt-2">
+            {p.useLive
+              ? <>Tested against agreement §{id}'s real terms.</>
+              : <>Agreement §{id} exchanges a different pair, so this is tested against illustrative terms for the
+                capture's own pair: a {t.max_cost_bps} bps ceiling and a {t.max_quote_age_secs} s freshness bound.</>}
+            {reason === "QuoteTooOld" && <> The capture was signed {age(r.ageSecs)} ago, so it is refused under{" "}
+              <b>§3 (freshness)</b> before cost is even read; the costs below show it breaches §1 too.</>}
+            {reason === "QuoteExpired" && <> Its own signed deadline ({r.q.deadline}) has passed, which the
+              contract checks first; the costs below still show the fee.</>}
+          </p>
+        </div>
+      )}
 
-      <div className="relative h-8 overflow-hidden rounded-md bg-muted text-xs">
-        <div className={cn("absolute inset-y-0 left-0", r.worstBps > ceil ? "bg-destructive/30" : "bg-emerald-500/30")}
-          style={{ width: `${Math.min(100, (r.worstBps / scale) * 100)}%` }} />
-        <div className="absolute inset-y-0 w-0.5 bg-foreground" style={{ left: `${Math.min(100, (ceil / scale) * 100)}%` }} />
-        <div className="relative flex h-full items-center px-3">
-          <b>{r.worstBps} bps</b>&nbsp;guaranteed worst · ceiling&nbsp;<b>{ceil} bps</b>
+      <div className="grid gap-12 lg:grid-cols-[1.25fr_1fr]">
+        <div>
+          <p className="label mb-2">Findings</p>
+          <Entry k="Signed by NEAR Intents?" v={r.signed ? <Stamp ink="blue">yes — these exact bytes</Stamp> : <Stamp>no</Stamp>} />
+          <Entry k="Unsigned field in the signed bytes?" v={r.leaked.length ? <Stamp>{r.leaked.join(", ")}</Stamp> : <span className="text-sign">none</span>} />
+          <Entry k="In" v={<span className="typed">${Number(r.q.amountInUsd).toFixed(4)} · <Amount v={r.q.amountIn} tok={inTok} /></span>} />
+          <Entry k="Out, if honoured in full" v={<span className="typed">${Number(r.q.amountOutUsd).toFixed(4)} · <Amount v={r.q.amountOut} tok={outTok} /></span>} />
+          <Entry k="Out, guaranteed floor" v={<span className="typed"><Amount v={r.q.minAmountOut} tok={outTok} /></span>} />
+          <Entry k="Signed (by the venue)" v={<span className="typed">{r.q.timestamp} · <span className={stale ? "text-seal" : "text-sign"}>{age(r.ageSecs)} ago</span></span>} />
+          <Entry k="Deadline (chosen by the asker)" v={<span className="typed text-faint">{r.q.deadline}</span>} />
+          <Entry k="Size against §1a" v={r.fillable ? <span className="text-sign">within {cap(t.max_fill, inTok)}</span> : <Stamp>over {cap(t.max_fill, inTok)}</Stamp>} />
+          <Entry k="Cost if honoured in full" v={<b className={cn("typed text-[22px]", r.fullBps > t.max_cost_bps ? "text-seal" : "text-sign")}>{r.fullBps} bps</b>} />
+          <Entry k="Guaranteed-worst cost" v={<b className={cn("typed text-[22px]", r.worstBps > t.max_cost_bps ? "text-seal" : "text-sign")}>{r.worstBps} bps</b>} />
+          <div className="pb-2 pt-4">
+            <Ruler marks={[
+              { at: scale(r.fullBps), label: `${r.fullBps} full`, ink: r.fullBps > t.max_cost_bps ? "red" : "blue" },
+              { at: scale(r.worstBps), label: `${r.worstBps} floor${r.worstBps > t.max_cost_bps ? " ▸" : ""}`, ink: r.worstBps > t.max_cost_bps ? "red" : "blue" },
+            ]} />
+          </div>
+        </div>
+
+        <div>
+          <p className="label mb-2">Rulings</p>
+          {/* Both deliveries, because a filler that sends only minAmountOut is refused whenever the
+              floor alone breaches the ceiling, even though a full delivery would pass. */}
+          <Ruling title="Delivering the signed floor" sub="minAmountOut — the least the venue guaranteed"
+            delivered={<Amount v={r.q.minAmountOut} tok={outTok} />} raw={r.atFloor} c={floor} inTok={inTok} />
+          <Ruling title="Delivering the full quote" sub="amountOut — the expected fill"
+            delivered={<Amount v={r.q.amountOut} tok={outTok} />} raw={r.atFull} c={full} inTok={inTok} />
+          {full.allowed && !floor.allowed && (
+            <p className="mt-4 text-[17px]"><span className="hl">A filler must deliver more than the floor here.</span>{" "}
+              The contract rules on what arrives: the full quote is honoured, the bare floor would be refused and
+              returned.</p>
+          )}
+          {!full.allowed && (
+            <p className="mt-4 text-[17px]">No delivery against this quote is honoured — no filler can use it on these terms.</p>
+          )}
         </div>
       </div>
-
-      {/* Both deliveries, side by side. web/app.js's Fill button sends minAmountOut, which is
-          refused whenever the floor alone breaches the ceiling even though a full delivery
-          passes — so the floor verdict is the one a naive filler would actually get. */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <CheckBox
-          title="Delivering the signed floor"
-          sub="minAmountOut — the least the venue guaranteed"
-          delivered={<Amount v={r.q.minAmountOut} tok={outTok} />}
-          raw={r.atFloor} parsed={floor} inTok={inTok}
-        />
-        <CheckBox
-          title="Delivering the full quote"
-          sub="amountOut — the expected fill"
-          delivered={<Amount v={r.q.amountOut} tok={outTok} />}
-          raw={r.atFull} parsed={full} inTok={inTok}
-        />
-      </div>
-
-      {full.allowed && !floor.allowed && (
-        <Alert>
-          <AlertTitle>A filler has to deliver more than the floor here</AlertTitle>
-          <AlertDescription>
-            The contract checks the cost on what actually arrives. Delivering the full quote passes; delivering
-            only the venue's guaranteed floor would be refused and the tokens returned. A filler that sends{" "}
-            <code>minAmountOut</code> by default would fail on this quote.
-          </AlertDescription>
-        </Alert>
-      )}
-      {!full.allowed && (
-        <Alert variant="destructive">
-          <AlertTitle>No fill against this quote passes</AlertTitle>
-          <AlertDescription>
-            Even a delivery of the full quote is refused, so no filler can use this quote on this mandate.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <p className="text-xs text-muted-foreground">
-        ↳ every figure above was answered by <b>{VAULT}</b> on NEAR mainnet against{" "}
-        {mandateId !== null ? <>mandate #{mandateId}'s real terms</> : <>the illustrative terms shown</>} — a{" "}
-        {ceil} bps ceiling and a {t.max_quote_age_secs} s freshness bound. The quote is a{" "}
-        <code>dry: true</code> quote; it commits nobody to anything.
-      </p>
+      <Source>
+        is_signed · worst_cost · realised_cost · quote_age_secs · dry_check ×2 on {VAULT}, at{" "}
+        {new Date(at).toLocaleTimeString()}. The quote is a dry quote and commits nobody to anything.
+      </Source>
     </div>
   );
 }
 
-function CheckBox({ title, sub, delivered, raw, parsed, inTok }: {
-  title: string; sub: string; delivered: ReactNode; raw: string; parsed: ReturnType<typeof parseCheck>; inTok: TokenMeta;
+function Ruling({ title, sub, delivered, raw, c, inTok }: {
+  title: string; sub: string; delivered: ReactNode; raw: string; c: ParsedCheck; inTok: TokenMeta;
 }) {
+  const why = refusalOf(c.reason);
   return (
-    <div className={cn("space-y-2 rounded-md border p-3 text-sm",
-      parsed.allowed ? "border-emerald-500/50 bg-emerald-500/5" : "border-destructive/50 bg-destructive/5")}>
-      <div className="flex items-center justify-between gap-2">
-        <b>{title}</b>
-        {parsed.allowed ? <Badge className="bg-emerald-600">allowed</Badge> : <Badge variant="destructive">refused</Badge>}
+    <div className="flex items-center gap-5 border-b border-ink/25 py-5">
+      {c.allowed
+        ? <Seal slam ink="blue" top="honoured" big={`${c.costBps}`} bottom="bps realised" size={132} tilt={-8} />
+        : <Seal slam top="refused" big={why.clause} bottom={why.words} size={132} tilt={-8} />}
+      <div className="min-w-0">
+        <p className="font-bold">{title}</p>
+        <p className="typed text-[13px] text-faint">{sub}: {delivered}</p>
+        {c.allowed && c.earns && <p className="mt-1 text-[16px]">The filler would earn <Amount v={c.earns} tok={inTok} />.</p>}
+        <code className={cn("mt-1 block break-all text-[12px]", c.allowed ? "text-sign" : "text-seal")} title="dry_check, verbatim">{raw}</code>
       </div>
-      <p className="text-xs text-muted-foreground">{sub}: {delivered}</p>
-      {parsed.allowed ? (
-        <p>
-          <b>{parsed.costBps} bps</b> realised cost · filler earns{" "}
-          {parsed.earns && <Amount v={parsed.earns} tok={inTok} />}
-        </p>
-      ) : (
-        parsed.reason && <p><b>{parsed.reason}</b></p>
-      )}
-      <code className="block break-all text-xs text-muted-foreground" title="dry_check, verbatim">{raw}</code>
     </div>
   );
 }
 
-const capText = (v: string, tok: TokenMeta) => (tok.dp === null ? `${v} base units` : `${units(v, tok.dp, 6)} ${tok.symbol}`);
-const Good = ({ children }: { children: ReactNode }) => <span className="text-emerald-600">{children}</span>;
-const Bad = ({ children }: { children: ReactNode }) => <span className="font-medium text-destructive">{children}</span>;
-
-/* ------------------------------------------------------------- the capture */
-
-type Source = "live" | "capture";
-
-interface Priced {
-  source: Source;
-  /** the terms the verdict was asked against */
-  terms: MandateTerms;
-  /** true when those are this mandate's real terms */
-  useLive: boolean;
-  note?: string;
-  verdict: Verdict;
-}
-
-/**
- * What the capture is, and, unlike app.js's banner, which check actually
- * refused it. The capture is days old, so against a 300 s age bound the vault
- * refuses it as `QuoteTooOld` before the cost check runs; after its signed
- * deadline (2026-11-20) it is `QuoteExpired` first. The hidden fee is still
- * priced by `worst_cost` and `realised_cost`, which do not check freshness.
- */
-function CaptureBanner({ p, id }: { p: Priced; id: number }) {
-  const r = p.verdict;
-  const reason = parseCheck(r.atFull).reason ?? parseCheck(r.atFloor).reason;
-  const ceil = p.terms.max_cost_bps;
-  return (
-    <Alert>
-      <AlertTitle>A captured quote carrying a 500 bps hidden fee</AlertTitle>
-      <AlertDescription className="space-y-2">
-        <p>
-          {p.note} It is genuinely signed by NEAR Intents — the signature below verifies. The fee lives in{" "}
-          <code>appFees</code>, which the venue does not sign, so the contract never reads that field. It does not
-          need to: the cost is already inside the signed numbers — <b>{r.worstBps} bps</b> guaranteed-worst
-          and <b>{r.fullBps} bps</b> even if honoured in full, against a {ceil} bps ceiling.
-        </p>
-        <p>
-          {p.useLive
-            ? <>Priced against live mandate #{id}'s real terms.</>
-            : <>Mandate #{id} trades a different pair, so this is priced against illustrative terms for the
-              capture's own pair: a {ceil} bps ceiling and a {p.terms.max_quote_age_secs} s age bound.</>}
-        </p>
-        {reason === "QuoteTooOld" && (
-          <p>
-            <b>Refused first by the age bound, not the fee.</b> The capture was signed {age(r.ageSecs)} ago, and
-            these terms accept quotes up to {age(p.terms.max_quote_age_secs)} old. The vault checks freshness
-            before cost, so <code>QuoteTooOld</code> is the reason it gives; the cost figures show the fee would
-            breach the ceiling too.
-          </p>
-        )}
-        {reason === "QuoteExpired" && (
-          <p>
-            <b>Refused first because the quote's own deadline ({r.q.deadline}) has passed</b> — the vault checks
-            that before freshness or cost. The cost figures still show the fee.
-          </p>
-        )}
-      </AlertDescription>
-    </Alert>
-  );
-}
+const cap = (v: string, tok: TokenMeta) => (tok.dp === null ? `${v} base units` : `${units(v, tok.dp, 6)} ${tok.symbol}`);

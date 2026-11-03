@@ -1,46 +1,72 @@
+/**
+ * The masthead: the document's title, which agreement register this is, and
+ * the table of contents as plain links. The wallet is a link too — connecting
+ * is an act of identification, not a feature.
+ */
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { short } from "@/lib/hallmark";
+import { useQuery } from "@tanstack/react-query";
+import { short, VAULT } from "@/lib/hallmark";
+import { openCountQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/wallet/WalletProvider";
 
 export function Header() {
   const w = useWallet();
-  const LINKS = [
-    ["/book", "The book"],
-    ["/post", "Post a mandate"],
-    [w.accountId ? `/account/${w.accountId}` : "/account", w.accountId ? "Your position" : "Positions"],
-  ] as const;
+  const open = useQuery(openCountQuery);
+  const [menu, setMenu] = useState(false);
+  const links: Array<[string, string]> = [
+    ["/book", "register"],
+    ["/post", "draw up"],
+    ["/verify", "verify"],
+    [w.accountId ? `/account/${w.accountId}` : "/account", "statement"],
+    ["/how", "how"],
+    ["/limits", "limits"],
+  ];
+
   return (
-    <header className="border-b">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-        <NavLink to="/book" className="font-semibold tracking-tight">hallmark</NavLink>
-        <nav className="flex gap-4 text-sm">
-          {LINKS.map(([to, label]) => (
+    <header className="doc pt-6">
+      <div className="double-rule flex flex-wrap items-end gap-x-6 gap-y-3 pb-3">
+        <NavLink to="/" className="font-serif text-[34px] font-extrabold leading-none tracking-[0.01em]">
+          HALLMARK.
+        </NavLink>
+        <span className="typed hidden text-[13px] text-faint md:inline">
+          Agreement register · {VAULT} · NEAR mainnet ·{" "}
+          {open.isSuccess ? `${open.data} in force` : "…"}
+        </span>
+        <span className="flex-1" />
+        <button
+          className="typed text-[14px] underline md:hidden"
+          aria-expanded={menu}
+          onClick={() => setMenu((m) => !m)}
+        >
+          {menu ? "close" : "contents"}
+        </button>
+        <nav
+          aria-label="Contents"
+          className={cn("w-full flex-wrap gap-x-5 gap-y-1 md:flex md:w-auto", menu ? "flex" : "hidden")}
+        >
+          {links.map(([to, label]) => (
             <NavLink
-              key={to} to={to}
-              className={({ isActive }) => cn("text-muted-foreground hover:text-foreground", isActive && "text-foreground")}
+              key={label} to={to} onClick={() => setMenu(false)}
+              className={({ isActive }) => cn("lnk typed text-[15px]", isActive && "hl text-ink no-underline")}
             >
               {label}
             </NavLink>
           ))}
+          {!w.ready ? (
+            <span className="typed text-[15px] text-faint">restoring…</span>
+          ) : w.accountId ? (
+            <span className="typed text-[15px]">
+              <span className="hand text-[20px]" title={w.accountId}>{short(w.accountId, 8)}</span>{" "}
+              <button className="lnk" onClick={() => void w.disconnect()}>sign out</button>
+            </span>
+          ) : (
+            <button className="lnk typed text-[15px]" onClick={w.openPicker}>connect</button>
+          )}
         </nav>
-        <span className="flex-1" />
-        <span className="text-xs text-muted-foreground">mainnet</span>
-        {!w.ready ? (
-          <Button size="sm" variant="outline" disabled>restoring wallet…</Button>
-        ) : w.accountId ? (
-          <span className="flex items-center gap-2 text-sm">
-            <span className="font-mono" title={w.accountId}>{short(w.accountId, 10)}</span>
-            <Button size="sm" variant="outline" onClick={() => void w.disconnect()}>Disconnect</Button>
-          </span>
-        ) : (
-          <Button size="sm" onClick={w.openPicker}>Connect wallet</Button>
-        )}
       </div>
-      {w.error && !w.accountId && (
-        <div className="mx-auto max-w-6xl px-4 pb-2 text-xs text-destructive">{w.error}</div>
-      )}
+      {w.error && !w.accountId && <p className="typed mt-2 text-[13px] text-seal">{w.error}</p>}
     </header>
   );
 }

@@ -145,3 +145,17 @@ export function parseCheck(s: string): ParsedCheck {
   const no = /^REFUSED (\w+)/.exec(s);
   return { allowed: false, reason: no?.[1] };
 }
+
+/** A refusal variant, in the words a reader would use, and the clause it breaches. */
+export const REFUSAL: Record<string, { words: string; clause: string }> = {
+  CostCeilingBreached: { words: "over the ceiling", clause: "§1" },
+  UnderDelivered: { words: "under the signed floor", clause: "§1" },
+  BadSignature: { words: "not signed by the venue", clause: "§2" },
+  WrongAsset: { words: "wrong asset", clause: "§2" },
+  WrongRecipient: { words: "wrong recipient", clause: "§2" },
+  QuoteTooOld: { words: "quote too old", clause: "§3" },
+  QuoteExpired: { words: "quote past its deadline", clause: "§3" },
+  MandateExpired: { words: "agreement expired", clause: "§3" },
+  FillTooLarge: { words: "fill too large", clause: "§1" },
+};
+export const refusalOf = (reason?: string) => (reason && REFUSAL[reason]) || { words: reason ?? "refused", clause: "§" };

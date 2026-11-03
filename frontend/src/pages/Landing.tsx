@@ -5,6 +5,8 @@ import { exhibitA } from "@/lib/exhibit";
 import { EXPLORER, near, SIGNER, short, VAULT, view, viewAccount } from "@/lib/hallmark";
 import { parseCheck, refusalOf } from "@/lib/price";
 import { openCountQuery } from "@/lib/queries";
+import { Count } from "@/motion/Count";
+import { Typewriter } from "@/motion/Typewriter";
 
 export function Landing() {
   return (
@@ -25,9 +27,9 @@ export function Landing() {
 function Title() {
   return (
     <section className="relative pb-6 pt-10 sm:pt-14">
-      <div className="label text-faint">Agreement no. 1 · a not-held order that enforces its own execution bound</div>
+      <div className="label text-faint"><Typewriter text="Agreement no. 1 · a not-held order that enforces its own execution bound" /></div>
       <h1 className="mt-5 font-serif font-extrabold leading-[0.92] tracking-[-0.025em] text-[clamp(44px,8.4vw,112px)]">
-        <span className="struck block">Best execution is a promise.</span>
+        <span className="block"><span className="struck">Best execution is a promise.</span></span>
         <span className="block">It is now a <span className="hl">clause.</span></span>
       </h1>
       <p className="mt-7 max-w-[640px] text-[21px] leading-[1.45]">
@@ -36,7 +38,7 @@ function Title() {
         price feed. No custodian.
       </p>
       <div className="mt-8 flex flex-wrap gap-4">
-        <Link to="/book" className="btn btn-ink">Read the register</Link>
+        <Link to="/book" className="btn btn-ink nudge">Read the register</Link>
         <Link to="/post" className="btn">Draw up an agreement</Link>
         <Link to="/verify" className="btn">Verify a quote</Link>
       </div>
@@ -143,8 +145,8 @@ function ExhibitA() {
           {r && (
             <div className="mt-6">
               <Entry k="Did NEAR Intents sign these exact bytes?" v={r.signed ? <Stamp ink="blue">yes</Stamp> : <Stamp>no</Stamp>} />
-              <Entry k="Guaranteed-worst cost (at the signed floor)" v={<b className="typed text-[22px]">{r.worstBps} bps</b>} />
-              <Entry k="Cost even if honoured in full" v={<b className="typed text-[22px]">{r.fullBps} bps</b>} />
+              <Entry k="Guaranteed-worst cost (at the signed floor)" v={<b className="typed text-[22px] text-seal"><Count to={r.worstBps} /> bps</b>} />
+              <Entry k="Cost even if honoured in full" v={<b className="typed text-[22px] text-seal"><Count to={r.fullBps} /> bps</b>} />
               <Entry k="The owner's ceiling" v={<span className="typed text-[22px]">300 bps</span>} />
               <Entry k="dry_check, verbatim" v={<code className="text-[13px] text-seal">{r.atFloor}</code>} />
               <Source>
@@ -178,9 +180,9 @@ function ScheduleB() {
       <Heading kicker="Schedule B">The vault, as it stands</Heading>
       <div className="grid gap-x-12 md:grid-cols-2">
         <div>
-          <Entry k="Agreements in force" v={<L to="/book" className="typed text-[22px] font-bold">{open.data ?? "…"}</L>} />
-          <Entry k="Agreements ever drawn up" v={<span className="typed text-[22px]">{total.data ?? "…"}</span>} />
-          <Entry k="Vault balance" v={<span className="typed">{acct.data ? `${near(acct.data.amount, 3)} NEAR` : "…"}</span>} />
+          <Entry k="Agreements in force" v={<L to="/book" className="typed text-[22px] font-bold">{open.isSuccess ? <Count to={open.data} /> : "…"}</L>} />
+          <Entry k="Agreements ever drawn up" v={<span className="typed text-[22px]">{total.isSuccess ? <Count to={total.data} /> : "…"}</span>} />
+          <Entry k="Vault balance" v={<span className="typed">{acct.data ? <><Count to={Number(near(acct.data.amount, 3))} format={(n) => n.toFixed(3)} /> NEAR</> : "…"}</span>} />
         </div>
         <div>
           <Entry k="Contract" v={<A href={`${EXPLORER}/address/${VAULT}`}>{VAULT}</A>} />
@@ -208,7 +210,7 @@ function Execute() {
         </p>
       </div>
       <div className="flex flex-wrap gap-4">
-        <Link to="/post" className="btn btn-sign">Draw up an agreement</Link>
+        <Link to="/post" className="btn btn-sign nudge">Draw up an agreement</Link>
         <Link to="/how" className="btn">How it works</Link>
       </div>
     </section>

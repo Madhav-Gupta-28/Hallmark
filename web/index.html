@@ -7,7 +7,7 @@
 <meta name="description" content="A not-held order whose protection is a number the venue signed itself, checked on-chain. Live on NEAR mainnet. Every figure here is a keyless view call to the contract.">
 <meta name="color-scheme" content="dark light">
 <link rel="stylesheet" href="assets/hallmark.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%23cfae5e' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%23cfae5e'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/%3E%3C/svg%3E">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -94,7 +94,7 @@
   <!-- ===================================================== the invariant -->
   <section class="rv">
     <h2>The whole mechanism is one expression</h2>
-    <div class="panel gold">
+    <div class="panel ok">
       <svg class="diagram" viewBox="0 0 700 158" role="img" aria-label="cost equals one minus, open bracket amountOutUsd times delivered divided by amountOut, close bracket, all divided by amountInUsd">
         <text x="22"  y="84" font-size="20" fill="var(--ink)">cost</text>
         <text x="80"  y="84" font-size="20" fill="var(--ink-2)">=</text>
@@ -230,7 +230,7 @@
         </p>
       </div>
       <div>
-        <div class="panel gold">
+        <div class="panel ok">
           <p style="margin:0">
             <b>A provable bound is what a safe harbor looks like when it is engineered
             instead of legislated.</b> That is the thesis, and FINRA asking the question
@@ -433,7 +433,7 @@ const WORST = (await fixtures()).worst;
       ["<code>minAmountOut</code> <span class='dim2'>← what was actually guaranteed</span>", `<span class="refuse">${units(q.minAmountOut, 24, 6)} wNEAR</span>`],
       ["signed", `${age(ageS)} ago`],
       ["guaranteed&#8209;worst all&#8209;in cost", `<span class="refuse" style="font-size:21px;font-weight:600">${worst} bps</span>`],
-      ["cost even if honoured in full", `<span class="gold" style="font-size:21px;font-weight:600">${full} bps</span>`],
+      ["cost even if honoured in full", `<span class="refuse" style="font-size:21px;font-weight:600">${full} bps</span>`],
     ]);
     const n = $("#exploit-note");
     n.hidden = false;

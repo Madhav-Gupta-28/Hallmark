@@ -7,7 +7,7 @@
 <meta name="description" content="Hallmark's exported surface, typed refusals, invariants, exact storage accounting and gas — with the live state of hallmarkfi.near on NEAR mainnet.">
 <meta name="color-scheme" content="dark light">
 <link rel="stylesheet" href="assets/hallmark.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%23cfae5e' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%23cfae5e'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/%3E%3C/svg%3E">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -55,7 +55,7 @@
           <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>action</th><th>legal token</th><th>effect</th></tr></thead><tbody>
             <tr><td><code>open</code></td><td class="dim">the mandate's <b>origin</b></td><td class="dim">create a funded mandate</td></tr>
             <tr><td><code>fund</code></td><td class="dim">that mandate's <b>origin</b></td><td class="dim">top up the escrow</td></tr>
-            <tr><td><code>fill</code></td><td class="gold">the <b>destination</b></td><td class="dim">the transfer <em>is</em> the delivery</td></tr>
+            <tr><td><code>fill</code></td><td class="hi">the <b>destination</b></td><td class="dim">the transfer <em>is</em> the delivery</td></tr>
           </tbody></table></div>
           <p class="src" style="margin-top:12px">
             ↳ so an action cannot be performed with the wrong asset. Calling
@@ -139,9 +139,9 @@
       <tr><td class="n">9</td><td>No admin key, no pause, no upgrade path</td><td class="dim">there is no such method</td></tr>
       <tr><td class="n">10</td><td>A failed payout restores the credit rather than burning it</td><td class="dim"><code>resolve_withdraw</code> re-adds on <code>Err</code></td></tr>
       <tr><td class="n">11</td><td>An action cannot be performed with the wrong token</td><td class="dim">asset id is derived from the predecessor</td></tr>
-      <tr><td class="n">12</td><td>The USD marks are no older than the owner allowed</td><td class="gold">checked against the <b>signed</b> <code>timestamp</code></td></tr>
-      <tr><td class="n">13</td><td>No field the counterparty chooses is ever used as a bound</td><td class="gold"><code>depositAddress</code> unread; <code>deadline</code> never a freshness test</td></tr>
-      <tr><td class="n">14</td><td>The vault never stakes NEAR for state anyone else created</td><td class="gold">every writing path ends in <code>settle_storage</code></td></tr>
+      <tr><td class="n">12</td><td>The USD marks are no older than the owner allowed</td><td class="hi">checked against the <b>signed</b> <code>timestamp</code></td></tr>
+      <tr><td class="n">13</td><td>No field the counterparty chooses is ever used as a bound</td><td class="hi"><code>depositAddress</code> unread; <code>deadline</code> never a freshness test</td></tr>
+      <tr><td class="n">14</td><td>The vault never stakes NEAR for state anyone else created</td><td class="hi">every writing path ends in <code>settle_storage</code></td></tr>
       <tr><td class="n">15</td><td>Its storage is always covered by a prepayment not yet refunded</td><td class="dim"><code>reap</code> refunds only measured bytes freed</td></tr>
       <tr><td class="n">16</td><td>A signature is 64 bytes or it is refused</td><td class="dim"><code>decode_signature</code> returns <code>None</code> otherwise, never zero-pads</td></tr>
     </tbody></table></div>
@@ -217,7 +217,7 @@ prepaid after both withdrawals <span class="g">426</span> bytes
           <h4>Who pays for what</h4>
           <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>call</th><th>charged to</th></tr></thead><tbody>
             <tr><td><code>open</code></td><td class="dim">the owner — record + index entry</td></tr>
-            <tr><td><code>fill</code></td><td class="gold">the <b>filler</b> — the credit slots it creates</td></tr>
+            <tr><td><code>fill</code></td><td class="hi">the <b>filler</b> — the credit slots it creates</td></tr>
             <tr><td><code>fund</code></td><td class="allow">nothing — it writes no new state</td></tr>
             <tr><td><code>cancel</code></td><td class="dim">the net: index entry out, maybe a credit slot in</td></tr>
             <tr><td><code>withdraw</code></td><td class="dim">refunds the slot — but only once the payout lands</td></tr>
@@ -402,7 +402,7 @@ for (const td of document.querySelectorAll("[data-probe]")) {
           [`mandate #${id}`, `<a href="${EXPLORER}/address/${esc(m.owner)}" target="_blank" rel="noopener" class="dim2" style="font-size:12px">${esc(m.owner.slice(0, 12))}…</a>`],
           ["pair", `${esc(o)} → ${esc(d)}`],
           ["escrow left", `${units(m.escrow, odp)} <span class="dim2">of ${units(t.max_fill, odp)} max fill</span>`],
-          ["cost ceiling", `<span class="gold">${t.max_cost_bps} bps</span>`],
+          ["cost ceiling", `<span class="hi">${t.max_cost_bps} bps</span>`],
           ["quotes must be newer than", `${t.max_quote_age_secs} s`],
           ["fills so far", `${m.fills}${m.fills ? ` <span class="dim2">· worst realised ${m.worst_bps} bps</span>` : ""}`],
           ["delivered into it", units(m.delivered, d === "wrap.near" ? 24 : 6)],

@@ -7,7 +7,7 @@
 <meta name="description" content="Three independently-written fillers, one of them adapted from NEAR's own near-intents agent skill, and what a stranger's agent has to change to become one.">
 <meta name="color-scheme" content="dark light">
 <link rel="stylesheet" href="assets/hallmark.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%23cfae5e' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%23cfae5e'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/%3E%3C/svg%3E">
 <style>
   .diffrow { display:grid; grid-template-columns: 26px 1fr 1fr; gap:14px; padding:14px 0; border-bottom:1px solid var(--line); }
   .diffrow:last-child { border-bottom:0; }
@@ -50,13 +50,13 @@
       <tr>
         <td><code>fillers/edge.ts</code></td>
         <td class="dim"><b>patient</b> — fills only when the spread it keeps clears a floor it sets itself, and computes the cost itself instead of asking</td>
-        <td class="gold"><b>§2.1 and §5.3 alone</b>, without reading <code>fill.ts</code></td>
+        <td class="hi"><b>§2.1 and §5.3 alone</b>, without reading <code>fill.ts</code></td>
         <td class="dim">an independent implementation of the invariant. It prints its own number beside the contract's on every live quote, and <b>exits non-zero if they ever differ</b></td>
       </tr>
       <tr>
         <td><code>fillers/adapted.ts</code></td>
         <td class="dim">the official NEAR Intents agent flow, pointed at a vault</td>
-        <td class="gold"><code>near/agent-skills</code>, skill <code>near-intents</code></td>
+        <td class="hi"><code>near/agent-skills</code>, skill <code>near-intents</code></td>
         <td class="dim">what a stranger's agent must change to become a filler. <b>The diff is the claim</b></td>
       </tr>
     </tbody></table></div>
@@ -148,7 +148,7 @@ sandbox  13 delivery points from the signed floor to 2x the expected fill   max 
       <div class="diffrow">
         <div class="diffn">03</div>
         <div class="diffa"><code>dry: false</code>, then sends the <b>origin</b> asset to <code>quote.depositAddress</code> and waits</div>
-        <div class="diffb"><code>dry: true</code>, then sends the <b>destination</b> asset to the vault with the signed quote in <code>msg</code>. <span class="gold">The load-bearing one.</span> <span class="dim"><code>depositAddress</code> is not covered by the signature, so a filler should not trust it and the vault must not.</span></div>
+        <div class="diffb"><code>dry: true</code>, then sends the <b>destination</b> asset to the vault with the signed quote in <code>msg</code>. <span class="hi">The load-bearing one.</span> <span class="dim"><code>depositAddress</code> is not covered by the signature, so a filler should not trust it and the vault must not.</span></div>
       </div>
       <div class="diffrow">
         <div class="diffn">04</div>
@@ -162,7 +162,7 @@ sandbox  13 delivery points from the signed floor to 2x the expected fill   max 
       <code>minAmountOut</code> off a signed quote. An agent that already speaks 1Click
       keeps all of it.
     </p>
-    <div class="panel gold">
+    <div class="panel ok">
       <p style="margin:0">
         <b>The official flow uses 1Click as an execution venue. A filler uses it as a
         price oracle whose word can be proved.</b> Same API, opposite direction of trust.
@@ -285,10 +285,10 @@ import { view, rows, esc, units, EXPLORER } from "./assets/hallmark.js";
         [`mandate #${id} <span class="tag live">open</span>`, `<span class="dim2" style="font-size:12px">owner ${esc(m.owner.slice(0, 14))}…</span>`],
         ["sell", `${units(m.escrow, odp)} <span class="dim2">${esc(o)}</span>`],
         ["for", `<span class="dim2">${esc(d)}</span>`],
-        ["your realised cost must be at or under", `<span class="gold" style="font-size:18px;font-weight:650">${t.max_cost_bps} bps</span>`],
+        ["your realised cost must be at or under", `<span class="hi" style="font-size:18px">${t.max_cost_bps} bps</span>`],
         ["your quote must be newer than", `${t.max_quote_age_secs} s <span class="dim2">— measured from the venue's signed timestamp</span>`],
         ["largest single fill", `${units(t.max_fill, odp)} <span class="dim2">${esc(o)}</span>`],
-        ["filled so far", `${m.fills} fill${m.fills === 1 ? "" : "s"}${m.fills ? ` · ${units(m.delivered, ddp)} ${esc(d)} delivered · worst realised <span class="gold">${m.worst_bps} bps</span>` : ""}`],
+        ["filled so far", `${m.fills} fill${m.fills === 1 ? "" : "s"}${m.fills ? ` · ${units(m.delivered, ddp)} ${esc(d)} delivered · worst realised <span class="hi">${m.worst_bps} bps</span>` : ""}`],
       ])}
       <p class="src" style="margin-top:12px">↳ deliver ${esc(d)} to
         <a href="${EXPLORER}/address/hallmarkfi.near" target="_blank" rel="noopener">hallmarkfi.near</a>

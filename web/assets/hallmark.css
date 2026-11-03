@@ -2,36 +2,45 @@
    Hallmark — the design system.
    One stylesheet, no framework, no external font, no build step.
 
-   A hallmark is the assay stamp punched into precious metal to certify its
-   content. The accent is therefore brass, on near-black: the name made visual,
-   and institutional rather than loud. Prose is set in the reader's system sans
-   because seven pages of monospace is tiring; every *number* is monospace with
-   tabular figures, because this is a product about basis points and columns of
-   figures have to line up.
+   TWO COLOURS, AND THEY ARE THE VERDICT.
 
-   Three semantic colours and no more: refused, allowed, and the accent. All
-   three are desaturated — terracotta rather than red, sage rather than green —
-   and every pairing clears WCAG AA in both themes.
+   This product does exactly one thing: it says allowed, or it says refused. So
+   the page is monochrome, and the only colour on it is that answer. Green means
+   verified, allowed, live. Red means refused. Nothing else is ever coloured —
+   not a heading, not a button, not a logo for its own sake — which is why the
+   two that are colored carry so much.
+
+   The green is NEAR's own #00EC97, so the ecosystem link and the semantic are
+   the same decision rather than two competing accents. Black and white do all
+   the remaining work.
+
+   Prose is set in the reader's system sans, because seven pages of monospace is
+   tiring. Every *number* is monospace with tabular figures, because this is a
+   product about basis points and columns of figures have to line up.
+
+   Every pairing below clears WCAG AA, and most clear AAA, in both themes.
    ========================================================================= */
 
 :root {
-  --bg:        #0c0f13;
-  --bg-1:      #12171d;
-  --bg-2:      #171e26;
-  --line:      #212a34;
-  --line-2:    #2d3845;
-  --ink:       #c8d0da;
-  --ink-1:     #8a94a0;
-  --ink-2:     #6e7884;
-  --gold:      #cfae5e;
-  --gold-dim:  #8a7437;
-  --gold-wash: #1a1710;
-  --refuse:    #cf8375;
-  --refuse-bg: #1b1310;
-  --refuse-ln: #4a2a24;
-  --allow:     #8caf8f;
-  --allow-bg:  #101710;
-  --allow-ln:  #2a3f2c;
+  --bg:        #08090a;
+  --bg-1:      #101214;
+  --bg-2:      #16191c;
+  --line:      #1e2227;
+  --line-2:    #2a2f35;
+  --ink:       #e6e9ec;
+  --ink-1:     #9ba3ab;
+  --ink-2:     #6e767e;
+
+  /* the verdict, and the only colour on the page */
+  --ok:      #00ec97;   /* verified · allowed · live */
+  --ok-dim:  #0a6b4b;
+  --ok-wash: #07140f;
+  --allow:     #00ec97;
+  --allow-bg:  #07140f;
+  --allow-ln:  #11503a;
+  --refuse:    #ff7b72;
+  --refuse-bg: #170e0d;
+  --refuse-ln: #5a2824;
 
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, system-ui, sans-serif;
@@ -44,32 +53,32 @@
 }
 
 :root[data-theme="light"] {
-  --bg:        #f6f4f0;
-  --bg-1:      #fffefb;
-  --bg-2:      #efece6;
-  --line:      #e0dbd1;
-  --line-2:    #cfc8ba;
-  --ink:       #1b1e23;
-  --ink-1:     #525a64;
-  --ink-2:     #6e7781;
-  --gold:      #7d6318;
-  --gold-dim:  #b09a5e;
-  --gold-wash: #f6f0e0;
-  --refuse:    #9c4433;
-  --refuse-bg: #fbf0ed;
-  --refuse-ln: #e8cec7;
-  --allow:     #3b6442;
-  --allow-bg:  #eef4ef;
-  --allow-ln:  #cbdccd;
+  --bg:        #ffffff;
+  --bg-1:      #fbfbfc;
+  --bg-2:      #f2f3f5;
+  --line:      #e4e6e9;
+  --line-2:    #d0d4d9;
+  --ink:       #0a0c0e;
+  --ink-1:     #55606a;
+  --ink-2:     #6b747d;
+  --ok:      #00875a;
+  --ok-dim:  #9fd9bf;
+  --ok-wash: #eefaf4;
+  --allow:     #00875a;
+  --allow-bg:  #eefaf4;
+  --allow-ln:  #b8e6d1;
+  --refuse:    #c0362c;
+  --refuse-bg: #fdf1f0;
+  --refuse-ln: #f2cfcb;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg:#f6f4f0; --bg-1:#fffefb; --bg-2:#efece6; --line:#e0dbd1; --line-2:#cfc8ba;
-    --ink:#1b1e23; --ink-1:#525a64; --ink-2:#6e7781;
-    --gold:#7d6318; --gold-dim:#b09a5e; --gold-wash:#f6f0e0;
-    --refuse:#9c4433; --refuse-bg:#fbf0ed; --refuse-ln:#e8cec7;
-    --allow:#3b6442; --allow-bg:#eef4ef; --allow-ln:#cbdccd;
+    --bg:#ffffff; --bg-1:#fbfbfc; --bg-2:#f2f3f5; --line:#e4e6e9; --line-2:#d0d4d9;
+    --ink:#0a0c0e; --ink-1:#55606a; --ink-2:#6b747d;
+    --ok:#00875a; --ok-dim:#9fd9bf; --ok-wash:#eefaf4;
+    --allow:#00875a; --allow-bg:#eefaf4; --allow-ln:#b8e6d1;
+    --refuse:#c0362c; --refuse-bg:#fdf1f0; --refuse-ln:#f2cfcb;
   }
 }
 
@@ -121,7 +130,7 @@ body {
   transition: color .15s, background .15s;
 }
 .nav a.nl:hover { color: var(--ink); background: var(--bg-1); }
-.nav a.nl[aria-current="page"] { color: var(--gold); }
+.nav a.nl[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ok); }
 .nav .spacer { flex: 1 1 auto; }
 .theme-btn {
   flex: 0 0 auto; width: 32px; height: 32px; padding: 0;
@@ -129,7 +138,7 @@ body {
   background: transparent; border: 1px solid var(--line); border-radius: 6px;
   color: var(--ink-1); cursor: pointer;
 }
-.theme-btn:hover { color: var(--gold); border-color: var(--line-2); }
+.theme-btn:hover { color: var(--ok); border-color: var(--line-2); }
 .nav-toggle { display: none; }
 
 @media (max-width: 880px) {
@@ -171,8 +180,9 @@ p.sub { color: var(--ink-1); font-size: 14.5px; }
 strong, b { font-weight: 650; color: var(--ink); }
 em { font-style: italic; }
 
-a { color: var(--gold); text-decoration: none; border-bottom: 1px solid var(--gold-dim); }
-a:hover { border-bottom-color: var(--gold); }
+/* Links are not coloured. Colour means a verdict; a link is navigation. */
+a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line-2); }
+a:hover { border-bottom-color: var(--ok); color: var(--ok); }
 a.plain { border: 0; }
 
 section { padding: 54px 0 0; }
@@ -193,15 +203,18 @@ pre code { background: 0; border: 0; padding: 0; font-size: inherit; }
 pre .c  { color: var(--ink-2); }
 pre .g  { color: var(--allow); }
 pre .r  { color: var(--refuse); }
-pre .y  { color: var(--gold); }
+pre .y  { color: var(--ok); }
 
 ul, ol { padding-left: 21px; margin: 0 0 16px; }
 li { margin: 6px 0; }
 li::marker { color: var(--ink-2); }
 
+/* Emphasis is weight, not colour. `.gold` and `.allow` are verdicts and must
+   never be used to make a word stand out. */
+.hi   { color: var(--ink); font-weight: 650; }
 .dim  { color: var(--ink-1); }
 .dim2 { color: var(--ink-2); }
-.gold { color: var(--gold); }
+.ok   { color: var(--ok); }
 .refuse { color: var(--refuse); }
 .allow  { color: var(--allow); }
 .nowrap { white-space: nowrap; }
@@ -212,7 +225,7 @@ li::marker { color: var(--ink-2); }
   border-radius: var(--r); padding: 19px 21px; margin: 0 0 16px;
 }
 .panel.flush { padding: 0; overflow: hidden; }
-.panel.gold { border-color: var(--gold-dim); background: var(--gold-wash); }
+.panel.ok { border-color: var(--line-2); background: var(--bg-2); }
 .grid { display: grid; gap: 16px; }
 .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -265,7 +278,7 @@ table.prose td { font-family: var(--sans); }
 }
 .tag.live { border-color: var(--allow-ln); color: var(--allow); }
 .tag.no { border-color: var(--refuse-ln); color: var(--refuse); }
-.tag.au { border-color: var(--gold-dim); color: var(--gold); }
+.tag.au { border-color: var(--line-2); color: var(--ink); }
 .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--allow); margin-right: 6px; vertical-align: middle; }
 .dot.pulse { animation: pulse 2.6s var(--ease) infinite; }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
@@ -284,33 +297,33 @@ button, .btn {
   cursor: pointer; text-decoration: none; display: inline-block;
   transition: background .15s, border-color .15s;
 }
-button:hover:not(:disabled), .btn:hover { background: var(--bg-1); border-color: var(--gold-dim); }
+button:hover:not(:disabled), .btn:hover { background: var(--bg-1); border-color: var(--ok-dim); }
 button:disabled { opacity: .45; cursor: default; }
-.btn.primary { background: var(--gold); color: #140f03; border-color: var(--gold); font-weight: 600; }
-:root[data-theme="light"] .btn.primary { color: #fffdf6; }
-.btn.primary:hover { filter: brightness(1.08); background: var(--gold); }
+.btn.primary { background: var(--ok); color: #04120c; border-color: var(--ok); font-weight: 600; }
+:root[data-theme="light"] .btn.primary { color: #ffffff; }
+.btn.primary:hover { filter: brightness(1.08); background: var(--ok); }
 select, input, textarea {
   font: 14px var(--mono); background: var(--bg-2); color: var(--ink);
   border: 1px solid var(--line-2); border-radius: 6px; padding: 8px 10px;
 }
 select:focus-visible, input:focus-visible, textarea:focus-visible,
 button:focus-visible, a:focus-visible {
-  outline: 2px solid var(--gold); outline-offset: 2px;
+  outline: 2px solid var(--ok); outline-offset: 2px;
 }
 textarea { width: 100%; min-height: 96px; resize: vertical; font-size: 12.5px; }
 .controls { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 0 0 15px; }
 label.inline { font-size: 13px; color: var(--ink-1); display: inline-flex; align-items: center; gap: 7px; }
-input[type="range"] { accent-color: var(--gold); padding: 0; border: 0; background: 0; width: 100%; }
+input[type="range"] { accent-color: var(--ok); padding: 0; border: 0; background: 0; width: 100%; }
 
 /* ---------------------------------------------------------------------- notes */
 .note {
-  border-left: 2px solid var(--gold-dim); padding: 2px 0 2px 15px;
+  border-left: 2px solid var(--line-2); padding: 2px 0 2px 15px;
   color: var(--ink-1); font-size: 14px; margin: 0 0 16px;
 }
 .note b { color: var(--ink); }
 .kicker {
   font-family: var(--mono); font-size: 11px; text-transform: uppercase;
-  letter-spacing: .13em; color: var(--gold); margin: 0 0 12px;
+  letter-spacing: .13em; color: var(--ink-2); margin: 0 0 12px;
 }
 .src { font-size: 12.5px; color: var(--ink-2); margin: 0; }
 .src b { color: var(--ink-1); font-weight: 500; }
@@ -336,10 +349,10 @@ input[type="range"] { accent-color: var(--gold); padding: 0; border: 0; backgrou
 .bar-fill.over { background: var(--refuse); opacity: .34; }
 /* The ceiling notch sits above the fill, or a breaching bar hides the very
    line it is breaching. */
-.bar-ceil { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--gold); z-index: 2; }
+.bar-ceil { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); z-index: 2; }
 .bar-ceil::after {
   content: attr(data-label); position: absolute; top: -17px; left: 0;
-  font: 10px var(--mono); color: var(--gold); white-space: nowrap; padding-left: 4px;
+  font: 10px var(--mono); color: var(--ink-1); white-space: nowrap; padding-left: 4px;
 }
 /* past three-quarters the label would run off the right edge, so flip it */
 .bar-ceil[data-side="right"]::after { left: auto; right: 0; padding: 0 4px 0 0; }
@@ -348,7 +361,7 @@ input[type="range"] { accent-color: var(--gold); padding: 0; border: 0; backgrou
 /* ------------------------------------------------------------------- footer */
 .foot { border-top: 1px solid var(--line); margin-top: 70px; padding: 26px 0 0; color: var(--ink-2); font-size: 12.5px; }
 .foot a { color: var(--ink-1); border-bottom-color: var(--line-2); }
-.foot a:hover { color: var(--gold); }
+.foot a:hover { color: var(--ok); }
 .foot-in { display: flex; gap: 22px; flex-wrap: wrap; justify-content: space-between; }
 .foot-nav { display: flex; flex-wrap: wrap; gap: 6px 18px; align-content: flex-start; }
 

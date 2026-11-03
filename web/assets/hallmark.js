@@ -14,43 +14,110 @@
    ========================================================================= */
 
 export const VAULT = "hallmarkfi.near";
-export const RPC = "https://rpc.mainnet.near.org";
+
+/**
+ * Three endpoints, tried in order.
+ *
+ * The public NEAR RPC sits behind Cloudflare and rate-limits bursts, which a
+ * page firing a dozen parallel view calls will trip — the browser reports it as
+ * a bare "Failed to fetch" with no status, so it reads like the chain is down
+ * when it is not. Every call below therefore goes through a queue that bounds
+ * concurrency, retries with backoff, and fails over. All three answer
+ * `Access-Control-Allow-Origin: *`, so none of this needs a server.
+ */
+export const RPCS = [
+  "https://rpc.mainnet.near.org",
+  "https://free.rpc.fastnear.com",
+  "https://1rpc.io/near",
+];
+export const RPC = RPCS[0];
 export const API = "https://1click.chaindefuser.com";
 export const SIGNER = "ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc";
 export const EXPLORER = "https://nearblocks.io";
 
 /* ----------------------------------------------------------------- view calls */
 
+/** At most this many RPC requests in flight at once, across the whole page. */
+const MAX_INFLIGHT = 3;
+let inflight = 0;
+const waiting = [];
+
+function slot() {
+  if (inflight < MAX_INFLIGHT) { inflight++; return Promise.resolve(); }
+  return new Promise((go) => waiting.push(go));
+}
+function release() {
+  const next = waiting.shift();
+  if (next) next();
+  else inflight--;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** One JSON-RPC request, queued, retried, and failed over. */
+async function rpc(params, label) {
+  await slot();
+  try {
+    let lastErr;
+    for (let attempt = 0; attempt < RPCS.length * 2; attempt++) {
+      const url = RPCS[attempt % RPCS.length];
+      try {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params }),
+        });
+        if (r.status === 429 || r.status >= 500) throw new Error(`HTTP ${r.status}`);
+        const b = await r.json();
+        // A contract-level error is an answer, not a transport failure: do not retry.
+        if (b.result?.error) throw Object.assign(new Error(`${label}: ${b.result.error}`), { final: true });
+        if (b.error) throw new Error(b.error.message ?? "rpc error");
+        if (!b.result) throw new Error("empty result");
+        return b.result;
+      } catch (e) {
+        if (e.final) throw e;
+        lastErr = e;
+        await sleep(160 * (attempt + 1));          // back off, then try the next endpoint
+      }
+    }
+    throw new Error(`${label}: the chain did not answer — ${lastErr?.message ?? "unknown"}`);
+  } finally {
+    release();
+  }
+}
+
+/* Identical view calls get asked for repeatedly across a page — `quote_signer`
+   alone appears in several sections — so they are cached for a few seconds.
+   Nothing here is a write, so a stale read is only ever a stale read. */
+const cache = new Map();
+const TTL = 8000;
+
 /** A keyless `call_function` view. No key, no account, no deposit, no server. */
 export async function view(method, args = {}) {
-  const r = await fetch(RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0", id: 1, method: "query",
-      params: {
-        request_type: "call_function", finality: "final", account_id: VAULT,
-        method_name: method,
-        args_base64: btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(args)))),
-      },
-    }),
-  });
-  const b = await r.json();
-  if (b.error) throw new Error(`${method}: ${b.error.message ?? "rpc error"}`);
-  if (b.result?.error) throw new Error(`${method}: ${b.result.error}`);
-  return JSON.parse(new TextDecoder().decode(new Uint8Array(b.result.result)));
+  const key = method + JSON.stringify(args);
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL) return hit.p;
+
+  const p = rpc({
+    request_type: "call_function", finality: "final", account_id: VAULT,
+    method_name: method,
+    args_base64: btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(args)))),
+  }, method).then((res) => JSON.parse(new TextDecoder().decode(new Uint8Array(res.result))));
+
+  cache.set(key, { at: Date.now(), p });
+  p.catch(() => cache.delete(key));               // never cache a failure
+  return p;
 }
 
 /** Account state straight off the chain — balance, storage, code hash. */
 export async function viewAccount(id = VAULT) {
-  const r = await fetch(RPC, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query",
-      params: { request_type: "view_account", finality: "final", account_id: id } }),
-  });
-  const b = await r.json();
-  if (b.error || !b.result) throw new Error("view_account failed");
-  return b.result;
+  const key = "acct:" + id;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL) return hit.p;
+  const p = rpc({ request_type: "view_account", finality: "final", account_id: id }, "view_account");
+  cache.set(key, { at: Date.now(), p });
+  p.catch(() => cache.delete(key));
+  return p;
 }
 
 /* ------------------------------------------------------------ canonical form */

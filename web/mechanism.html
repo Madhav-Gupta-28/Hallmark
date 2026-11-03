@@ -7,7 +7,7 @@
 <meta name="description" content="How Hallmark works: the one invariant, why the filler delivers first, hash-then-parse, and the rounding direction that makes a bound a bound.">
 <meta name="color-scheme" content="dark light">
 <link rel="stylesheet" href="assets/hallmark.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%23cfae5e' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%23cfae5e'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/%3E%3C/svg%3E">
 <style>
   /* The fill sequence. Every visual state here corresponds to a real step in
      ft_on_transfer; nothing moves that is not an ordering being explained. */
@@ -170,7 +170,7 @@
     <div class="tw"><table><thead><tr>
       <th>term</th><th>meaning</th><th class="n">value</th></tr></thead>
       <tbody id="work"></tbody></table></div>
-    <div class="panel gold" id="workout"></div>
+    <div class="panel ok" id="workout"></div>
   </section>
 
   <hr>
@@ -239,7 +239,7 @@
       <tr><td><code>value_ratio = outUsd·1e9/inUsd</code></td><td class="dim">down</td><td class="allow">cost up ✓</td></tr>
       <tr><td><code>fill_ratio = delivered·1e9/amountOut</code></td><td class="dim">down</td><td class="allow">cost up ✓</td></tr>
       <tr><td><code>kept = value·fill/1e9</code></td><td class="dim">down</td><td class="allow">cost up ✓</td></tr>
-      <tr><td><code>bps = shortfall/1e9</code></td><td class="gold">must round <b>UP</b></td><td class="refuse">← the one that needed fixing</td></tr>
+      <tr><td><code>bps = shortfall/1e9</code></td><td class="hi">must round <b>UP</b></td><td class="refuse">← the one that needed fixing</td></tr>
     </tbody></table></div>
     <div class="grid g2">
       <div class="note">
@@ -277,7 +277,7 @@
       <tr><td><code>TreasuryPilot</code> #542</td><td class="refuse">a signer the project allowlists</td><td class="dim">on-chain</td><td class="dim">token floor</td><td class="n">1</td></tr>
       <tr><td><code>Envelope</code></td><td class="dim">pool reserves at trade time</td><td class="dim">on-chain</td><td class="dim">token floor</td><td class="n">1</td></tr>
       <tr><td>ERC-8377 (draft)</td><td class="dim">a reference oracle</td><td class="dim">on-chain</td><td class="dim">relative slippage</td><td class="n">1</td></tr>
-      <tr><td><b>Hallmark</b></td><td class="allow"><b>the counterparty itself</b></td><td class="allow"><b>on-chain</b></td><td class="gold"><b>realised all-in cost, in USD</b></td><td class="n gold"><b>38</b></td></tr>
+      <tr><td><b>Hallmark</b></td><td class="allow"><b>the counterparty itself</b></td><td class="allow"><b>on-chain</b></td><td class="hi"><b>realised all-in cost, in USD</b></td><td class="n gold"><b>38</b></td></tr>
     </tbody></table></div>
     <div class="grid g3">
       <div class="note"><b>An SDK check binds the honest agent and not the compromised one.</b> A prompt-injected agent simply does not call the SDK. This is the single most common shape of a wrong answer to this problem.</div>
@@ -392,7 +392,7 @@ async function work() {
     ["<code>amountOutUsd</code>", "what the output is worth <em>at amountOut</em>", `$${q.amountOutUsd}`],
     ["<code>amountOut</code>", "the expected fill", units(q.amountOut, outDp)],
     ["<code>minAmountOut</code>", "the floor the venue actually guaranteed", `<span class="refuse">${units(q.minAmountOut, outDp)}</span>`],
-    ["<code>delivered</code>", "what the filler actually transferred in", `<span class="gold">${units(delivered, outDp)}</span>`],
+    ["<code>delivered</code>", "what the filler actually transferred in", `<span class="hi">${units(delivered, outDp)}</span>`],
     ["<code>timestamp</code>", "when the venue signed — the freshness bound", q.timestamp],
     ["<code>deadline</code>", "chosen by whoever asked. Bounds nothing on its own", `<span class="dim2">${q.deadline}</span>`],
     ["<code>slippageTolerance</code>", "surfaced for display; decides nothing", `${q.slippageTolerance} bps`],
@@ -410,7 +410,7 @@ async function work() {
       <div class="row"><span class="k">1 − (${outUsd} × ${units(delivered, outDp, 4)} / ${units(q.amountOut, outDp, 4)}) / ${inUsd}</span>
         <span class="v">= <b>${exact.toFixed(4)} bps</b> exactly</span></div>
       <div class="row"><span class="k">what <b>hallmarkfi.near</b> reports, live</span>
-        <span class="v"><span class="gold" style="font-size:19px;font-weight:600">${chain} bps</span></span></div>
+        <span class="v"><span class="hi" style="font-size:19px">${chain} bps</span></span></div>
       <div class="row"><span class="k">rounded the safe way?</span>
         <span class="v"><span class="${chain >= exact - 0.001 ? "allow" : "refuse"}">${chain >= exact - 0.001 ? `yes — ${chain} ≥ ${exact.toFixed(4)}, and loose by ${(chain - exact).toFixed(4)} bps` : "NO"}</span></span></div>
       <div class="row"><span class="k">signed by the venue?</span>

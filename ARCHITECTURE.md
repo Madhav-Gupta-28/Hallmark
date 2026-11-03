@@ -1225,6 +1225,23 @@ is no figure on any page the page could have invented, and no server between the
 reader and the chain. Both dependencies are health-checked separately and
 independently, because the chain and the venue fail independently.
 
+**The palette is two colours, and they are the verdict.** The product does one
+thing — it says allowed, or it says refused — so the page is monochrome and the
+only colour on it is that answer. Green is **NEAR's own `#00EC97`**, so the
+ecosystem link and the semantic are a single decision rather than two competing
+accents; red (`#FF7B72`) is refusal. Nothing else is ever coloured: not a
+heading, not a link, not a logo for its own sake. Emphasis is weight, never
+hue, which is what `.hi` exists for.
+
+> **Correction kept.** The first palette was brass on near-black, reasoning
+> that a hallmark is the assay stamp punched into precious metal. The metaphor
+> was good and the result was wrong: gold read as ornament on a page about
+> arithmetic, and — worse — it was used for *emphasis*, so **`503 bps`, the
+> cost of the malicious fixture honoured in full, rendered in the same colour
+> as "verified".** A bad number wearing the good colour is a design that lies.
+> Under the rule above it is red, and every one of the seventeen accent uses
+> was re-classified as verdict, emphasis, or affordance.
+
 Three rules were set before any markup was written, and each one caught
 something:
 
@@ -1244,6 +1261,16 @@ something:
    reader's back to force a refusal. It was replaced with the control an owner
    actually has — the age bound itself — so the crossover happens exactly where
    the fixture's real age falls. Verified against the chain at seven points.
+
+**And the live calls had to survive the chain's own rate limiter.** The public
+NEAR RPC sits behind Cloudflare and throttles bursts; a page firing a dozen
+parallel view calls trips it, and the browser reports that as a bare
+`Failed to fetch` with no status — which reads like the chain is down when it is
+not. Several pages showed exactly that. Every call now goes through a queue that
+bounds concurrency to three, retries with backoff, fails over across
+`rpc.mainnet.near.org`, `free.rpc.fastnear.com` and `1rpc.io/near`, and caches
+identical reads for eight seconds. All three answer
+`Access-Control-Allow-Origin: *`, so none of it needs a server.
 
 `check.py` holds the site to the same standard as the specification: it extracts
 the method count, the refusal count and the test counts from the source, reads

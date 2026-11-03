@@ -252,7 +252,11 @@
      element has no area, so the observer would never see it to reveal it. */
   .hand.rv {
     opacity: 1; transform: none;
-    -webkit-mask-image: linear-gradient(90deg, #000 46%, transparent 54%); mask-image: linear-gradient(90deg, #000 46%, transparent 54%);
+    /* Handwriting overhangs its box (a Caveat d or y swings past the last
+       letter's edge), and a mask clips everything outside the box — so give
+       the ink room inside it, and give that room back to the layout. */
+    padding-inline: .12em .35em; margin-inline: -.12em -.35em;
+    -webkit-mask-image: linear-gradient(90deg, #000 48%, transparent 52%); mask-image: linear-gradient(90deg, #000 48%, transparent 52%);
     -webkit-mask-size: 220% 100%; mask-size: 220% 100%;
     -webkit-mask-position: 100% 0; mask-position: 100% 0;
     transition: -webkit-mask-position 1.4s cubic-bezier(.45,.05,.3,1) calc(var(--d, 0ms) + 200ms), mask-position 1.4s cubic-bezier(.45,.05,.3,1) calc(var(--d, 0ms) + 200ms);

@@ -1225,14 +1225,32 @@ is no figure on any page the page could have invented, and no server between the
 reader and the chain. Both dependencies are health-checked separately and
 independently, because the chain and the venue fail independently.
 
-**The palette is two colours, and they are the verdict.** The product does one
-thing — it says allowed, or it says refused — so the page is monochrome and the
-only colour on it is that answer. Green is **NEAR's own `#00EC97`**, so the
-ecosystem link and the semantic are a single decision rather than two competing
-accents; red (`#FF7B72`) is refusal. Nothing else is ever coloured: not a
-heading, not a link, not a logo for its own sake. Emphasis is weight, never
-hue, which is what `.hi` exists for.
+**White paper, black ink, green strands.** The page is a document, so it is
+white by default — unconditionally, not "unless your machine prefers dark".
+Dark is on the toggle and is remembered, but it is never chosen for you.
 
+The green is **NEAR's own `#00EC97`**, and it appears in *two forms*, because
+one form cannot do both jobs:
+
+| token | value | role |
+|---|---|---|
+| `--ok-bright` | `#00EC97` | fills, strands, the mark, the live dot. **Never text** — 1.56:1 on white |
+| `--ok` | `#007A51` | green *text*: "yes — valid", ALLOWED. 5.38:1 |
+
+Black on `#00EC97` is **12.54:1**, which is why the bright one is a fill and the
+darker one is a letterform. The strands are what give the page its identity: a
+green rule running out of every section heading, the edge of every note, the
+fill of the one button that matters.
+
+Red (`#C0362C`) is refusal. Nothing else is ever coloured — not a heading, not
+a link, not a logo for its own sake. Emphasis is weight, never hue, which is
+what `.hi` exists for.
+
+> **Correction kept, twice.** The prose beside the cost bar described the
+> ceiling marker as "the gold notch", then "the white notch", and each time the
+> palette moved it became wrong again. It now says "the notch". **Prose should
+> not name a colour it does not control.**
+>
 > **Correction kept.** The first palette was brass on near-black, reasoning
 > that a hallmark is the assay stamp punched into precious metal. The metaphor
 > was good and the result was wrong: gold read as ornament on a page about

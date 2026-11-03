@@ -2,7 +2,7 @@
    Hallmark — the design system.
    One stylesheet, no framework, no external font, no build step.
 
-   TWO COLOURS, AND THEY ARE THE VERDICT.
+   WHITE PAPER, BLACK INK, GREEN STRANDS.
 
    This product does exactly one thing: it says allowed, or it says refused. So
    the page is monochrome, and the only colour on it is that answer. Green means
@@ -10,9 +10,16 @@
    not a heading, not a button, not a logo for its own sake — which is why the
    two that are colored carry so much.
 
-   The green is NEAR's own #00EC97, so the ecosystem link and the semantic are
-   the same decision rather than two competing accents. Black and white do all
-   the remaining work.
+   The green is NEAR's own #00EC97 — but it appears in two forms, because one
+   form cannot do both jobs. At 1.56:1 against white it is **unusable as text**;
+   as a *fill* with black on top it is 12.54:1. So:
+
+       --ok-bright  #00EC97   fills, rules, the mark, the live dot. NEVER text.
+       --ok         #007A51   green text: "yes - valid", ALLOWED. 5.38:1.
+
+   The bright one is what gives the page its strands — the rule beside every
+   section heading, the edge of a note, the fill of the one button that matters.
+   Black and white do all the remaining work.
 
    Prose is set in the reader's system sans, because seven pages of monospace is
    tiring. Every *number* is monospace with tabular figures, because this is a
@@ -22,25 +29,25 @@
    ========================================================================= */
 
 :root {
-  --bg:        #08090a;
-  --bg-1:      #101214;
-  --bg-2:      #16191c;
-  --line:      #1e2227;
-  --line-2:    #2a2f35;
-  --ink:       #e6e9ec;
-  --ink-1:     #9ba3ab;
-  --ink-2:     #6e767e;
+  --bg:        #ffffff;
+  --bg-1:      #fafbfb;
+  --bg-2:      #f3f5f6;
+  --line:      #e6e9ea;
+  --line-2:    #d2d7d9;
+  --ink:       #0a0c0e;
+  --ink-1:     #525c63;
+  --ink-2:     #6c757c;
 
-  /* the verdict, and the only colour on the page */
-  --ok:      #00ec97;   /* verified · allowed · live */
-  --ok-dim:  #0a6b4b;
-  --ok-wash: #07140f;
-  --allow:     #00ec97;
-  --allow-bg:  #07140f;
-  --allow-ln:  #11503a;
-  --refuse:    #ff7b72;
-  --refuse-bg: #170e0d;
-  --refuse-ln: #5a2824;
+  --ok-bright: #00ec97;   /* NEAR green: fills, strands, the mark — never text */
+  --ok:        #007a51;   /* green text: verified · allowed */
+  --ok-dim:    #9fe3c6;
+  --ok-wash:   #effaf5;
+  --allow:     #007a51;
+  --allow-bg:  #effaf5;
+  --allow-ln:  #a8e7cb;
+  --refuse:    #c0362c;
+  --refuse-bg: #fdf1f0;
+  --refuse-ln: #f2cfcb;
 
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, system-ui, sans-serif;
@@ -52,35 +59,31 @@
   --ease: cubic-bezier(.22,.61,.36,1);
 }
 
-:root[data-theme="light"] {
-  --bg:        #ffffff;
-  --bg-1:      #fbfbfc;
-  --bg-2:      #f2f3f5;
-  --line:      #e4e6e9;
-  --line-2:    #d0d4d9;
-  --ink:       #0a0c0e;
-  --ink-1:     #55606a;
-  --ink-2:     #6b747d;
-  --ok:      #00875a;
-  --ok-dim:  #9fd9bf;
-  --ok-wash: #eefaf4;
-  --allow:     #00875a;
-  --allow-bg:  #eefaf4;
-  --allow-ln:  #b8e6d1;
-  --refuse:    #c0362c;
-  --refuse-bg: #fdf1f0;
-  --refuse-ln: #f2cfcb;
+:root[data-theme="dark"] {
+  --bg:        #08090a;
+  --bg-1:      #101214;
+  --bg-2:      #16191c;
+  --line:      #1e2227;
+  --line-2:    #2a2f35;
+  --ink:       #e6e9ec;
+  --ink-1:     #9ba3ab;
+  --ink-2:     #6e767e;
+  --ok-bright: #00ec97;
+  --ok:        #00ec97;   /* on near-black it is 12.76:1, so here it can be text */
+  --ok-dim:    #0a6b4b;
+  --ok-wash:   #07140f;
+  --allow:     #00ec97;
+  --allow-bg:  #07140f;
+  --allow-ln:  #11503a;
+  --refuse:    #ff7b72;
+  --refuse-bg: #170e0d;
+  --refuse-ln: #5a2824;
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg:#ffffff; --bg-1:#fbfbfc; --bg-2:#f2f3f5; --line:#e4e6e9; --line-2:#d0d4d9;
-    --ink:#0a0c0e; --ink-1:#55606a; --ink-2:#6b747d;
-    --ok:#00875a; --ok-dim:#9fd9bf; --ok-wash:#eefaf4;
-    --allow:#00875a; --allow-bg:#eefaf4; --allow-ln:#b8e6d1;
-    --refuse:#c0362c; --refuse-bg:#fdf1f0; --refuse-ln:#f2cfcb;
-  }
-}
+/* White is the default, full stop — not "unless your machine prefers dark".
+   The page is a document: paper, ink, and a green rule. Dark is available from
+   the toggle for anyone who wants it, and is remembered, but it is never
+   chosen for you. */
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -130,7 +133,7 @@ body {
   transition: color .15s, background .15s;
 }
 .nav a.nl:hover { color: var(--ink); background: var(--bg-1); }
-.nav a.nl[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ok); }
+.nav a.nl[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ok-bright); }
 .nav .spacer { flex: 1 1 auto; }
 .theme-btn {
   flex: 0 0 auto; width: 32px; height: 32px; padding: 0;
@@ -167,7 +170,11 @@ h2 {
   color: var(--ink-1); margin: 0 0 18px;
   display: flex; align-items: center; gap: 11px;
 }
-h2::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
+/* the strand — a green rule running out of every section heading */
+h2::after {
+  content: ""; flex: 1 1 auto; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--ok-bright), transparent 72%);
+}
 h3 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 10px; }
 h4 { font-size: 14.5px; font-weight: 650; margin: 0 0 8px; }
 p { margin: 0 0 15px; color: var(--ink); }
@@ -279,7 +286,7 @@ table.prose td { font-family: var(--sans); }
 .tag.live { border-color: var(--allow-ln); color: var(--allow); }
 .tag.no { border-color: var(--refuse-ln); color: var(--refuse); }
 .tag.au { border-color: var(--line-2); color: var(--ink); }
-.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--allow); margin-right: 6px; vertical-align: middle; }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok-bright); margin-right: 6px; vertical-align: middle; }
 .dot.pulse { animation: pulse 2.6s var(--ease) infinite; }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 
@@ -299,8 +306,7 @@ button, .btn {
 }
 button:hover:not(:disabled), .btn:hover { background: var(--bg-1); border-color: var(--ok-dim); }
 button:disabled { opacity: .45; cursor: default; }
-.btn.primary { background: var(--ok); color: #04120c; border-color: var(--ok); font-weight: 600; }
-:root[data-theme="light"] .btn.primary { color: #ffffff; }
+.btn.primary { background: var(--ok-bright); color: #04120c; border-color: var(--ok-bright); font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.08); background: var(--ok); }
 select, input, textarea {
   font: 14px var(--mono); background: var(--bg-2); color: var(--ink);
@@ -317,7 +323,7 @@ input[type="range"] { accent-color: var(--ok); padding: 0; border: 0; background
 
 /* ---------------------------------------------------------------------- notes */
 .note {
-  border-left: 2px solid var(--line-2); padding: 2px 0 2px 15px;
+  border-left: 2px solid var(--ok-bright); padding: 2px 0 2px 15px;
   color: var(--ink-1); font-size: 14px; margin: 0 0 16px;
 }
 .note b { color: var(--ink); }
@@ -345,7 +351,7 @@ input[type="range"] { accent-color: var(--ok); padding: 0; border: 0; background
    The cost bound, drawn. The whole point of the project in one widget: the bar
    is what the owner is paying, the notch is the ceiling they signed. */
 .bar { position: relative; height: 34px; margin-top: 20px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
-.bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--allow); opacity: .32; transition: width .45s var(--ease), background .3s; }
+.bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--ok-bright); opacity: .34; transition: width .45s var(--ease), background .3s; }
 .bar-fill.over { background: var(--refuse); opacity: .34; }
 /* The ceiling notch sits above the fill, or a breaching bar hides the very
    line it is breaching. */

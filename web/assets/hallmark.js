@@ -266,8 +266,8 @@ const PAGES = [
 
 /** The assay mark: a hallmark cartouche with a punch inside it. */
 export const MARK = `<svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
-  <path d="M12 7.6 16 10v4l-4 2.4L8 14v-4Z" fill="var(--ok)" opacity=".85"/>
+  <path d="M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z" fill="none" stroke="var(--ok-bright)" stroke-width="1.5"/>
+  <path d="M12 7.6 16 10v4l-4 2.4L8 14v-4Z" fill="var(--ok-bright)" opacity=".85"/>
 </svg>`;
 
 function chrome() {
@@ -292,9 +292,11 @@ function chrome() {
     e.currentTarget.setAttribute("aria-expanded", l.classList.contains("open"));
   };
   nav.querySelector(".theme-btn").onclick = () => {
-    const dark = !(document.documentElement.dataset.theme === "dark");
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-    try { localStorage.setItem("hm-theme", dark ? "dark" : "light"); } catch {}
+    const now = document.documentElement.dataset.theme
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = now === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("hm-theme", next); } catch {}
   };
 
   const foot = document.createElement("footer");

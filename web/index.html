@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hallmark — a not-held order that enforces its own execution bound</title>
 <meta name="description" content="A not-held order whose protection is a number the venue signed itself, checked on-chain. Live on NEAR mainnet. Every figure here is a keyless view call to the contract.">
-<meta name="color-scheme" content="dark light">
-<link rel="stylesheet" href="assets/hallmark.css?v=2fbb57e2">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/hallmark.css?v=eaf97545">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -61,7 +61,7 @@
     <h4 style="margin-top:28px">The bound, drawn</h4>
     <p class="sub measure">
       Drag the slider. It changes how much a filler delivers, and every number below it
-      is re-computed by <b>the contract on mainnet</b>, not by this page. The white notch
+      is re-computed by <b>the contract on mainnet</b>, not by this page. The notch
       is the ceiling the owner signed. Everything left of it is allowed; the instant the
       bar crosses it, the fill is refused on-chain.
     </p>
@@ -404,7 +404,7 @@
 </div>
 
 <script type="module">
-import { view, viewAccount, rows, esc, units, age, near, fixtures } from "./assets/hallmark.js?v=d979a210";
+import { view, viewAccount, rows, esc, units, age, near, fixtures } from "./assets/hallmark.js?v=c5f2deef";
 
 const $ = (s) => document.querySelector(s);
 

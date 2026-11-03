@@ -1,11 +1,18 @@
 import { queryOptions } from "@tanstack/react-query";
-import { view } from "./hallmark";
+import { view, type MandateRecord } from "./hallmark";
 import { fetchBook } from "./book";
 import { FLOOR, loadTokens } from "./tokens";
 
 export const bookQuery = queryOptions({
   queryKey: ["vault", "get_mandates"],
   queryFn: () => fetchBook(),          // not `fetchBook`: TanStack would pass its context as `read`
+  refetchInterval: 30_000,
+});
+
+/** One mandate, open or closed. `null` if the id was never used or has been reaped. */
+export const mandateQuery = (id: number) => queryOptions({
+  queryKey: ["vault", "get_mandate", id],
+  queryFn: () => view<MandateRecord | null>("get_mandate", { mandate_id: id }),
   refetchInterval: 30_000,
 });
 

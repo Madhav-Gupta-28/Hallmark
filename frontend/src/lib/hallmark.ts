@@ -9,8 +9,8 @@
 
    Deliberately NOT ported: the DOM chrome (`chrome`, `reveal`, `odometer`,
    `MARK`, the theme toggle) and the HTML-string helpers (`esc`, `rows`).
-   React renders those, and escapes for free. `fixtures()` is not ported yet
-   either: only the price-a-fill page needs it.
+   React renders those, and escapes for free. `fixtures()` is ported, but loads
+   from a build-time module instead of fetching a generated JSON file.
 
    The load-bearing property, unchanged: **this code computes almost nothing.**
    It canonicalises a quote and asks `hallmarkfi.near` for every number.
@@ -331,6 +331,32 @@ export async function getQuote(p: QuoteParams): Promise<QuoteResponse> {
     throw new Error(`1Click will not quote this right now — ${msg}`);
   }
   return JSON.parse(text);
+}
+
+/* ------------------------------------------------------------------ fixtures
+   The signed captures. The reference fetches assets/fixtures.json, generated
+   from contract/fixtures/ by web/assets/mkfixtures.py. Here the same object
+   comes from the `virtual:hallmark-fixtures` module, built from the same files
+   by ../../fixtures.ts at build time — never transcribed by hand. Loaded lazily
+   so it stays out of the main bundle, and cached like the reference. */
+
+export interface Fixture {
+  canonical: string;
+  /** base58, no `ed25519:` prefix */
+  signature: string;
+  bytes: number;
+  quoteHash: string;
+  note: string;
+}
+export type Fixtures = Record<"honest" | "worst" | "sandbox", Fixture>;
+
+let _fx: Promise<Fixtures> | undefined;
+export function fixtures(): Promise<Fixtures> {
+  if (!_fx) {
+    _fx = import("virtual:hallmark-fixtures").then((m) => m.default);
+    _fx.catch(() => { _fx = undefined; });        // a failed chunk load may be retried
+  }
+  return _fx;
 }
 
 /* -------------------------------------------------------------------- format */

@@ -99,6 +99,31 @@ export async function priceQuote(
   };
 }
 
+/**
+ * The terms to price a captured quote against — the `#pfx` handler in app.js.
+ * Against the live mandate's real terms when its pair matches the capture's,
+ * so the comparison is honest; otherwise against the capture's own pair with
+ * the reference's fixed illustrative terms (300 bps ceiling, 300 s age bound).
+ */
+export function captureTerms(
+  canonical: string,
+  mandate: MandateRecord | null,
+): { terms: MandateTerms; useLive: boolean } {
+  const q = JSON.parse(canonical) as SignedFields;
+  const useLive = !!mandate
+    && mandate.terms.origin_asset === q.originAsset
+    && mandate.terms.destination_asset === q.destinationAsset;
+  if (useLive) return { terms: mandate!.terms, useLive };
+  return {
+    useLive,
+    terms: {
+      origin_asset: q.originAsset, destination_asset: q.destinationAsset,
+      recipient: q.recipient, max_cost_bps: 300, max_fill: q.amountIn,
+      max_quote_age_secs: 300, expiry_ns: "4000000000000000000",
+    },
+  };
+}
+
 export interface ParsedCheck {
   allowed: boolean;
   /** realised cost in bps, when allowed */

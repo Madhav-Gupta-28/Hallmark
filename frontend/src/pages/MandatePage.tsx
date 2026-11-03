@@ -9,8 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Amount, Row } from "@/components/fields";
 import { MandateCard } from "@/components/MandateCard";
-import { age, units, VAULT, type MandateRecord } from "@/lib/hallmark";
-import { liveQuote, parseCheck, priceQuote, type Verdict } from "@/lib/price";
+import { age, fixtures, units, VAULT, type MandateRecord, type MandateTerms } from "@/lib/hallmark";
+import { captureTerms, liveQuote, parseCheck, priceQuote, type Verdict } from "@/lib/price";
 import { mandateQuery, tokensQuery } from "@/lib/queries";
 import { meta, type TokenMeta, type TokenTable } from "@/lib/tokens";
 import { cn } from "@/lib/utils";
@@ -78,11 +78,19 @@ function Problem({ title, children }: { title: string; children: ReactNode }) {
 function PricePanel({ id, m, table }: { id: number; m: MandateRecord; table: TokenTable }) {
   const price = useMutation({
     mutationKey: ["price", id],
-    mutationFn: async () => {
-      const { canonical, signature } = await liveQuote(m);
-      return priceQuote(canonical, signature, m.terms);
+    mutationFn: async (source: Source): Promise<Priced> => {
+      if (source === "live") {
+        const { canonical, signature } = await liveQuote(m);
+        return { source, terms: m.terms, useLive: true, verdict: await priceQuote(canonical, signature, m.terms) };
+      }
+      // app.js's "#pfx": the worst capture, which needs nothing from the venue.
+      const FX = await fixtures();
+      const f = FX.worst;
+      const { terms, useLive } = captureTerms(f.canonical, m);
+      return { source, terms, useLive, note: f.note, verdict: await priceQuote(f.canonical, f.signature, terms) };
     },
   });
+  const busy = price.isPending;
 
   return (
     <Card>
@@ -95,35 +103,54 @@ function PricePanel({ id, m, table }: { id: number; m: MandateRecord; table: Tok
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {!m.open ? (
+        {!m.open && (
           <Alert>
             <AlertTitle>This mandate is closed</AlertTitle>
             <AlertDescription>
               The contract refuses every fill against a closed mandate before it checks anything else, so there
-              is nothing to price.
+              is no live fill to price. The captured quote below still shows how the vault judges one.
             </AlertDescription>
           </Alert>
-        ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => price.mutate()} disabled={price.isPending}>
-              {price.isPending ? "Asking the venue, then the vault…" : price.isSuccess ? "Get a fresh quote" : "Get a live quote"}
-            </Button>
-            {price.isSuccess && (
-              <span className="text-xs text-muted-foreground">
-                answered {new Date(price.submittedAt).toLocaleTimeString()} · a quote ages out of this mandate after{" "}
-                {age(m.terms.max_quote_age_secs)}
-              </span>
-            )}
-          </div>
         )}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {m.open && (
+              <Button onClick={() => price.mutate("live")} disabled={busy}>
+                {busy && price.variables === "live" ? "Asking the venue, then the vault…" : "Get a live quote"}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => price.mutate("capture")} disabled={busy}>
+              {busy && price.variables === "capture" ? "Replaying the capture…" : "Use the malicious capture instead"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            ↳ the second button needs nothing from the venue — it replays a genuinely signed capture carrying a
+            500 bps hidden fee, so you can see a refusal even if 1Click is down.
+          </p>
+          {price.isSuccess && (
+            <p className="text-xs text-muted-foreground">
+              answered {new Date(price.submittedAt).toLocaleTimeString()}
+              {price.data.source === "live" && <> · a quote ages out of this mandate after {age(m.terms.max_quote_age_secs)}</>}
+            </p>
+          )}
+        </div>
 
         {price.isError && (
           <Problem title="No verdict">
             {price.error.message}. Nothing was signed and nothing moved.
+            {price.variables === "live" && " Try the captured quote instead — it needs no venue."}
           </Problem>
         )}
 
-        {price.isSuccess && <VerdictView id={id} r={price.data} m={m} table={table} />}
+        {price.isSuccess && price.data.source === "capture" && <CaptureBanner p={price.data} id={id} />}
+        {price.isSuccess && (
+          <VerdictView
+            mandateId={price.data.useLive ? id : null}
+            r={price.data.verdict}
+            terms={price.data.terms}
+            table={table}
+          />
+        )}
 
         {price.isIdle && m.open && (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
@@ -137,8 +164,9 @@ function PricePanel({ id, m, table }: { id: number; m: MandateRecord; table: Tok
   );
 }
 
-function VerdictView({ id, r, m, table }: { id: number; r: Verdict; m: MandateRecord; table: TokenTable }) {
-  const t = m.terms;
+function VerdictView({ mandateId, r, terms: t, table }: {
+  mandateId: number | null; r: Verdict; terms: MandateTerms; table: TokenTable;
+}) {
   const inTok = meta(table, t.origin_asset);
   const outTok = meta(table, t.destination_asset);
   const ceil = t.max_cost_bps;
@@ -220,8 +248,9 @@ function VerdictView({ id, r, m, table }: { id: number; r: Verdict; m: MandateRe
       )}
 
       <p className="text-xs text-muted-foreground">
-        ↳ every figure above was answered by <b>{VAULT}</b> on NEAR mainnet against mandate #{id}'s real terms — a{" "}
-        {ceil} bps ceiling and a {t.max_quote_age_secs} s freshness bound. The quote is a free{" "}
+        ↳ every figure above was answered by <b>{VAULT}</b> on NEAR mainnet against{" "}
+        {mandateId !== null ? <>mandate #{mandateId}'s real terms</> : <>the illustrative terms shown</>} — a{" "}
+        {ceil} bps ceiling and a {t.max_quote_age_secs} s freshness bound. The quote is a{" "}
         <code>dry: true</code> quote; it commits nobody to anything.
       </p>
     </div>
@@ -255,3 +284,63 @@ function CheckBox({ title, sub, delivered, raw, parsed, inTok }: {
 const capText = (v: string, tok: TokenMeta) => (tok.dp === null ? `${v} base units` : `${units(v, tok.dp, 6)} ${tok.symbol}`);
 const Good = ({ children }: { children: ReactNode }) => <span className="text-emerald-600">{children}</span>;
 const Bad = ({ children }: { children: ReactNode }) => <span className="font-medium text-destructive">{children}</span>;
+
+/* ------------------------------------------------------------- the capture */
+
+type Source = "live" | "capture";
+
+interface Priced {
+  source: Source;
+  /** the terms the verdict was asked against */
+  terms: MandateTerms;
+  /** true when those are this mandate's real terms */
+  useLive: boolean;
+  note?: string;
+  verdict: Verdict;
+}
+
+/**
+ * What the capture is, and, unlike app.js's banner, which check actually
+ * refused it. The capture is days old, so against a 300 s age bound the vault
+ * refuses it as `QuoteTooOld` before the cost check runs; after its signed
+ * deadline (2026-11-20) it is `QuoteExpired` first. The hidden fee is still
+ * priced by `worst_cost` and `realised_cost`, which do not check freshness.
+ */
+function CaptureBanner({ p, id }: { p: Priced; id: number }) {
+  const r = p.verdict;
+  const reason = parseCheck(r.atFull).reason ?? parseCheck(r.atFloor).reason;
+  const ceil = p.terms.max_cost_bps;
+  return (
+    <Alert>
+      <AlertTitle>A captured quote carrying a 500 bps hidden fee</AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p>
+          {p.note} It is genuinely signed by NEAR Intents — the signature below verifies. The fee lives in{" "}
+          <code>appFees</code>, which the venue does not sign, so the contract never reads that field. It does not
+          need to: the cost is already inside the signed numbers — <b>{r.worstBps} bps</b> guaranteed-worst
+          and <b>{r.fullBps} bps</b> even if honoured in full, against a {ceil} bps ceiling.
+        </p>
+        <p>
+          {p.useLive
+            ? <>Priced against live mandate #{id}'s real terms.</>
+            : <>Mandate #{id} trades a different pair, so this is priced against illustrative terms for the
+              capture's own pair: a {ceil} bps ceiling and a {p.terms.max_quote_age_secs} s age bound.</>}
+        </p>
+        {reason === "QuoteTooOld" && (
+          <p>
+            <b>Refused first by the age bound, not the fee.</b> The capture was signed {age(r.ageSecs)} ago, and
+            these terms accept quotes up to {age(p.terms.max_quote_age_secs)} old. The vault checks freshness
+            before cost, so <code>QuoteTooOld</code> is the reason it gives; the cost figures show the fee would
+            breach the ceiling too.
+          </p>
+        )}
+        {reason === "QuoteExpired" && (
+          <p>
+            <b>Refused first because the quote's own deadline ({r.q.deadline}) has passed</b> — the vault checks
+            that before freshness or cost. The cost figures still show the fee.
+          </p>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}

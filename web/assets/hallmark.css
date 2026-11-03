@@ -209,7 +209,7 @@ ul, ol { padding-left: 21px; margin: 0 0 16px; }
 li { margin: 6px 0; }
 li::marker { color: var(--ink-2); }
 
-/* Emphasis is weight, not colour. `.gold` and `.allow` are verdicts and must
+/* Emphasis is weight, not colour. `.ok` and `.allow` are verdicts and must
    never be used to make a word stand out. */
 .hi   { color: var(--ink); font-weight: 650; }
 .dim  { color: var(--ink-1); }

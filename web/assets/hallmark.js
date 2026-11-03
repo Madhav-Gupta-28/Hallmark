@@ -266,8 +266,8 @@ const PAGES = [
 
 /** The assay mark: a hallmark cartouche with a punch inside it. */
 export const MARK = `<svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z" fill="none" stroke="var(--gold)" stroke-width="1.5"/>
-  <path d="M12 7.6 16 10v4l-4 2.4L8 14v-4Z" fill="var(--gold)" opacity=".85"/>
+  <path d="M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+  <path d="M12 7.6 16 10v4l-4 2.4L8 14v-4Z" fill="var(--ok)" opacity=".85"/>
 </svg>`;
 
 function chrome() {

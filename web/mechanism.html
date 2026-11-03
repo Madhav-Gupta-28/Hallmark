@@ -15,14 +15,14 @@
   .lane { fill: var(--bg-1); stroke: var(--line); }
   .lane-t { font-size: 11px; fill: var(--ink-1); letter-spacing: .08em; }
   .node { fill: var(--bg-2); stroke: var(--line-2); transition: fill .3s, stroke .3s; }
-  .node.on { fill: var(--gold-wash); stroke: var(--gold); }
+  .node.on { fill: var(--ok-wash); stroke: var(--ok); }
   .node.done { stroke: var(--allow-ln); }
   .node-t { font-size: 11px; fill: var(--ink-1); transition: fill .3s; }
   .node.on + .node-t, .node-t.on { fill: var(--ink); }
   .flow { stroke: var(--line-2); stroke-width: 1.5; fill: none; opacity: .3; transition: opacity .3s, stroke .3s; }
-  .flow.on { opacity: 1; stroke: var(--gold); }
+  .flow.on { opacity: 1; stroke: var(--ok); }
   .flow.held { opacity: 1; stroke: var(--allow); }
-  .pip { fill: var(--gold); opacity: 0; }
+  .pip { fill: var(--ok); opacity: 0; }
   .pip.on { opacity: 1; }
   .custody { font-size: 10px; fill: var(--ink-2); }
   .custody.has { fill: var(--allow); }
@@ -32,10 +32,10 @@
     border-left: 2px solid var(--line); margin-left: 2px; opacity: .45;
     transition: opacity .25s, border-color .25s, background .25s;
   }
-  .step.on { opacity: 1; border-left-color: var(--gold); background: var(--bg-1); }
+  .step.on { opacity: 1; border-left-color: var(--ok); background: var(--bg-1); }
   .step.past { opacity: .75; border-left-color: var(--allow-ln); }
   .step-n { font: 600 12px var(--mono); color: var(--ink-2); padding-top: 2px; }
-  .step.on .step-n { color: var(--gold); }
+  .step.on .step-n { color: var(--ok); }
   .step-b { font-size: 14px; }
   .step-b code { font-size: 12px; }
   .step-w { font-size: 12.5px; color: var(--ink-1); margin-top: 4px; }
@@ -277,7 +277,7 @@
       <tr><td><code>TreasuryPilot</code> #542</td><td class="refuse">a signer the project allowlists</td><td class="dim">on-chain</td><td class="dim">token floor</td><td class="n">1</td></tr>
       <tr><td><code>Envelope</code></td><td class="dim">pool reserves at trade time</td><td class="dim">on-chain</td><td class="dim">token floor</td><td class="n">1</td></tr>
       <tr><td>ERC-8377 (draft)</td><td class="dim">a reference oracle</td><td class="dim">on-chain</td><td class="dim">relative slippage</td><td class="n">1</td></tr>
-      <tr><td><b>Hallmark</b></td><td class="allow"><b>the counterparty itself</b></td><td class="allow"><b>on-chain</b></td><td class="hi"><b>realised all-in cost, in USD</b></td><td class="n gold"><b>38</b></td></tr>
+      <tr><td><b>Hallmark</b></td><td class="allow"><b>the counterparty itself</b></td><td class="allow"><b>on-chain</b></td><td class="hi"><b>realised all-in cost, in USD</b></td><td class="n hi"><b>38</b></td></tr>
     </tbody></table></div>
     <div class="grid g3">
       <div class="note"><b>An SDK check binds the honest agent and not the compromised one.</b> A prompt-injected agent simply does not call the SDK. This is the single most common shape of a wrong answer to this problem.</div>

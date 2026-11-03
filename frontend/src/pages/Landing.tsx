@@ -185,10 +185,10 @@ function ScheduleB() {
         <div>
           <Entry k="Contract" v={<A href={`${EXPLORER}/address/${VAULT}`}>{VAULT}</A>} />
           <Entry k="Trusted quote signer" v={<code className="text-[13px]" title={signer.data ?? SIGNER}>{short(signer.data ?? SIGNER, 14)}</code>} />
-          <Entry k="A whole fill, measured" v={<span className="typed">30.25 TGas</span>} />
+          <Entry k="A whole fill, measured" v={<A href={`${EXPLORER}/txns/GkEZhvx9iwq4eF8wUWrsS4fUsUxiV2h3AFZGppJnrsix`} className="typed">30.48 TGas</A>} />
         </div>
       </div>
-      <Source>every figure above is a keyless view call; the gas figure is measured on mainnet (README).</Source>
+      <Source>every figure above is a keyless view call; the gas figure is the v3 mainnet fill, every receipt counted (ARCHITECTURE.md).</Source>
     </section>
   );
 }

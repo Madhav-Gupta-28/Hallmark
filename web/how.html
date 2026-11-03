@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works — Hallmark</title>
+<meta name="description" content="The mechanism behind Hallmark: how a fill is checked against a signed quote, the free option we found in our own live contract, the contract surface and its invariants, and the three fillers that race for a mandate.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/><path d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/></svg>">
+<link rel="stylesheet" href="assets/hallmark.css?v=a99903fd">
+</head>
+<body>
+
+<div class="wrap" id="main">
+
+  <header class="hero" style="padding-bottom:22px">
+    <div class="kicker">The mechanism</div>
+    <h1>How it works</h1>
+    <p class="measure">
+      One invariant, four signed numbers, and the amount that actually arrived.
+      No oracle, no price feed, no cross-contract call, nothing to keep running.
+      This page is the whole of it — the arithmetic, the hole we found in our own
+      live contract, the surface that enforces it, and the agents that compete to
+      be refused.
+    </p>
+  </header>
+
+  <nav class="rail" aria-label="On this page">
+    <a href="#mech"><span class="num">01</span>The mechanism</a>
+    <a href="#found"><span class="num">02</span>The hole we found</a>
+    <a href="#contract"><span class="num">03</span>The contract</a>
+    <a href="#fillers"><span class="num">04</span>The fillers</a>
+  </nav>
+
+  <div class="app-sec" id="mech">
+  <section class="rv">
+    <h2>A fill, step by step</h2>
+    <h3>The filler delivers the output <em>first</em>. That is the load-bearing decision.</h3>
+    <p class="measure">
+      Watch where the money is at each step. The output is inside the vault before the
+      input is credited to anybody, so there is no interval in which either side is
+      exposed — and no cross-contract call in the verification path, so there is nothing
+      to roll back.
+    </p>
+
+    <div class="panel seq-stage">
+      <svg class="diagram" viewBox="0 0 780 334" role="img" aria-label="Sequence diagram of a fill: the filler delivers the output into the vault before the owner's input is credited to anyone">
+        <!-- lanes -->
+        <rect class="lane" x="8"   y="28" width="236" height="268" rx="7"/>
+        <rect class="lane" x="272" y="28" width="236" height="268" rx="7"/>
+        <rect class="lane" x="536" y="28" width="236" height="268" rx="7"/>
+        <text class="lane-t" x="18"  y="20">OWNER</text>
+        <text class="lane-t" x="282" y="20">VAULT · hallmarkfi.near</text>
+        <text class="lane-t" x="546" y="20">FILLER · anyone</text>
+
+        <!-- flows -->
+        <path id="f1" class="flow" d="M234 58 H272"/>
+        <path id="f2" class="flow" d="M546 98 H508" stroke-dasharray="3 3"/>
+        <path id="f3" class="flow" d="M654 122 v22"/>
+        <path id="f4" class="flow" d="M654 170 v20"/>
+        <path id="f5" class="flow" d="M546 208 H508"/>
+        <path id="f6" class="flow" d="M234 276 H272"/>
+        <path id="f7" class="flow" d="M546 276 H508"/>
+
+        <!-- owner -->
+        <rect id="n1" class="node" x="18" y="42" width="216" height="32" rx="5"/>
+        <text class="node-t" x="28" y="62">1 · ft_transfer_call → vault</text>
+        <rect id="n9a" class="node" x="18" y="260" width="216" height="32" rx="5"/>
+        <text class="node-t" x="28" y="280">9 · withdraw(destination)</text>
+
+        <!-- vault -->
+        <rect id="n6" class="node" x="282" y="190" width="216" height="30" rx="5"/>
+        <text class="node-t" x="292" y="209">6 · verify, synchronously</text>
+        <rect id="n7" class="node" x="282" y="226" width="216" height="30" rx="5"/>
+        <text class="node-t" x="292" y="245">7 · bound the realised cost</text>
+        <rect id="n8" class="node" x="282" y="262" width="216" height="30" rx="5"/>
+        <text class="node-t" x="292" y="281">8 · credit both legs</text>
+
+        <!-- filler -->
+        <rect id="n2" class="node" x="546" y="82" width="216" height="30" rx="5"/>
+        <text class="node-t" x="556" y="101">2 · get_mandates() — keyless</text>
+        <rect id="n3" class="node" x="546" y="118" width="216" height="30" rx="5"/>
+        <text class="node-t" x="556" y="137">3 · POST /v0/quote</text>
+        <rect id="n4" class="node" x="546" y="154" width="216" height="30" rx="5"/>
+        <text class="node-t" x="556" y="173">4 · source the output</text>
+        <rect id="n5" class="node" x="546" y="192" width="216" height="32" rx="5"/>
+        <text class="node-t" x="556" y="212">5 · deliver it to the vault</text>
+
+        <!-- custody readout -->
+        <text class="custody" id="c-own" x="18" y="318">owner holds: the origin asset</text>
+        <text class="custody" id="c-vault" x="282" y="318">vault holds: nothing</text>
+        <text class="custody" id="c-fill" x="546" y="318">filler holds: inventory</text>
+      </svg>
+
+      <div class="controls" style="margin:16px 0 0">
+        <button id="play">▶ Play</button>
+        <button id="prev">←</button>
+        <button id="next">→</button>
+        <span class="dim2" style="font-size:12.5px" id="stepn">step 1 of 9</span>
+      </div>
+    </div>
+
+    <div class="step-list" id="steps"></div>
+
+    <div class="grid g3" style="margin-top:20px">
+      <div class="panel">
+        <h4>No unsigned field is trusted</h4>
+        <p class="sub" style="margin:0"><code>depositAddress</code> is never used, because the vault never sends the owner's funds anywhere a filler nominated.</p>
+      </div>
+      <div class="panel">
+        <h4>No attribution problem</h4>
+        <p class="sub" style="margin:0">The delivered amount is a function argument, not a balance delta — so concurrent fills cannot be confused, and no filler can claim another's delivery.</p>
+      </div>
+      <div class="panel">
+        <h4>No custody window</h4>
+        <p class="sub" style="margin:0">Step 5 completes before step 8 begins. Nobody ever holds a counterparty's funds, so there is nothing to misappropriate and nothing to unwind.</p>
+      </div>
+    </div>
+    <div class="note">
+      <b>The cost of this choice, stated.</b> The filler must <em>front</em> the output, so
+      it needs destination-asset inventory or must source it first and carry the price
+      risk in between. That is what a dealer does, and it is the price of closing a hole
+      that cannot otherwise be closed.
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ================================================== the invariant, worked -->
+  <section class="rv">
+    <h2>The invariant, worked on real fixtures</h2>
+    <p class="measure">
+      Both USD marks are inside the signed payload, so the contract reads bytes it was
+      handed and does integer arithmetic. Pick a fixture; the numbers are the file's, and
+      the <b>contract column is a live view call</b>.
+    </p>
+    <div class="controls">
+      <label class="inline">fixture
+        <select id="fx"><option value="honest">honest</option><option value="worst">worst — the 99.99% one</option><option value="sandbox">sandbox</option></select>
+      </label>
+      <label class="inline">delivered
+        <select id="dv"><option value="min">minAmountOut — the guaranteed floor</option><option value="out">amountOut — honoured in full</option></select>
+      </label>
+    </div>
+    <div class="tw"><table><thead><tr>
+      <th>term</th><th>meaning</th><th class="n">value</th></tr></thead>
+      <tbody id="work"></tbody></table></div>
+    <div class="panel ok" id="workout"></div>
+  </section>
+
+  <hr>
+
+  <!-- ================================================== hash then parse -->
+  <section class="rv">
+    <h2>Canonicalisation, deleted rather than solved</h2>
+    <div class="grid g2">
+      <div>
+        <p>
+          Re-serialising JSON inside a contract to re-derive a hash is a reliable way to
+          lose a week: Rust and TypeScript must agree byte-for-byte on key order, number
+          formatting and unicode escaping, forever.
+        </p>
+        <p>
+          <b>Hallmark has no canonicalisation code in Rust at all.</b> The client builds
+          the canonical byte string; the contract is handed <em>those exact bytes</em> and
+          does this:
+        </p>
+        <pre><code>sha256(bytes)
+  → base58
+    → ed25519_verify(sig, <span class="y">that string</span>, signer)
+      → from_slice(<span class="y">THE SAME bytes</span>)</code></pre>
+        <p class="sub">
+          Hash first, parse second, same bytes both times. If a single byte differs from
+          what the venue signed, verification fails <em>before any field is read</em>.
+          <code>every_single_byte_is_covered_by_the_signature</code> asserts it by
+          flipping each of the 692 bytes in turn.
+        </p>
+        <div class="note">
+          The signature is over the <b>UTF-8 of the base58 string of the digest</b>, not
+          over the digest. This is the single most load-bearing implementation detail in
+          the project; getting it wrong produces a verifier that rejects every real quote.
+        </div>
+      </div>
+      <div>
+        <div class="panel">
+          <h4 style="margin-bottom:14px">The canonicaliser exists three times, on purpose</h4>
+          <div class="tw" style="margin:0"><table><thead><tr><th>where</th><th>implementation</th></tr></thead><tbody>
+            <tr><td><code>fixtures/mkfix.py</code></td><td class="dim">Python + from-scratch RFC-8032 ed25519</td></tr>
+            <tr><td><code>client/src/lib/canonical.ts</code></td><td class="dim">TypeScript, <code>json-stable-stringify</code></td></tr>
+            <tr><td><code>web/assets/hallmark.js</code></td><td class="dim">~20 lines of browser JS, no dependency</td></tr>
+          </tbody></table></div>
+          <p class="sub" style="margin:14px 0 0">
+            All three agree, byte for byte and hash for hash, on all three fixtures. Three
+            independent implementations agreeing is meaningfully stronger evidence than
+            one being carefully written.
+          </p>
+          <div id="canoncheck" style="margin-top:14px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ================================================== rounding -->
+  <section class="rv">
+    <h2>Rounding has exactly one safe direction</h2>
+    <p class="measure">
+      Every truncation must make the reported cost <b>larger</b>, never smaller — a bound
+      that understates cost is not a bound.
+    </p>
+    <div class="tw"><table class="prose"><thead><tr><th>step</th><th>rounds</th><th>effect on reported cost</th></tr></thead><tbody>
+      <tr><td><code>parse_fixed(amountOutUsd)</code></td><td class="dim">down</td><td class="allow">understates the output's value → cost up ✓</td></tr>
+      <tr><td><code>value_ratio = outUsd·1e9/inUsd</code></td><td class="dim">down</td><td class="allow">cost up ✓</td></tr>
+      <tr><td><code>fill_ratio = delivered·1e9/amountOut</code></td><td class="dim">down</td><td class="allow">cost up ✓</td></tr>
+      <tr><td><code>kept = value·fill/1e9</code></td><td class="dim">down</td><td class="allow">cost up ✓</td></tr>
+      <tr><td><code>bps = shortfall/1e9</code></td><td class="hi">must round <b>UP</b></td><td class="refuse">← the one that needed fixing</td></tr>
+    </tbody></table></div>
+    <div class="grid g2">
+      <div class="note">
+        <b>Found by running the code, not by reasoning about it.</b> The final division was
+        truncating. On the honest fixture the exact cost is <b>159.348 bps</b>; truncation
+        reported <b>159</b>, understating the bound. It now uses <code>div_ceil</code> and
+        reports <b>160</b>. Pinned by
+        <code>the_reported_cost_is_never_below_the_true_cost</code>, which asserts both
+        <code>reported ≥ exact</code> and <code>reported − exact &lt; 1.0</code>.
+      </div>
+      <div class="note">
+        <b>256-bit intermediates are not optional.</b> wNEAR has 24 decimals, so a $1M
+        order is ~1e30 base units and <code>delivered × 1e9</code> is ~1e39 — which
+        overflows <code>u128</code> (max ≈ 3.4e38). <code>mul_div</code> computes
+        <code>a·b</code> as a 256-bit <code>(hi, lo)</code> pair and does restoring long
+        division, 128 iterations.
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ================================================== prior art -->
+  <section class="rv">
+    <h2>Where the trust goes — this design against the alternatives</h2>
+    <p class="measure">
+      Bounded delegated execution is a known pattern. The claim here is narrow and has to
+      stay narrow. What differs is <b>who the price authority is</b>, and that is the only
+      column that matters.
+    </p>
+    <div class="tw"><table class="prose"><thead><tr>
+      <th>system</th><th>who is the price authority</th><th>enforced</th><th>bounds</th><th class="n">chains</th>
+    </tr></thead><tbody>
+      <tr><td><code>agent-wallet-sdk</code> #98</td><td class="dim">“a source independent of the swap RPC”, unnamed</td><td class="refuse">off-chain, in the SDK</td><td class="dim">token floor</td><td class="n">1</td></tr>
+      <tr><td><code>TreasuryPilot</code> #542</td><td class="refuse">a signer the project allowlists</td><td class="dim">on-chain</td><td class="dim">token floor</td><td class="n">1</td></tr>
+      <tr><td><code>Envelope</code></td><td class="dim">pool reserves at trade time</td><td class="dim">on-chain</td><td class="dim">token floor</td><td class="n">1</td></tr>
+      <tr><td>ERC-8377 (draft)</td><td class="dim">a reference oracle</td><td class="dim">on-chain</td><td class="dim">relative slippage</td><td class="n">1</td></tr>
+      <tr><td><b>Hallmark</b></td><td class="allow"><b>the counterparty itself</b></td><td class="allow"><b>on-chain</b></td><td class="hi"><b>realised all-in cost, in USD</b></td><td class="n hi"><b>38</b></td></tr>
+    </tbody></table></div>
+    <div class="grid g3">
+      <div class="note"><b>An SDK check binds the honest agent and not the compromised one.</b> A prompt-injected agent simply does not call the SDK. This is the single most common shape of a wrong answer to this problem.</div>
+      <div class="note"><b>TreasuryPilot moves the trust rather than removing it.</b> Its EIP-712 quotes, nonce, expiry and route hash are all correct — but the signer is one the project controls. If that signer lies, the treasury is drained with a valid signature.</div>
+      <div class="note"><b>A token floor bounds one leg.</b> <code>minAmountOut</code> alone says nothing about whether the floor is a <em>good</em> floor. Only the USD marks turn it into a cost.</div>
+    </div>
+  </section>
+
+  <div class="cta">
+    <a class="btn primary" href="app.html#price">Check all of this against the live contract</a>
+    <a class="btn" href="#contract">The contract's exported surface</a>
+  </div>
+
+</div>
+
+  </div>
+
+  <div class="app-sec" id="found" style="margin-top:58px">
+    <div class="kicker">02 · the hole we found</div>
+  <section class="rv">
+    <h2>The free option we wrote against our own users</h2>
+    <h3>v1 was live on mainnet with a hole that defeated the headline claim.</h3>
+    <div class="grid g2">
+      <div>
+        <p>
+          The bound is denominated in <code>amountInUsd</code> and
+          <code>amountOutUsd</code>. Those numbers were true <b>when the venue signed</b>,
+          and not necessarily now. v1's only freshness check was the quote's own deadline:
+        </p>
+        <pre><code><span class="c">// v1</span>
+if now_secs &gt;= deadline_secs {
+  return Err(Refusal::<span class="r">QuoteExpired</span> { .. })
+}</code></pre>
+        <p>
+          <b><code>deadline</code> is supplied by whoever requests the quote, and 1Click
+          signs it unquestioned.</b> Measured live on 2026-11-01:
+        </p>
+        <pre><code><span class="c">asked      signed?   valid for</span>
++   1 day    <span class="g">true</span>        1 day
++  30 days   <span class="g">true</span>       30 days
++ 365 days   <span class="g">true</span>      365 days
++3650 days   <span class="g">true</span>    <span class="r">3650 days</span></code></pre>
+        <p>
+          Ten years. And <code>dry:true</code> quotes are free, unauthenticated, and
+          <em>still signed</em>. So the attack costs nothing to set up:
+        </p>
+        <ol>
+          <li>Ask for a quote matching an open mandate, deadline years out. Free.</li>
+          <li>Do it repeatedly and keep them. You now hold a library of
+            <b>free options on the owner's escrow</b>, each struck at the prices of the
+            day it was minted.</li>
+          <li>Wait. When the market moves, exercise whichever became profitable.</li>
+          <li>The vault prices it from the quote's own frozen marks, reports a number
+            inside the ceiling, and releases the escrow.</li>
+        </ol>
+        <p>
+          The owner's <code>max_cost_bps</code> was enforced exactly — against a market
+          that no longer existed. The realised loss is the whole adverse move and is
+          <b>unbounded</b>.
+        </p>
+      </div>
+      <div>
+        <div class="panel">
+          <div class="stat-k" style="margin-bottom:10px">the same four arguments, the same keyless <code>dry_check</code></div>
+          <pre style="margin:0"><code><span class="c">against v1, 2026-11-01</span>
+<span class="g">ALLOWED</span> at 60 bps realised all-in cost,
+filler earns 10000000 origin units
+
+<span class="c">against v2, 2026-11-02</span>
+<span class="r">REFUSED QuoteTooOld</span> {
+  signed_at_secs: 1793297130,
+  now_secs:       1793557929,
+  max_age_secs:   300 }</code></pre>
+          <p class="src" style="margin-top:12px">
+            ↳ a three-day-old quote, validly signed and three days inside its own
+            deadline, priced at three-day-old USD marks. Allowed.
+          </p>
+        </div>
+        <div class="panel">
+          <h4>The fix was a field already inside the signature</h4>
+          <p class="sub"><code>timestamp</code> — when the venue signed — was in the canonical bytes all along. v1 simply never read it.</p>
+          <pre style="margin:0"><code><span class="c">// v2 onwards</span>
+let signed_at = parse_iso8601_secs(&amp;q.<span class="y">timestamp</span>);
+if now_secs &gt; signed_at + m.<span class="y">max_quote_age_secs</span> {
+  return Err(Refusal::<span class="r">QuoteTooOld</span> { .. })
+}</code></pre>
+        </div>
+        <div class="panel ok">
+          <p style="margin:0">
+            <b>Being signed and being trustworthy are different properties.</b>
+            <code>timestamp</code> is written by the venue. <code>deadline</code> is
+            written by the counterparty. The same reasoning already rejected
+            <code>depositAddress</code> — this is it applied one level deeper than v1
+            applied it.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <h4 style="margin-top:30px">How fresh do you insist on?</h4>
+    <p class="sub measure">
+      This is the real control an owner has. Drag <code>max_quote_age_secs</code> — the one
+      number v1 did not have — and watch where the bound falls relative to how old this
+      fixture <em>actually is</em>. Nothing is simulated: the age is the real age of the
+      capture in the repository, the clock is the chain's, and every verdict is
+      <code>dry_check</code> answered by <b>hallmarkfi.near</b> with exactly the terms
+      shown.
+    </p>
+    <div class="panel">
+      <div class="clock" id="clock">
+        <div class="clock-win" id="cwin"></div>
+        <div class="clock-now" id="cnow" style="left:0"></div>
+        <div class="clock-lab" id="clab">—</div>
+      </div>
+      <div class="controls" style="margin:14px 0 0">
+        <label class="inline" style="flex:1 1 320px">
+          <span class="dim2 nowrap" style="font-size:11px;letter-spacing:.09em;text-transform:uppercase">max quote age</span>
+          <input type="range" id="csl" min="0" max="1000" value="330">
+        </label>
+        <span class="mono dim2" id="cageout" style="font-size:12.5px">—</span>
+      </div>
+      <div class="verdict" id="cverdict" style="margin:14px 0 0">—</div>
+      <p class="src" id="csrc">↳ the quote is validly signed and years inside its own deadline at every point on this slider. The only thing being tested is its age.</p>
+    </div>
+
+    <h4 style="margin-top:30px">And a real transaction, not a simulation</h4>
+    <p class="sub measure">
+      A quote was banked for 326 seconds against a 300-second bound, then a fill was
+      actually broadcast with real USDT. The vault refused it and the tokens came back.
+    </p>
+    <pre><code><span class="c">tx 3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc</span>
+outer status   <span class="g">SuccessValue</span>      <span class="c">← the ft_transfer_call succeeded</span>
+receipt 1      <span class="r">Smart contract panicked: REFUSED QuoteTooOld {</span>
+                 <span class="r">signed_at_secs: 1793558547,</span>
+                 <span class="r">now_secs: 1793558888, max_age_secs: 300 }</span>
+ft_transfer    d3bc151a… → hallmarkfi.near   157389   <span class="c">← delivery in</span>
+ft_transfer    hallmarkfi.near → d3bc151a…   157389   <span class="c">← refunded out</span>
+escrow         unchanged
+filler credit  unchanged</code></pre>
+    <div class="note">
+      <b>A refused fill is a <em>successful</em> transaction.</b> NEP-141 catches the
+      receiver's panic in order to make the refund work, so the outer status is
+      <code>SuccessValue</code> and the refusal is buried in an inner receipt. Anything
+      reporting on a fill has to read <code>receipts_outcome</code> — our own reference
+      filler called a refused fill a filled one until this was found.
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- =============================================== why it matters -->
+  <section class="rv">
+    <h2>Why an audit found these, and reasoning did not</h2>
+    <div class="grid g3">
+      <div class="panel">
+        <div class="stat-k">the rounding bug</div>
+        <p class="sub" style="margin:8px 0 0">Exact cost 159.348 bps; the contract reported <b>159</b>. A bound that understates cost is not a bound. Found by <em>running</em> the arithmetic, not reading it.</p>
+      </div>
+      <div class="panel">
+        <div class="stat-k">the storage bug, twice</div>
+        <p class="sub" style="margin:8px 0 0">A fixed byte charge left the vault paying for strangers' state. The <em>first fix</em> refunded more than it freed, so open-and-cancel in a loop still drained it. Both caught by printing real byte counts.</p>
+      </div>
+      <div class="panel">
+        <div class="stat-k">the official example</div>
+        <p class="sub" style="margin:8px 0 0">NEAR's own <code>near-intents</code> agent skill returns <b>HTTP 400</b> run verbatim — it omits four fields its own docs list as optional. Found by running it.</p>
+      </div>
+    </div>
+    <div class="cta">
+      <a class="btn primary" href="app.html#price">Reproduce all of this yourself</a>
+      <a class="btn" href="limits.html">What is still wrong with it</a>
+    </div>
+  </section>
+
+    <h4 style="margin-top:30px">Every field, and who can change it</h4>
+    <div class="tw"><table class="fieldmap"><thead><tr>
+      <th>field</th><th>value</th><th>signed?</th><th>written by</th></tr></thead>
+      <tbody id="fields"></tbody></table></div>
+    <p class="note">
+      <b>The quieter failure is in that same capture.</b> Honoured <em>in full</em>
+      that quote still costs <b>503 bps</b>, because 500 bps of <code>appFees</code> are
+      already baked into the signed <code>amountOutUsd</code>. The contract
+      <em>cannot read</em> <code>appFees</code> — it is not in the bytes being verified —
+      and prices it to the basis point regardless.
+    </p>
+<!-- =============================================== exploit two -->
+  </div>
+
+  <div class="app-sec" id="contract" style="margin-top:58px">
+    <div class="kicker">03 · the contract</div>
+    <p class="measure" style="margin-bottom:20px">
+      Twenty-three exported methods, nine typed refusals, sixteen invariants, and one
+      path that moves value. No admin key, no pause, no upgrade path — and no oracle,
+      because the price authority is the counterparty's own signature.
+    </p>
+    <div class="grid g4" id="state"></div>
+  <section class="rv">
+    <h2>One path moves value</h2>
+    <div class="grid g2">
+      <div>
+        <p>
+          Every state change that moves a token starts in <code>ft_on_transfer</code>,
+          which NEP-141 calls when somebody <code>ft_transfer_call</code>s into the vault.
+          That single call carries everything verification needs:
+        </p>
+        <div class="tw"><table class="prose"><thead><tr><th>from</th><th>the vault learns</th></tr></thead><tbody>
+          <tr><td><code>env::predecessor_account_id()</code></td><td><b>which token</b> arrived</td></tr>
+          <tr><td><code>sender_id</code></td><td><b>who</b> sent it</td></tr>
+          <tr><td><code>amount</code></td><td><b>how much</b> arrived</td></tr>
+          <tr><td><code>msg</code></td><td>the canonical quote bytes, the signature, the mandate id</td></tr>
+        </tbody></table></div>
+        <p class="sub">
+          Synchronous, with no cross-contract call — so there is no rollback path, no
+          in-flight record and no stuck state. Payouts are <b>pull, not push</b>, which
+          keeps the verification path free of promises entirely and means a counterparty
+          who is not storage-registered on a token cannot brick a fill for anybody else.
+        </p>
+      </div>
+      <div>
+        <div class="panel">
+          <h4>Which action is legal depends on which token arrived</h4>
+          <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>action</th><th>legal token</th><th>effect</th></tr></thead><tbody>
+            <tr><td><code>open</code></td><td class="dim">the mandate's <b>origin</b></td><td class="dim">create a funded mandate</td></tr>
+            <tr><td><code>fund</code></td><td class="dim">that mandate's <b>origin</b></td><td class="dim">top up the escrow</td></tr>
+            <tr><td><code>fill</code></td><td class="hi">the <b>destination</b></td><td class="dim">the transfer <em>is</em> the delivery</td></tr>
+          </tbody></table></div>
+          <p class="src" style="margin-top:12px">
+            ↳ so an action cannot be performed with the wrong asset. Calling
+            <code>ft_on_transfer</code> directly gets you an asset id derived from your own
+            account — which is why <a href="https://nearblocks.io/txns/BBrcmc6uqzrY4Dko1ary9Zn6VoiYBCY4tbxHwDSnNXAn" target="_blank" rel="noopener">that attack</a>
+            is refused with <em>“this token is not the mandate's destination asset”</em>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== the mandate -->
+  <section class="rv">
+    <h2>What the owner commits to</h2>
+    <p class="measure">
+      Four numbers and two assets. No policy language, no allowlist, no per-protocol
+      configuration — a reader who knows nothing about Intents can audit this in ten
+      seconds, which is deliberate. <b>A bound nobody can read is a bound nobody trusts.</b>
+    </p>
+    <pre><code>pub struct Mandate {
+    pub origin_asset:        String,   <span class="c">// nep141:…</span>
+    pub destination_asset:   String,
+    pub recipient:           String,   <span class="c">// the signed `recipient` a quote must name</span>
+    pub max_cost_bps:        u32,      <span class="y">// the whole point</span>
+    pub max_fill:            U128,     <span class="c">// largest single fill, origin base units</span>
+    pub max_quote_age_secs:  u32,      <span class="y">// how stale the USD marks may be</span>
+    pub expiry_ns:           U64,      <span class="c">// u64 as a string, so a JS client</span>
+}                                      <span class="c">//   cannot silently lose precision</span></code></pre>
+    <h4>Eight kinds of terms <code>open</code> refuses outright</h4>
+    <div class="tw"><table class="prose"><thead><tr><th>refused</th><th>because</th></tr></thead><tbody>
+      <tr><td><code>origin_asset == destination_asset</code></td><td class="dim">one token would match both the funding path and the delivery path, so a fill could be satisfied with the very asset being sold</td></tr>
+      <tr><td><code>destination_asset</code> not <code>nep141:</code></td><td class="dim">credits are paid out via <code>token_account()</code>, which understands nep141 ids only — rejecting here keeps <code>withdraw</code> total</td></tr>
+      <tr><td><code>max_cost_bps &gt; 10_000</code></td><td class="dim">a ceiling above 100% bounds nothing</td></tr>
+      <tr><td><code>max_fill == 0</code></td><td class="dim">nothing could ever fill</td></tr>
+      <tr><td><code>max_quote_age_secs == 0</code></td><td class="dim">nothing could ever fill</td></tr>
+      <tr><td><code>max_quote_age_secs &gt; 30 days</code></td><td class="dim">a ceiling priced in month-old USD marks is decoration. A sanity bound, not a policy — the client defaults to 300 s</td></tr>
+      <tr><td><code>expiry_ns</code> already past</td><td class="dim">nothing could ever fill</td></tr>
+      <tr><td><code>recipient != this vault</code></td><td class="dim">the quote would pay somebody else and the delivery could not be verified</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== exported surface -->
+  <section class="rv">
+    <h2>The exported surface</h2>
+    <p class="measure">
+      Checked by extracting every <code>pub fn</code> from the <code>#[near] impl</code>
+      and diffing it against this table: <b>23 in the code, 23 documented, nothing
+      undocumented.</b> The twelve views are the proof surface — every guarantee in the
+      specification can be exercised with no key, no funds and no deposit.
+    </p>
+    <div class="tw"><table class="prose"><thead><tr><th>method</th><th>kind</th><th>purpose</th><th class="n">live</th></tr></thead>
+      <tbody id="surface"></tbody></table></div>
+    <div class="note">
+      <b>Two views deliberately do not check the signature.</b> <code>worst_cost</code> and
+      <code>realised_cost</code> price whatever bytes they are handed — that is what makes
+      them useful on a quote you are still deciding about, and it is why
+      <code>dry_check</code>, which <em>does</em> verify, is the one a filler consults
+      before spending anything.
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== invariants -->
+  <section class="rv">
+    <h2>Sixteen invariants, each naming what enforces it</h2>
+    <div class="tw"><table class="prose"><thead><tr><th class="n">#</th><th>invariant</th><th>enforced by</th></tr></thead><tbody>
+      <tr><td class="n">1</td><td>No token is credited out unless <code>check()</code> returned <code>Ok</code></td><td class="dim">the <code>Err</code> arm panics before either credit</td></tr>
+      <tr><td class="n">2</td><td><code>reported_cost ≥ true_cost</code>, always</td><td class="dim"><code>div_ceil</code> on the final division</td></tr>
+      <tr><td class="n">3</td><td>The bytes hashed and the bytes parsed are the same bytes</td><td class="dim">verify <code>canonical</code>, then <code>from_slice(canonical)</code></td></tr>
+      <tr><td class="n">4</td><td>No method reads a field outside the signed set</td><td class="dim"><code>SignedQuote</code> has no such field, so reading one is a compile error</td></tr>
+      <tr><td class="n">5</td><td>The verification path makes no cross-contract calls</td><td class="dim">all three <code>Promise</code> sites are in the two payout methods</td></tr>
+      <tr><td class="n">6</td><td>The output is in the vault before the input is credited</td><td class="dim"><code>delivered</code> is an <code>ft_on_transfer</code> argument</td></tr>
+      <tr><td class="n">7</td><td>A mandate can never credit out more origin asset than its escrow</td><td class="dim"><code>require!(amount_in &lt;= rec.escrow.0)</code></td></tr>
+      <tr><td class="n">8</td><td>Realised cost, filler spread included, never exceeds the ceiling</td><td class="dim"><code>cost_bps(&amp;q, delivered) &gt; max_cost_bps</code> refuses</td></tr>
+      <tr><td class="n">9</td><td>No admin key, no pause, no upgrade path</td><td class="dim">there is no such method</td></tr>
+      <tr><td class="n">10</td><td>A failed payout restores the credit rather than burning it</td><td class="dim"><code>resolve_withdraw</code> re-adds on <code>Err</code></td></tr>
+      <tr><td class="n">11</td><td>An action cannot be performed with the wrong token</td><td class="dim">asset id is derived from the predecessor</td></tr>
+      <tr><td class="n">12</td><td>The USD marks are no older than the owner allowed</td><td class="hi">checked against the <b>signed</b> <code>timestamp</code></td></tr>
+      <tr><td class="n">13</td><td>No field the counterparty chooses is ever used as a bound</td><td class="hi"><code>depositAddress</code> unread; <code>deadline</code> never a freshness test</td></tr>
+      <tr><td class="n">14</td><td>The vault never stakes NEAR for state anyone else created</td><td class="hi">every writing path ends in <code>settle_storage</code></td></tr>
+      <tr><td class="n">15</td><td>Its storage is always covered by a prepayment not yet refunded</td><td class="dim"><code>reap</code> refunds only measured bytes freed</td></tr>
+      <tr><td class="n">16</td><td>A signature is 64 bytes or it is refused</td><td class="dim"><code>decode_signature</code> returns <code>None</code> otherwise, never zero-pads</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== storage -->
+  <section class="rv">
+    <h2>Whoever causes a byte to be written pays for that byte</h2>
+    <div class="grid g2">
+      <div>
+        <p>
+          NEAR stakes part of an account's balance per byte of state it holds, so
+          somebody has to pay for a mandate's record. v1's answer was <em>the vault</em>,
+          which gave a stranger about <b>ten times leverage</b> against it: roughly ten
+          cents of gas and a live vault could no longer write state at all — fills and
+          withdrawals included.
+        </p>
+        <p>
+          v2 charged a fixed 1,536 bytes. That was also wrong: it overcharged honest
+          owners and still left a hole for a mandate with more fillers than the fixed
+          allowance covered. <b>And its first version refunded more on
+          <code>cancel</code> than it actually freed</b>, so open-and-cancel in a loop
+          drained the vault anyway, just slower.
+        </p>
+        <p>
+          v3 stops guessing. One helper runs at the end of every path that writes state:
+          flush the collections, diff <code>env::storage_usage()</code>, and charge the
+          caller exactly that — or credit them exactly what shrank.
+        </p>
+        <pre><code>fn settle_storage(&amp;mut self, who: &amp;AccountId, before: u64) {
+    self.mandates.flush();
+    self.open_ids.flush();
+    self.credits.flush();
+    let after = env::storage_usage();
+    if after &gt; before {
+        let owed = bytes_to_near(after - before);
+        require!(balance &gt;= owed, <span class="y">"prepay storage first: …"</span>);
+        <span class="c">// deduct</span>
+    } else if before &gt; after {
+        <span class="c">// credit back bytes_to_near(before - after)</span>
+    }
+}</code></pre>
+        <div class="note">
+          <b>A trap inside the trap.</b> <code>near_sdk::store</code> collections buffer
+          their writes and flush when the call ends, so <code>storage_usage()</code>
+          immediately after a <code>remove</code> still reports the old figure — and the
+          refund came out as <b>zero</b>. Hence the explicit flush.
+        </div>
+      </div>
+      <div>
+        <div class="panel">
+          <h4>Measured on mainnet, to the byte</h4>
+          <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>state</th><th class="n">bytes</th><th class="n">NEAR</th></tr></thead><tbody>
+            <tr><td>a mandate record</td><td class="n">296</td><td class="n dim">0.00296</td></tr>
+            <tr><td>its open-id index entry</td><td class="n">228</td><td class="n dim">0.00228</td></tr>
+            <tr><td>a credit slot</td><td class="n">145</td><td class="n dim">0.00145</td></tr>
+            <tr><td>a prepaid-storage row</td><td class="n">74</td><td class="n dim">0.00074</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="panel">
+          <h4>And it round-trips</h4>
+          <pre style="margin:12px 0 0"><code><span class="c">the v3 mainnet fill</span>
+prepaid after opening          <span class="y">426</span> bytes
+prepaid after the fill         <span class="y">123</span> bytes
+  <span class="c">← 303 charged to the FILLER for the</span>
+  <span class="c">  two credit slots its fill created</span>
+prepaid after both withdrawals <span class="g">426</span> bytes
+  <span class="c">← both slots released, both refunded</span></code></pre>
+        </div>
+        <div class="panel">
+          <h4>Who pays for what</h4>
+          <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>call</th><th>charged to</th></tr></thead><tbody>
+            <tr><td><code>open</code></td><td class="dim">the owner — record + index entry</td></tr>
+            <tr><td><code>fill</code></td><td class="hi">the <b>filler</b> — the credit slots it creates</td></tr>
+            <tr><td><code>fund</code></td><td class="allow">nothing — it writes no new state</td></tr>
+            <tr><td><code>cancel</code></td><td class="dim">the net: index entry out, maybe a credit slot in</td></tr>
+            <tr><td><code>withdraw</code></td><td class="dim">refunds the slot — but only once the payout lands</td></tr>
+            <tr><td><code>reap</code></td><td class="dim">refunds exactly what deleting the record frees</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== order book -->
+  <section class="rv">
+    <h2>What it costs to run, and what proves it</h2>
+    <div class="grid g3">
+      <div class="panel">
+        <div class="stat-k">a whole fill, on mainnet</div>
+        <div class="stat-n">30.48 <span class="dim" style="font-size:15px">TGas</span></div>
+        <div class="stat-s">every receipt in the transaction — the filler's <code>ft_transfer_call</code>, the token's hop, <code>sha256</code> + <code>ed25519_verify</code>, the invariant, and both credits. 10% of one transaction's limit.</div>
+      </div>
+      <div class="panel">
+        <div class="stat-k">the verification itself</div>
+        <div class="stat-n">7.8 <span class="dim" style="font-size:15px">TGas</span></div>
+        <div class="stat-s">measured in the sandbox, counting only the fill's own burn. Nothing in the path scales with anything but the length of the signed quote.</div>
+      </div>
+      <div class="panel">
+        <div class="stat-k">tests, from a clean clone</div>
+        <div class="stat-n">58 <span class="dim" style="font-size:15px">+ 54</span></div>
+        <div class="stat-s">58 tests — 30 unit + 28 against a real sandbox node — plus 54 client assertions. No network, no key, no funds.</div>
+      </div>
+    </div>
+    <div class="note">
+      <b>The suite is deterministic, and that took two fixes.</b> Each integration test
+      starts a real nearcore node, and at cargo's default parallelism 28 of them raced for
+      ports until one died inside <code>PeerManagerActor::spawn</code>. Separately, a
+      patched account's state lands before the node has indexed its access key, so an
+      immediate call failed with <em>“access key … has never been observed”</em>. Both
+      were intermittent and both were found by running the suite repeatedly rather than
+      once. <b>“Clone it and run the tests” is the whole claim; a suite that fails one run
+      in three does not support it.</b>
+    </div>
+    <h4 style="margin-top:26px">The toolchain trap, which costs a day if you meet it late</h4>
+    <p class="sub measure">
+      <b>nearcore's VM only accepts MVP WebAssembly.</b> From rustc 1.87 on, the output is
+      unusable — and the failure mode is the trap: <code>DeployContract</code>
+      <em>succeeds</em>, because deploying does not compile the module. Every subsequent
+      call fails with <code>CompilationError(PrepareError(Deserialization))</code>.
+      <code>-C target-cpu=mvp</code> is not sufficient, because the prebuilt
+      <code>std</code> was compiled with the newer features regardless.
+    </p>
+    <div class="tw"><table class="prose"><thead><tr><th>constraint</th><th>value</th></tr></thead><tbody>
+      <tr><td><code>near-sdk</code></td><td><code>=5.24.1</code> — the newest that compiles on 1.86</td></tr>
+      <tr><td>why the <code>=</code></td><td class="dim"><code>"5.24.1"</code> means <code>^5.24.1</code>, which resolves to 5.30 and fails</td></tr>
+      <tr><td><code>near-sys</code></td><td><code>=0.2.9</code> — 0.2.10 and later require rustc 1.93</td></tr>
+      <tr><td>wasm toolchain</td><td><b>1.86</b>, via <code>./build.sh</code></td></tr>
+      <tr><td>test toolchain</td><td><b>1.99.1</b> — <code>near-workspaces</code> needs ≥ 1.88</td></tr>
+    </tbody></table></div>
+    <p class="src">
+      ↳ <code>near-sdk</code> 5.30 requires rustc ≥ 1.95, so <b>5.30 cannot produce a
+      contract this VM will run.</b> An earlier draft of the specification recorded 5.30
+      and 1.99.1 as the build configuration, having verified only that they <em>compile</em>.
+      They do compile, and produce a contract that cannot execute a single call.
+    </p>
+  </section>
+
+</div>
+
+
+  <div class="app-sec" id="fillers" style="margin-top:58px">
+    <div class="kicker">04 · the fillers</div>
+  <section class="rv">
+    <h2>What each one is for</h2>
+    <div class="tw"><table class="prose"><thead><tr>
+      <th>filler</th><th>strategy</th><th>written from</th><th>what it proves</th></tr></thead><tbody>
+      <tr>
+        <td><code>bin/fill.ts</code></td>
+        <td class="dim">splits the spread — delivers halfway between the venue's floor and its expected fill</td>
+        <td class="dim">the architecture</td>
+        <td class="dim">the reference. Asks the contract for a verdict before spending anything</td>
+      </tr>
+      <tr>
+        <td><code>fillers/edge.ts</code></td>
+        <td class="dim"><b>patient</b> — fills only when the spread it keeps clears a floor it sets itself, and computes the cost itself instead of asking</td>
+        <td class="hi"><b>§2.1 and §5.3 alone</b>, without reading <code>fill.ts</code></td>
+        <td class="dim">an independent implementation of the invariant. It prints its own number beside the contract's on every live quote, and <b>exits non-zero if they ever differ</b></td>
+      </tr>
+      <tr>
+        <td><code>fillers/adapted.ts</code></td>
+        <td class="dim">the official NEAR Intents agent flow, pointed at a vault</td>
+        <td class="hi"><code>near/agent-skills</code>, skill <code>near-intents</code></td>
+        <td class="dim">what a stranger's agent must change to become a filler. <b>The diff is the claim</b></td>
+      </tr>
+    </tbody></table></div>
+    <pre><code>npm run fill            <span class="c"># the reference, dry by default without a key</span>
+npm run fill:edge       <span class="c"># the independent one</span>
+npm run fill:adapted    <span class="c"># the adapted official agent</span>
+npm run race            <span class="c"># all three price the same mandate, side by side</span>
+npm run agree           <span class="c"># the invariant, three ways, against the live contract</span></code></pre>
+  </section>
+
+  <hr>
+
+  <!-- ===================================================== the race -->
+  <section class="rv">
+    <h2>The race, on mainnet</h2>
+    <p class="measure">
+      One live signed quote, one second old, three agents. All three inside the owner's
+      ceiling, disagreeing only about strategy — which is the whole claim:
+      <b>the mandate does not care who fills it.</b>
+    </p>
+    <pre><code><span class="c">mandate #1   wNEAR → USDT   ceiling 300 bps   quotes must be newer than 300s
+the venue's floor 0.155894   its expected fill 0.157469</span>
+
+fill.ts     (reference)        <span class="y">119 bps</span>   delivers 0.156681   <span class="g">within bound</span>   splits the spread
+edge.ts     (independent)      <span class="y">169 bps</span>   delivers 0.155894   <span class="g">within bound</span>   needs 40 bps of edge
+adapted.ts  (official agent)   <span class="g"> 69 bps</span>   delivers 0.157469   <span class="g">within bound</span>   delivers the expected fill
+
+all three implementations of the invariant agree: <span class="g">yes</span></code></pre>
+    <div class="grid g2">
+      <div class="note">
+        <b>Competition acts on the right variable.</b> A filler that delivers more lowers
+        the owner's cost and still profits. The cheapest of the three here is the adapted
+        official agent, at 69 bps against a 300 bps ceiling.
+      </div>
+      <div class="note">
+        <b>And the limit, stated.</b> First-come-first-served means whoever lands
+        <em>first</em> wins, not whoever is cheapest. The owner gets their ceiling, not the
+        best price in the market. An auction window — collect deliveries for N blocks,
+        settle the best — is the natural next version and is
+        <a href="limits.html">not claimed for v1</a>.
+      </div>
+    </div>
+
+    <h4 style="margin-top:28px">Three implementations of the invariant, cross-checked</h4>
+    <p class="sub measure">
+      <code>npm run agree</code> sweeps every captured fixture from its signed floor to
+      twice its expected fill, comparing the reference client, the independent
+      implementation, and <b>the live contract</b>. They use different scales, different
+      division orders and different languages.
+    </p>
+    <pre><code><span class="c">three implementations of the invariant, against hallmarkfi.near on mainnet</span>
+honest   13 delivery points from the signed floor to 2x the expected fill   max disagreement <span class="g">0 bps</span>
+worst    13 delivery points from the signed floor to 2x the expected fill   max disagreement <span class="g">0 bps</span>
+sandbox  13 delivery points from the signed floor to 2x the expected fill   max disagreement <span class="g">0 bps</span>
+
+<span class="g">39 comparisons, 0 disagreements</span></code></pre>
+    <p class="src">↳ if an independent reading of the specification agrees with the chain on live quotes, the mechanism is something a stranger can implement — and the agreement is evidence rather than a claim.</p>
+  </section>
+
+  <hr>
+
+  <!-- ===================================================== the official diff -->
+  <section class="rv">
+    <h2>Turning NEAR's own agent into a filler</h2>
+    <p class="measure">
+      The starting point is <a href="https://github.com/near/agent-skills" target="_blank" rel="noopener"><code>near/agent-skills</code></a>,
+      skill <code>near-intents</code>, <code>rules/server-example.md</code> — the file
+      NEAR ships for an agent that needs to do a swap from a script. Install it the way an
+      agent would:
+    </p>
+    <pre><code>npx skills add near/agent-skills --skill near-intents</code></pre>
+    <p class="sub measure">
+      Its flow, verbatim from the skill:
+      <code>fetchTokens → getQuote(dry:false) → send deposit to quote.depositAddress →
+      submitDeposit → pollStatus</code>. Below is that same flow with four changes, and
+      nothing else. They are marked <code>[1]</code>..<code>[4]</code> in the source.
+    </p>
+    <div class="panel">
+      <div class="diffrow">
+        <div class="diffn">01</div>
+        <div class="diffa">is <b>told</b> what to swap</div>
+        <div class="diffb">reads <code>get_mandates()</code> — a keyless view — and takes the pair, the size and the ceiling from the mandate. <span class="dim">The work comes from the chain.</span></div>
+      </div>
+      <div class="diffrow">
+        <div class="diffn">02</div>
+        <div class="diffa"><code>recipient</code> is the agent</div>
+        <div class="diffb"><code>recipient</code> is the <b>vault</b>. <span class="dim"><code>recipient</code> is inside the signature, so a quote addressed anywhere else is refused <code>WrongRecipient</code>.</span></div>
+      </div>
+      <div class="diffrow">
+        <div class="diffn">03</div>
+        <div class="diffa"><code>dry: false</code>, then sends the <b>origin</b> asset to <code>quote.depositAddress</code> and waits</div>
+        <div class="diffb"><code>dry: true</code>, then sends the <b>destination</b> asset to the vault with the signed quote in <code>msg</code>. <span class="hi">The load-bearing one.</span> <span class="dim"><code>depositAddress</code> is not covered by the signature, so a filler should not trust it and the vault must not.</span></div>
+      </div>
+      <div class="diffrow">
+        <div class="diffn">04</div>
+        <div class="diffa"><code>submitDeposit</code>, then <code>pollStatus</code> until <code>SUCCESS | FAILED | REFUNDED</code></div>
+        <div class="diffb">neither — the fill settles inside <code>ft_on_transfer</code>, so the receipt <em>is</em> the terminal state. <span class="dim">Nothing to poll, nothing in flight.</span></div>
+      </div>
+    </div>
+    <p class="measure">
+      Unchanged: the API base, the quote request shape, <code>slippageTolerance</code>,
+      asset ids from <code>/v0/tokens</code>, and reading <code>amountOut</code> /
+      <code>minAmountOut</code> off a signed quote. An agent that already speaks 1Click
+      keeps all of it.
+    </p>
+    <div class="panel ok">
+      <p style="margin:0">
+        <b>The official flow uses 1Click as an execution venue. A filler uses it as a
+        price oracle whose word can be proved.</b> Same API, opposite direction of trust.
+      </p>
+    </div>
+    <div class="note">
+      <b>And one change that is not an adaptation at all — a <code>[0]</code> fix, because
+      the official example does not run.</b> Its <code>getQuote</code> sends only
+      <code>dry</code>, <code>swapType</code>, <code>slippageTolerance</code> and its five
+      parameters. Against the live API on 2026-11-02 that is <b>HTTP 400</b>:
+      <code>depositType should not be empty … refundType should not be empty …
+      recipientType should not be empty … deadline must be a valid ISO 8601 date string</code>.
+      The skill's own <code>api-quote.md</code> documents all four with defaults
+      — <code>ORIGIN_CHAIN</code>, <code>DESTINATION_CHAIN</code>, <code>ORIGIN_CHAIN</code>,
+      <code>~10 min</code> — which is presumably why the example omits them. The network
+      requires them. <b>An agent following the skill as written fails its first quote.</b>
+    </div>
+    <p class="src">
+      ↳ found by <em>running</em> the official example rather than reading it — the same
+      discipline that found both exploits. Where documentation disagrees with the network,
+      the network wins, and the disagreement gets recorded.
+    </p>
+  </section>
+
+  <hr>
+
+  <!-- ===================================================== economics -->
+  <section class="rv">
+    <h2>Why a stranger would bother</h2>
+    <div class="grid g2">
+      <div>
+        <h4>The spread is the whole fee, so there is no fee field</h4>
+        <p>
+          Because the filler delivers an amount of its own choosing — at or above the
+          quote's signed floor — its compensation is simply <b>what it keeps</b>: the gap
+          between what it could source the output for and what it delivered.
+        </p>
+        <p class="sub">
+          That number is already inside the owner's ceiling, because the ceiling is
+          enforced on the realised cost. So the mandate needs no fee field, no fee rail,
+          no fee accounting and no second asset. An earlier draft had a
+          <code>max_filler_fee_bps</code> paid on proven delivery; once the filler
+          delivers first that is double-paying, and the field was built, tested, and then
+          deleted.
+        </p>
+        <p class="sub">
+          For scale: <b>1Click's own rake is 20 bps</b>, inserted unprompted into every
+          quote. That is the right anchor for judging whether a filler's spread is
+          reasonable.
+        </p>
+      </div>
+      <div>
+        <h4>The capital requirement is real, and is the price of closing the hole</h4>
+        <p>A filler must <em>front</em> the output. Two ways, both legitimate:</p>
+        <ul>
+          <li><b>Inventory.</b> Hold the destination asset and quote against it. Lowest latency, highest capital.</li>
+          <li><b>Source-then-deliver.</b> Buy the output via 1Click (<code>depositType: INTENTS</code>, ~10 s), then deliver it. Two transactions, and the filler carries the price risk in between — which is exactly the risk it is being paid the spread to carry.</li>
+        </ul>
+        <p class="sub">
+          A filler also prepays storage, because a fill creates credit slots and
+          <a href="#contract">whoever creates state pays for it</a>. One deposit,
+          reusable, measured in thousandths of a NEAR.
+        </p>
+      </div>
+    </div>
+    <div class="panel">
+      <h4>The second incentive works at zero volume</h4>
+      <p class="sub" style="margin:0">
+        Every fill emits a receipt bound to the filler's account, so a filler accumulates
+        a <b>provable</b> execution record rather than a self-reported one. A new agent
+        developer wants fills in order to build a track record they can later sell. The
+        receipt already exists; indexing it by filler costs almost nothing.
+      </p>
+      <pre style="margin:14px 0 0"><code>EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
+  "data":[{"mandate_id":"1","filler":"d3bc151a…b7bd484",
+           "amount_in":"40000000000000000000000","delivered":"157389",
+           <span class="y">"cost_bps":74</span>,"ceiling_bps":300}]}</code></pre>
+    </div>
+    <div class="note">
+      <b>What is not claimed.</b> There is no third-party filler ecosystem. Three fillers,
+      all written by us or adapted by us, and this page does not pretend otherwise. What
+      the three <em>do</em> demonstrate is that the mandate does not care who fills it, and
+      that an independent reading of the invariant agrees with the chain on live quotes.
+    </div>
+  </section>
+
+    <div class="cta">
+      <a class="btn primary" href="app.html#book">See the live book and price a fill →</a>
+    </div>
+  </div>
+
+
+<script type="module">
+import { view, fixtures, canonicalise, stable, esc, units, age } from "./assets/hallmark.js?v=dd791cd6";
+const $ = (s) => document.querySelector(s);
+
+/* ------------------------------------------------------- the fill, step by step */
+const STEPS = [
+  ["ft_transfer_call(origin token → vault)", "msg carries the mandate terms: the pair, the worst acceptable all-in cost, the largest single fill, how stale a quote may be, and an expiry. The owner signs this once and never signs again.",
+   { nodes:["n1"], flows:["f1"], own:"owner holds: nothing — it is escrowed", vault:"vault holds: the owner's origin asset", fill:"filler holds: inventory" }],
+  ["get_mandates()", "A keyless view call. This is the order book, and it costs nothing to read — no key, no account, no server.",
+   { nodes:["n2"], flows:["f2"] }],
+  ["POST /v0/quote", "Public, unauthenticated, and still signed. recipient must be the vault, because recipient is inside the signature — a quote addressed anywhere else is refused WrongRecipient.",
+   { nodes:["n3"], flows:["f3"] }],
+  ["Source the output", "Inventory, or buy it through 1Click, or anywhere else. The vault does not care how, and never asks.",
+   { nodes:["n4"], flows:["f4"] }],
+  ["ft_transfer_call(destination token → vault)", "THE DELIVERY ARRIVES FIRST. msg = { mandate_id, canonical, signature }. The output is now inside the vault and the owner's input has not moved.",
+   { nodes:["n5"], flows:["f5"], own:"owner holds: nothing", vault:"vault holds: BOTH legs", fill:"filler holds: nothing yet", hold:true }],
+  ["Verify, synchronously", "predecessor tells the vault which token arrived, sender_id who sent it, amount how much. sha256 → base58 → ed25519_verify → parse the same bytes. One call, no promises, so no rollback path.",
+   { nodes:["n6"], vault:"vault holds: BOTH legs — verifying", hold:true }],
+  ["Bound the realised cost", "Eight typed checks: the signature, the assets, the recipient, the mandate's expiry, the quote's age against its signed timestamp, its deadline, the fill size, the signed floor, and finally the cost against the owner's ceiling.",
+   { nodes:["n7"], vault:"vault holds: BOTH legs — bounding", hold:true }],
+  ["Credit both legs together", "owner += delivered, filler += the quote's amountIn. Pull-not-push, so neither side can fail here and a counterparty who is not storage-registered on a token cannot brick a fill for anyone else.",
+   { nodes:["n8"], own:"owner is owed: the destination asset", vault:"vault holds: credits, claimable", fill:"filler is owed: the origin asset" }],
+  ["withdraw(asset)", "Either party pulls, whenever. A failed payout restores the credit rather than burning it, and releases no storage it did not actually free.",
+   { nodes:["n9a"], flows:["f6","f7"], own:"owner holds: the destination asset", vault:"vault holds: nothing", fill:"filler holds: the origin asset" }],
+];
+
+let cur = 0, playing = null;
+$("#steps").innerHTML = STEPS.map(([t, w], i) =>
+  `<div class="step" data-i="${i}"><div class="step-n">${String(i + 1).padStart(2, "0")}</div>
+   <div><div class="step-b"><code>${esc(t)}</code></div><div class="step-w">${esc(w)}</div></div></div>`).join("");
+
+function render() {
+  const st = STEPS[cur][2];
+  document.querySelectorAll(".node").forEach((n) => n.classList.remove("on", "done"));
+  document.querySelectorAll(".flow").forEach((f) => f.classList.remove("on", "held"));
+  for (let i = 0; i <= cur; i++) {
+    (STEPS[i][2].nodes || []).forEach((id) => {
+      const n = document.getElementById(id);
+      if (n) n.classList.add(i === cur ? "on" : "done");
+    });
+  }
+  (st.flows || []).forEach((id) => {
+    const f = document.getElementById(id);
+    if (f) f.classList.add(st.hold ? "held" : "on");
+  });
+  // custody carries forward from the most recent step that set it
+  for (const [key, el] of [["own", "#c-own"], ["vault", "#c-vault"], ["fill", "#c-fill"]]) {
+    let txt = null;
+    for (let i = cur; i >= 0; i--) if (STEPS[i][2][key]) { txt = STEPS[i][2][key]; break; }
+    const node = $(el);
+    node.textContent = txt ?? node.dataset.init ?? node.textContent;
+    node.classList.toggle("has", !!(txt && /holds: (?!nothing)/.test(txt)));
+  }
+  document.querySelectorAll(".step").forEach((s, i) => {
+    s.classList.toggle("on", i === cur);
+    s.classList.toggle("past", i < cur);
+  });
+  $("#stepn").textContent = `step ${cur + 1} of ${STEPS.length}`;
+}
+const go = (i) => { cur = (i + STEPS.length) % STEPS.length; render(); };
+$("#next").onclick = () => { stop(); go(cur + 1); };
+$("#prev").onclick = () => { stop(); go(cur - 1); };
+function stop() { if (playing) { clearInterval(playing); playing = null; $("#play").textContent = "▶ Play"; } }
+$("#play").onclick = () => {
+  if (playing) return stop();
+  $("#play").textContent = "❙❙ Pause";
+  playing = setInterval(() => { if (cur === STEPS.length - 1) { stop(); } else go(cur + 1); }, 2600);
+};
+document.querySelectorAll(".step").forEach((s) => (s.onclick = () => { stop(); go(+s.dataset.i); }));
+render();
+// play once when it first scrolls into view, unless the reader prefers no motion
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  const io = new IntersectionObserver((es) => {
+    if (es[0].isIntersecting) { io.disconnect(); setTimeout(() => $("#play").click(), 450); }
+  }, { threshold: 0.35 });
+  io.observe(document.querySelector(".seq-stage"));
+}
+
+/* ------------------------------------------------------- the invariant, worked */
+const FX = await fixtures();
+const DP = {
+  "nep141:wrap.near": 24,
+  "nep141:usdt.tether-token.near": 6,
+  "nep141:eth.bridge.near": 18,
+  "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1": 6,
+};
+
+async function work() {
+  const f = FX[$("#fx").value];
+  const q = JSON.parse(f.canonical);
+  const delivered = $("#dv").value === "min" ? q.minAmountOut : q.amountOut;
+  const outDp = DP[q.destinationAsset] ?? 18;
+  const inDp = DP[q.originAsset] ?? 18;
+
+  $("#work").innerHTML = [
+    ["<code>amountInUsd</code>", "what went in, marked by the venue", `$${q.amountInUsd}`],
+    ["<code>amountOutUsd</code>", "what the output is worth <em>at amountOut</em>", `$${q.amountOutUsd}`],
+    ["<code>amountOut</code>", "the expected fill", units(q.amountOut, outDp)],
+    ["<code>minAmountOut</code>", "the floor the venue actually guaranteed", `<span class="refuse">${units(q.minAmountOut, outDp)}</span>`],
+    ["<code>delivered</code>", "what the filler actually transferred in", `<span class="hi">${units(delivered, outDp)}</span>`],
+    ["<code>timestamp</code>", "when the venue signed — the freshness bound", q.timestamp],
+    ["<code>deadline</code>", "chosen by whoever asked. Bounds nothing on its own", `<span class="dim2">${q.deadline}</span>`],
+    ["<code>slippageTolerance</code>", "surfaced for display; decides nothing", `${q.slippageTolerance} bps`],
+  ].map(([a, b, c]) => `<tr><td>${a}</td><td class="dim">${b}</td><td class="n">${c}</td></tr>`).join("");
+
+  const inUsd = Number(q.amountInUsd), outUsd = Number(q.amountOutUsd);
+  const exact = (1 - (outUsd * Number(delivered) / Number(q.amountOut)) / inUsd) * 10000;
+  try {
+    const [chain, ageS, signed] = await Promise.all([
+      view("realised_cost", { canonical: f.canonical, delivered }),
+      view("quote_age_secs", { canonical: f.canonical }),
+      view("is_signed", { canonical: f.canonical, signature: f.signature }),
+    ]);
+    $("#workout").innerHTML = `
+      <div class="row"><span class="k">1 − (${outUsd} × ${units(delivered, outDp, 4)} / ${units(q.amountOut, outDp, 4)}) / ${inUsd}</span>
+        <span class="v">= <b>${exact.toFixed(4)} bps</b> exactly</span></div>
+      <div class="row"><span class="k">what <b>hallmarkfi.near</b> reports, live</span>
+        <span class="v"><span class="hi" style="font-size:19px">${chain} bps</span></span></div>
+      <div class="row"><span class="k">rounded the safe way?</span>
+        <span class="v"><span class="${chain >= exact - 0.001 ? "allow" : "refuse"}">${chain >= exact - 0.001 ? `yes — ${chain} ≥ ${exact.toFixed(4)}, and loose by ${(chain - exact).toFixed(4)} bps` : "NO"}</span></span></div>
+      <div class="row"><span class="k">signed by the venue?</span>
+        <span class="v"><span class="${signed ? "allow" : "refuse"}">${signed}</span> <span class="dim2">· ${f.bytes} canonical bytes · signed ${age(ageS)} ago</span></span></div>`;
+  } catch (e) {
+    $("#workout").innerHTML = `<div class="verdict no">${esc(e.message)}</div>`;
+  }
+}
+$("#fx").onchange = work; $("#dv").onchange = work;
+await work();
+
+/* ------------------------------------- does this page's canonicaliser agree? */
+(async () => {
+  const out = [];
+  for (const [name, f] of Object.entries(FX)) {
+    const q = JSON.parse(f.canonical);
+    // rebuild the canonical form from the parsed quote, with this page's own code
+    const rebuilt = canonicalise({ quote: q, quoteRequest: q, timestamp: q.timestamp });
+    const ok = rebuilt === f.canonical;
+    out.push(`<div class="row"><span class="k">${name}</span><span class="v">
+      <span class="${ok ? "allow" : "refuse"}">${ok ? "byte-identical" : "DRIFT"}</span>
+      <span class="dim2">· ${f.bytes} bytes · ${f.quoteHash.slice(0, 12)}…</span></span></div>`);
+  }
+  $("#canoncheck").innerHTML =
+    `<div class="stat-k" style="margin-bottom:6px">this page's canonicaliser, against the signed captures</div>${out.join("")}`;
+})();
+</script>
+
+<script type="module">
+import { view, fixtures, rows, esc, units, age, UNSIGNED } from "./assets/hallmark.js?v=dd791cd6";
+const $ = (s) => document.querySelector(s);
+const FX = await fixtures();
+const W = FX.worst, q = JSON.parse(W.canonical);
+
+/* ------------------------------------------------------------- exploit one
+   Its markup lives on the overview page; this block is a no-op here. */
+(async () => {
+  if (!$("#one")) return;
+  try {
+    const [signed, signer, worst, full, ageS] = await Promise.all([
+      view("is_signed", { canonical: W.canonical, signature: W.signature }),
+      view("quote_signer"),
+      view("worst_cost", { canonical: W.canonical }),
+      view("realised_cost", { canonical: W.canonical, delivered: q.amountOut }),
+      view("quote_age_secs", { canonical: W.canonical }),
+    ]);
+    $("#one").innerHTML = rows([
+      ["signed by NEAR Intents?", `<span class="${signed ? "allow" : "refuse"}">${signed ? "yes" : "no"}</span>`],
+      ["<code>amountIn</code>", `${units(q.amountIn, 6, 2)} USDC &nbsp;<span class="dim2">($${Number(q.amountInUsd).toFixed(4)})</span>`],
+      ["<code>amountOut</code>", `${units(q.amountOut, 24, 4)} wNEAR &nbsp;<span class="dim2">($${Number(q.amountOutUsd).toFixed(4)})</span>`],
+      ["<code>minAmountOut</code>", `<span class="refuse">${units(q.minAmountOut, 24, 6)} wNEAR</span>`],
+      ["<code>slippageTolerance</code>", `${q.slippageTolerance} bps`],
+      ["minAmountOut / amountOut", `<span class="refuse">0.0001</span>`],
+      ["guaranteed&#8209;worst all&#8209;in cost", `<span class="refuse" style="font-size:24px;font-weight:650">${worst} bps</span>`],
+      ["cost if honoured in full", `<span class="refuse" style="font-size:24px;font-weight:650">${full} bps</span>`],
+    ]);
+    $("#one-src").innerHTML = `↳ every figure answered by <b>hallmarkfi.near</b> on NEAR mainnet,
+      from the ${W.bytes} canonical bytes in <code>fixtures/worst.quote.json</code>.
+      Signed ${age(ageS)} ago by <span class="dim2">${esc(signer.slice(0, 26))}…</span>`;
+  } catch (e) {
+    $("#one").innerHTML = `<div class="verdict no">could not reach hallmarkfi.near: ${esc(e.message)}</div>`;
+  }
+})();
+
+/* ---------------------------------------------------------------- field map */
+const READ = {
+  amountIn: ["the venue", "priced"], amountInUsd: ["the venue", "priced"],
+  amountOut: ["the venue", "priced"], amountOutUsd: ["the venue", "priced"],
+  minAmountOut: ["the venue", "priced"], slippageTolerance: ["the caller", "display only"],
+  originAsset: ["the caller", "matched"], destinationAsset: ["the caller", "matched"],
+  recipient: ["the caller", "matched"], deadline: ["the caller", "checked, not trusted"],
+  timestamp: ["the venue", "the freshness bound"],
+};
+$("#fields").innerHTML = [
+  ...Object.keys(q).sort().map((k) => {
+    const v = typeof q[k] === "string" && q[k].length > 34 ? q[k].slice(0, 30) + "…" : String(q[k]);
+    const [who, use] = READ[k] ?? ["the caller", "—"];
+    const hot = k === "deadline" ? "refuse" : k === "timestamp" ? "allow" : "";
+    return `<tr><td class="${hot}">${k}</td><td class="dim mono" style="font-size:12px">${esc(v)}</td>
+      <td class="allow">yes</td><td class="${who === "the venue" ? "allow" : "dim"}">${who} <span class="dim2">· ${use}</span></td></tr>`;
+  }),
+  ...UNSIGNED.map((k) => `<tr><td class="refuse">${k}</td><td class="dim2">not in the bytes</td>
+    <td class="refuse">no</td><td class="refuse">unverifiable — never read</td></tr>`),
+].join("");
+
+/* ------------------------------------------------- the freshness bound, for real
+   The honest version of this widget. The fixture's age is whatever it is; the
+   slider moves `max_quote_age_secs`, which is the number an owner actually
+   chooses, and the contract decides. An earlier draft moved a fake "now" and
+   varied the bound behind the reader's back to force a refusal — which is
+   precisely the kind of thing this project exists to not do. */
+
+const MAXAGE = 2592000;                 // the contract's own ceiling: 30 days
+const toAge = (k) => Math.max(1, Math.round(Math.pow(k, 3.2) * MAXAGE));
+const CEILING_LABELS = [
+  [1, "1 s"], [60, "60 s"], [300, "300 s — the client default"],
+  [3600, "1 h"], [86400, "1 day"], [2592000, "30 days — the contract's ceiling"],
+];
+
+let realAge = null;
+
+async function clock() {
+  const k = Number($("#csl").value) / 1000;
+  const maxAge = toAge(k);
+  if (realAge === null) realAge = Number(await view("quote_age_secs", { canonical: W.canonical }));
+
+  // Both drawn on the same log-ish scale, so the comparison is honest.
+  const pos = (secs) => Math.min(100, Math.max(0, Math.pow(secs / MAXAGE, 1 / 3.2) * 100));
+  $("#cwin").style.width = `${pos(maxAge)}%`;
+  $("#cnow").style.left = `${pos(realAge)}%`;
+  $("#cnow").style.background = maxAge >= realAge ? "var(--allow)" : "var(--refuse)";
+  $("#clab").innerHTML =
+    `the window the owner allows &nbsp;·&nbsp; the marker is how old this capture really is: ${age(realAge)}`;
+  $("#cageout").textContent = `max_quote_age_secs = ${maxAge.toLocaleString()}  (${age(maxAge)})`;
+
+  const verdict = await view("dry_check", {
+    canonical: W.canonical, signature: W.signature,
+    terms: {
+      origin_asset: q.originAsset, destination_asset: q.destinationAsset,
+      recipient: q.recipient, max_cost_bps: 10000, max_fill: q.amountIn,
+      max_quote_age_secs: maxAge, expiry_ns: "4000000000000000000",
+    },
+    delivered: q.amountOut,
+  });
+  const ok = verdict.startsWith("ALLOWED");
+  const el = $("#cverdict");
+  el.className = `verdict ${ok ? "ok" : "no"}`;
+  el.textContent = verdict;
+  $("#csrc").innerHTML = ok
+    ? `↳ a ${age(realAge)}-old quote, accepted because the owner asked for nothing better.
+       <b>This is what v1 did on every mandate, with no way to say otherwise.</b>`
+    : `↳ validly signed, years inside its own deadline, and refused anyway — because the
+       owner bounded the age of the marks their ceiling is priced in.`;
+}
+let t;
+const deb = () => { clearTimeout(t); t = setTimeout(clock, 110); };
+$("#csl").addEventListener("input", deb);
+try { await clock(); } catch (e) {
+  $("#cverdict").className = "verdict no";
+  $("#cverdict").textContent = e.message;
+}
+</script>
+
+<script type="module">
+import { view, viewAccount, rows, esc, units, age, near, VAULT, EXPLORER } from "./assets/hallmark.js?v=dd791cd6";
+const $ = (s) => document.querySelector(s);
+
+/* -------------------------------------------------------------- live headline */
+(async () => {
+  try {
+    const [a, open, ever, est] = await Promise.all([
+      viewAccount(), view("open_mandate_count"), view("mandate_count"), view("storage_cost_estimate"),
+    ]);
+    const locked = BigInt(a.storage_usage) * 10n ** 19n;
+    $("#state").innerHTML = [
+      ["code hash", `<span style="font-size:13px">${esc(a.code_hash.slice(0, 14))}…</span>`, "matches the local build, byte for byte"],
+      ["state", a.storage_usage.toLocaleString(), `bytes · ${near(locked, 2)} NEAR staked against it`],
+      ["balance", near(a.amount, 3), `NEAR · ${near(BigInt(a.amount) - locked, 3)} free`],
+      ["order book", `${open} / ${ever}`, "open now / opened ever · ids never reused"],
+    ].map(([k, n, s]) => `<div class="stat"><div class="stat-k">${k}</div><div class="stat-n">${n}</div><div class="stat-s">${s}</div></div>`).join("");
+  } catch (e) {
+    $("#state").innerHTML = `<div class="verdict no" style="grid-column:1/-1">${esc(e.message)}</div>`;
+  }
+})();
+
+/* ------------------------------------------------------------ the 23 methods
+   Each view is actually called, so the "live" column is evidence rather than a
+   claim. The calls and the mutating methods are listed but obviously not run. */
+const SURFACE = [
+  ["new", "init", "once, at deploy", null],
+  ["migrate", "private init", "supersede the previous version's state — used twice, v1→v2 and v2→v3", null],
+  ["ft_on_transfer", "call", "<b>the only path that moves value.</b> NEP-141 calls it; <code>msg</code> carries the action", null],
+  ["withdraw", "call, payable", "pull a credited balance. Pull-not-push by design", null],
+  ["resolve_withdraw", "private", "restores the credit if the payout failed, and returns the slot's storage if it did not", null],
+  ["cancel", "call", "owner only; credits the unspent escrow back and keeps the record", null],
+  ["reap", "call", "owner only, closed only; deletes the record and refunds the storage it frees", null],
+  ["storage_deposit", "call, payable", "prepay for the state you will create. Pays for its own ledger row", null],
+  ["storage_withdraw", "call, payable", "take back whatever no mandate is using", null],
+  ["resolve_storage_withdraw", "private", "restores a prepaid balance if paying it out failed", null],
+  ["quote_signer", "view", "the key the contract trusts", "quote_signer"],
+  ["is_signed", "view", "did NEAR Intents really sign exactly these bytes?", null],
+  ["worst_cost", "view", "the guaranteed-worst all-in cost, in bps", null],
+  ["realised_cost", "view", "what the owner would actually pay for a given delivery", null],
+  ["quote_age_secs", "view", "how old the venue's signature is, as the chain sees it", null],
+  ["dry_check", "view", "the full check, exactly as a fill runs it — allowed or refused, and why", null],
+  ["get_mandates", "view", "the order book — open mandates only, in id order", "get_mandates"],
+  ["get_mandate", "view", "one record, open or closed", null],
+  ["mandate_count", "view", "how many have ever been opened", "mandate_count"],
+  ["open_mandate_count", "view", "the length of the book", "open_mandate_count"],
+  ["get_credit", "view", "what an account can withdraw", null],
+  ["storage_balance_of", "view", "what is prepaid", null],
+  ["storage_cost_estimate", "view", "a recommended prepay — not a price", "storage_cost_estimate"],
+];
+$("#surface").innerHTML = SURFACE.map(([m, kind, why, probe]) => {
+  const k = kind.startsWith("view") ? `<span class="tag au">${kind}</span>`
+    : kind.includes("private") ? `<span class="tag">${kind}</span>` : `<span class="tag">${kind}</span>`;
+  return `<tr><td><code>${m}</code></td><td>${k}</td><td class="dim">${why}</td>
+    <td class="n mono" style="font-size:12px" data-probe="${probe ?? ""}">${probe ? "…" : "—"}</td></tr>`;
+}).join("");
+for (const td of document.querySelectorAll("[data-probe]")) {
+  const m = td.dataset.probe;
+  if (!m) continue;
+  view(m).then((v) => {
+    const s = typeof v === "object" ? `${Array.isArray(v) ? v.length : "?"} entr${Array.isArray(v) && v.length === 1 ? "y" : "ies"}` : String(v);
+    td.innerHTML = `<span class="allow">${esc(m === "storage_cost_estimate" ? near(v, 5) : s.length > 24 ? s.slice(0, 22) + "…" : s)}</span>`;
+  }).catch(() => (td.innerHTML = `<span class="refuse">err</span>`));
+}
+
+/* The live order book is the app page's job now: app.html#book */
+</script>
+
+
+
+</body>
+</html>

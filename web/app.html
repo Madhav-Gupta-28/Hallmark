@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App — Hallmark</title>
+<meta name="description" content="Use Hallmark on NEAR mainnet: read the open order book, price a real fill against a live mandate, post a mandate of your own, and manage your position.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/><path d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/></svg>">
+<link rel="stylesheet" href="assets/hallmark.css?v=a99903fd">
+</head>
+<body>
+
+<main class="wrap">
+
+  <header class="hero" style="padding-bottom:26px">
+    <div class="kicker">The vault · live on NEAR mainnet</div>
+    <h1>Use it.</h1>
+    <p class="measure">
+      This is the product, not a picture of it. Every number below is a keyless
+      view call to <code>hallmarkfi.near</code>, every quote is fetched live from
+      NEAR Intents, and every verdict is the answer that contract gives when real
+      money is on the line. Reading costs nothing and needs no wallet.
+    </p>
+    <div id="health" style="margin-top:18px"></div>
+  </header>
+
+  <nav class="rail" aria-label="On this page">
+    <a href="#book"  data-sec="book"><span class="num">01</span>The book</a>
+    <a href="#price" data-sec="price"><span class="num">02</span>Price a fill</a>
+    <a href="#post"  data-sec="post"><span class="num">03</span>Post a mandate</a>
+    <a href="#you"   data-sec="you"><span class="num">04</span>Your position</a>
+  </nav>
+
+  <!-- ===================================================== wallet ======= -->
+  <div class="wbar" id="wbar">
+    <span class="who" id="who">Not connected</span>
+    <span class="grow"></span>
+    <span class="dim2" style="font-size:12px">reading needs no wallet · every action also prints its exact command</span>
+    <button id="wbtn">Connect wallet</button>
+  </div>
+
+  <!-- ======================================================= 01 book ==== -->
+  <section class="app-sec" id="book">
+    <h2>The open book</h2>
+    <p class="measure">
+      Every mandate the vault currently holds, straight from
+      <code>get_mandates</code>. A mandate is an order with its own bound welded
+      on: the owner has escrowed the input and named the worst all-in cost they
+      will accept. Any filler may take it, and the contract will refuse them if
+      the arithmetic does not hold.
+    </p>
+    <div id="bookgrid" class="grid book" style="margin-top:20px">
+      <div class="empty">asking the chain…</div>
+    </div>
+    <p class="src" id="booksrc"></p>
+  </section>
+
+  <!-- ====================================================== 02 price ==== -->
+  <section class="app-sec" id="price" style="margin-top:62px">
+    <h2>Price a fill</h2>
+    <p class="measure">
+      This is the whole mechanism in one action. Pick a live mandate, and the page
+      fetches a <b>real signed quote</b> from NEAR Intents for that exact pair and
+      size, then asks the vault what it would do with it. The contract verifies the
+      venue's signature, reads four signed fields, and answers. No oracle is
+      consulted and no price is taken on trust.
+    </p>
+
+    <div class="controls" style="margin-top:20px">
+      <div class="fld" style="min-width:230px">
+        <label for="pm">Mandate</label>
+        <select id="pm"><option>loading the book…</option></select>
+      </div>
+      <button class="btn primary" id="pgo" disabled>Get a live quote</button>
+      <button id="pfx">Use the malicious capture instead</button>
+    </div>
+    <p class="src" style="margin-top:-4px">
+      ↳ the second button needs nothing from the venue — it replays a captured
+      quote carrying a 500&nbsp;bps hidden fee, so you can see a refusal even if
+      1Click is down.
+    </p>
+
+    <div id="pout" style="margin-top:22px">
+      <div class="rest">
+        <b>Nothing has been asked of the chain yet.</b> Press <b>Get a live quote</b> and this
+        fills with the venue's signature, the four signed numbers, the two cost figures and
+        the contract's own verdict — each one a keyless view call you can repeat yourself.
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= 03 post ==== -->
+  <section class="app-sec" id="post" style="margin-top:62px">
+    <h2>Post a mandate</h2>
+    <p class="measure">
+      Escrow an input token together with the worst cost you will accept. From
+      that moment the bound is not a promise anyone made you — it is a condition
+      the contract checks on every fill, and cannot be talked out of.
+    </p>
+
+    <div class="act" style="margin-top:22px">
+      <h4>Open a mandate</h4>
+      <p class="why">
+        Two transactions: prepay the storage your record will occupy, then transfer
+        the input token to the vault with your terms in <code>msg</code>. The
+        transfer <i>is</i> the escrow — there is no separate deposit step and no
+        moment where the vault holds your funds without terms attached.
+      </p>
+
+      <div class="fgrid">
+        <div class="fld">
+          <label for="oin">You give</label>
+          <select id="oin"></select>
+        </div>
+        <div class="fld">
+          <label for="oamt">Amount</label>
+          <input id="oamt" value="0.05" inputmode="decimal">
+        </div>
+        <div class="fld">
+          <label for="oout">You want</label>
+          <select id="oout"></select>
+        </div>
+        <div class="fld">
+          <label for="obps">Worst all-in cost</label>
+          <input id="obps" value="300" inputmode="numeric">
+          <span class="hint">bps · 100 = 1%</span>
+        </div>
+        <div class="fld">
+          <label for="oage">Max quote age</label>
+          <input id="oage" value="300" inputmode="numeric">
+          <span class="hint">seconds · a quote older than this is refused</span>
+        </div>
+        <div class="fld">
+          <label for="odays">Mandate expires in</label>
+          <input id="odays" value="30" inputmode="numeric">
+          <span class="hint">days</span>
+        </div>
+      </div>
+
+      <div class="controls" style="margin:17px 0 0">
+        <button class="btn primary" id="obtn">Open it</button>
+        <span class="dim2" id="ostat" style="font-size:12.5px"></span>
+      </div>
+
+      <details class="txd" id="otxd">
+        <summary>show the exact transactions this sends</summary>
+        <div id="otx"></div>
+      </details>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <h3 style="margin-top:0">Why two signatures, and why a wallet</h3>
+      <p>
+        A NEAR <i>function-call access key</i> may only sign calls to the one
+        contract it was granted for, and only with a <b>zero</b> attached deposit.
+        Prepaying storage needs a deposit; the escrow transfer targets the
+        <b>token</b> contract, not the vault, and needs one yoctoNEAR. Both rules
+        are broken, in opposite directions — so no key this page could hold would
+        let it act for you. That is a property of NEAR's permission model, and it
+        is the right one: a page cannot be given a key that quietly moves your
+        funds. Hence a wallet, or the command, your choice.
+      </p>
+    </div>
+  </section>
+
+  <!-- ======================================================== 04 you ==== -->
+  <section class="app-sec" id="you" style="margin-top:62px">
+    <h2>Your position</h2>
+    <p class="measure">
+      Everything the vault owes an account, and everything it is holding for one.
+      Payouts are pull, never push: a fill credits you, and you withdraw when you
+      like. A counterparty who is not registered on a token therefore cannot
+      wedge a fill for anybody else.
+    </p>
+
+    <div class="controls" style="margin-top:20px">
+      <div class="fld" style="min-width:290px">
+        <label for="acct">Account</label>
+        <input id="acct" placeholder="yourname.near" spellcheck="false">
+      </div>
+      <button id="ago" class="btn" style="margin-top:20px">Look it up</button>
+    </div>
+
+    <div id="yout" style="margin-top:22px"></div>
+  </section>
+
+</main>
+
+<script type="module" src="assets/app.js?v=ec6d091f"></script>
+</body>
+</html>

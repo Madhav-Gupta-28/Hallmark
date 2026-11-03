@@ -6,7 +6,7 @@
 <title>Limits — Hallmark</title>
 <meta name="description" content="Everything Hallmark does not claim, every known limit, the full threat model, and the one hole that is not fixable from inside the design.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/hallmark.css?v=eaf97545">
+<link rel="stylesheet" href="assets/hallmark.css?v=a99903fd">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -107,8 +107,8 @@
       <tr><td>a malicious filler</td><td class="dim">any <code>slippageTolerance</code>, any <code>appFees</code>, any route</td><td class="allow"><code>worst.quote.json</code> <em>is</em> this, and it is refused</td></tr>
       <tr><td>a filler nominating its own deposit address</td><td class="dim">—</td><td class="allow"><b>impossible</b> — the vault never sends to one</td></tr>
       <tr><td>a filler claiming another's delivery</td><td class="dim">—</td><td class="allow"><b>impossible</b> — the amount is a function argument, not a balance delta</td></tr>
-      <tr><td>a filler banking free signed quotes as options</td><td class="dim">1Click signs a 10-year deadline for nothing</td><td class="allow">closed — <a href="exploit.html">v1 was exposed to this</a></td></tr>
-      <tr><td>a griefer buying the vault's storage with gas</td><td class="dim">~10 cents to stop every write</td><td class="allow">closed — <a href="contract.html">whoever writes a byte pays for it</a></td></tr>
+      <tr><td>a filler banking free signed quotes as options</td><td class="dim">1Click signs a 10-year deadline for nothing</td><td class="allow">closed — <a href="how.html#found">v1 was exposed to this</a></td></tr>
+      <tr><td>a griefer buying the vault's storage with gas</td><td class="dim">~10 cents to stop every write</td><td class="allow">closed — <a href="how.html#contract">whoever writes a byte pays for it</a></td></tr>
       <tr><td>a malicious filler with a stolen agent key</td><td class="dim">unlimited delivery attempts</td><td class="dim">each bounded; worst case is repeated ceiling-cost fills, capped by <code>max_fill</code> and escrow</td></tr>
       <tr><td>1Click, signing a terrible quote</td><td class="dim">—</td><td class="allow">refused — its own signature is the evidence</td></tr>
       <tr><td>1Click, refusing to sign</td><td class="dim">—</td><td class="dim">liveness loss, never a funds loss</td></tr>
@@ -142,6 +142,22 @@
       <li><b>Three fillers, all written by us or adapted by us.</b> There is no third-party filler ecosystem and none is claimed.</li>
       <li><b>Immutable means unpatchable.</b> Once the full-access key is deleted, a bug found later cannot be patched — only superseded by a new deployment that owners migrate to voluntarily.</li>
       <li><b>Mainnet only.</b> No Intents testnet exists or is planned. Dev accounts, tiny amounts, <code>dry:true</code> quotes wherever possible.</li>
+      <li><b>Signing in the browser needs a wallet library, and that is third-party code.</b>
+        Reading needs nothing: the book, pricing a fill, and looking up any account's position
+        are keyless view calls. But a NEAR function-call key may only sign calls to one
+        contract with a <em>zero</em> deposit, while posting a mandate needs a deposit on the
+        vault <em>and</em> one yoctoNEAR on the token — so no key a web page could hold would
+        work, and signing needs a full-access signature. <code>app.html</code> therefore loads
+        <code>@near-wallet-selector</code> from a CDN, lazily, only once you click Connect.
+        <div class="note" style="margin:10px 0 0">
+          <b>The mitigation is not a promise, it is the same code path.</b> Every action on
+          that page renders the exact transaction and the exact <code>near</code> command from
+          the <em>same builder the button signs</em>, so the command you copy cannot drift from
+          what the button sends. The page stays fully usable with the wallet library
+          unreachable. A rival connector was rejected outright because its wallet manifest
+          resolved to one individual's personal GitHub repository.
+        </div>
+      </li>
     </ol>
   </section>
 
@@ -194,12 +210,12 @@
       before it is a large one. <b>We are not claiming the large one.</b>
     </p>
     <div class="cta">
-      <a class="btn primary" href="proof.html">Check the claims that remain</a>
+      <a class="btn primary" href="app.html#price">Check the claims that remain</a>
       <a class="btn" href="index.html">Back to the overview</a>
     </div>
   </section>
 
 </div>
-<script type="module">import "./assets/hallmark.js?v=c5f2deef";</script>
+<script type="module">import "./assets/hallmark.js?v=dd791cd6";</script>
 </body>
 </html>

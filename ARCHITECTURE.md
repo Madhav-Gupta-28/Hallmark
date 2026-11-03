@@ -1202,21 +1202,27 @@ storage-registered on a token cannot brick a fill.
 
 ### 4.3b The site
 
-Seven pages, hand-written, with **no framework, no build step, no bundler, no
-external font and no external script**. That is not minimalism for its own sake:
-a project whose pitch is *"we removed the things you have to trust"* should not
-ask a reader to trust a 300 KB dependency graph to see the claim. A judge can
+**Four pages.** Hand-written, with no framework, no build step, no bundler and
+no external font. Three of the four load **no third-party code at all**; the
+fourth loads some, lazily, and only to sign. That is not minimalism for its own
+sake: a project whose pitch is *"we removed the things you have to trust"* should
+not ask a reader to trust a 300 KB dependency graph to see the claim. A judge can
 read the whole thing.
 
 | page | for | carries |
 |---|---|---|
 | `index.html` | everyone, first | the exploit as an artifact, the invariant, FINRA 26-15, the refusal list, the live vault |
-| `exploit.html` | the sceptic | both failures in depth, the field map, and the freshness slider |
-| `mechanism.html` | the engineer | the animated fill sequence, the invariant worked on real fixtures, rounding, prior art |
-| `proof.html` | the judge | live quote → canonicalise → ask the chain. Paste your own. The CLI equivalents |
-| `contract.html` | the auditor | exported surface, invariants, exact storage accounting, gas, the toolchain trap |
-| `fillers.html` | an agent developer | the three fillers, the race, the official-skill diff, the economics |
+| `app.html` | **the user, and the judge** | the live book; price a real fill against a real mandate; post one; manage a position |
+| `how.html` | the engineer, the auditor, an agent developer | the mechanism and the animated fill sequence, the field map, the freshness slider, the hole found in the live contract, the exported surface, the invariants, exact storage accounting, gas, the three fillers |
 | `limits.html` | everyone | §2.9 and §14 in full, unhedged |
+
+> **It was seven pages, and that was one page per thing I wanted to say rather
+> than one per thing a reader wanted to do.** `proof.html`, `exploit.html`,
+> `mechanism.html`, `contract.html` and `fillers.html` were merged or absorbed.
+> Two of them had independently grown their own copy of the order-book renderer,
+> which is the clearest possible signal that the thing they were both reaching
+> for — *let me actually use this* — deserved a page of its own instead of a
+> paragraph on each of theirs.
 
 **The discipline the site inherits from the contract.** It computes almost
 nothing: canonicalisation, and that is all. Every number — every cost, every
@@ -1224,6 +1230,50 @@ verdict, every balance — is a keyless view call to `hallmarkfi.near`, so there
 is no figure on any page the page could have invented, and no server between the
 reader and the chain. Both dependencies are health-checked separately and
 independently, because the chain and the venue fail independently.
+
+#### The app page, and the one place a dependency was unavoidable
+
+`app.html` is the product: the live book, a real fill priced against a real
+mandate, posting a mandate, and managing a position. Three of those four read the
+chain and nothing else — **keyless, no wallet, no permission from anyone**,
+including looking up another account's position. A judge can use most of the page
+without owning a NEAR account.
+
+Posting and filling cannot work that way, and the reason is worth stating
+precisely because it is a *property of NEAR's permission model, not a gap in it*.
+A **function-call access key** may only sign calls that (a) target the one
+contract it was granted for and (b) attach a **zero** deposit. Prepaying storage
+is a call to the vault **with** a deposit. The escrow transfer is a call to the
+**token** contract — not the vault — with one yoctoNEAR. Both conditions are
+violated, in opposite directions, by design. **So there is no key this page could
+hold that would let it transact for a user**, which is exactly the right
+guarantee: a web page cannot be handed a key that quietly moves someone's funds.
+Signing therefore needs a full-access signature, which needs a wallet, which
+needs a wallet library.
+
+That library is confined to `web/assets/wallet.js`, imported by one page, and
+**not fetched at all until the reader clicks Connect**. Two candidates were
+tested in a real browser from a plain ES-module page with no build step:
+
+| candidate | result |
+|---|---|
+| `@hot-labs/near-connect` | one self-contained 61 KB module, but its wallet manifest resolves to **one individual's personal GitHub repository**. Rejected: at demo time the ability to connect would depend on a third party's repo being up and unmodified — the precise species of unaudited trust this project exists to remove |
+| `@near-wallet-selector` 8.10.2 | NEAR's own library. Heavier import graph, needs its own stylesheet. **Built a selector in 71 ms** in headless Chrome. Chosen |
+
+**And every action renders the exact transaction and the exact `near` command
+that performs it, from the same builder that the button signs.** This is the part
+that matters. There is deliberately only one description of each action in the
+codebase — `txOpen`, `txFill`, `txWithdraw`, `txCancel`, `txReap` — so the
+command a reader copies *cannot drift* from the transaction the button sends. A
+reader who would rather not connect a wallet to a hackathon project, which is the
+correct instinct, can read the bytes and run it themselves. The wallet is a
+convenience over that, never a substitute for it, and the page is usable with the
+wallet library entirely unreachable.
+
+The visual grammar follows from the same idea: **a read is plain and a write is
+boxed.** Every spending action sits in an `.act` block tagged `writes`, names the
+account that would sign, and carries its transaction underneath. Nothing on the
+page can move funds it has not first shown you.
 
 **White paper, black ink, green strands.** The page is a document, so it is
 white by default — unconditionally, not "unless your machine prefers dark".

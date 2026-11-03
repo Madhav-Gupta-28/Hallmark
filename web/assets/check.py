@@ -70,6 +70,11 @@ known = set(exported) | {
     "submitDeposit", "pollStatus", "executeSwap", "quote", "Mandate", "Leash", "nep141",
     "receipts_outcome", "SuccessValue", "PeerManagerActor", "std", "near_sdk", "store",
     "IterableMap", "LookupMap", "amountOutFormatted", "amountInFormatted", "minAmountIn",
+    # Not identifiers at all: command-line tools the site tells a reader to run.
+    # The point of this check is that the site must never name a contract method
+    # that does not exist, so a binary name belongs here rather than in the
+    # failure list. `near` is the NEAR CLI, which app.html renders commands for.
+    "near", "cargo", "npx", "python3",
 }
 tests_src = ((root / "contract" / "src" / "tests.rs").read_text()
              + (root / "contract" / "tests" / "integration.rs").read_text())

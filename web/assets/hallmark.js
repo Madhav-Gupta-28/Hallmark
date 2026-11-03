@@ -256,11 +256,8 @@ export const rows = (list) =>
 
 const PAGES = [
   ["index.html", "Overview"],
-  ["exploit.html", "The exploit"],
-  ["mechanism.html", "Mechanism"],
-  ["proof.html", "Check it yourself"],
-  ["contract.html", "Contract"],
-  ["fillers.html", "Fillers"],
+  ["app.html", "App"],
+  ["how.html", "How it works"],
   ["limits.html", "Limits"],
 ];
 
@@ -342,3 +339,86 @@ export function odometer(el, to, fmt = (v) => Math.round(v).toLocaleString()) {
     document.addEventListener("DOMContentLoaded", () => { chrome(); reveal(); });
   } else { chrome(); reveal(); }
 })();
+
+/* ===========================================================================
+   Transactions.
+
+   Building a transaction is not signing one. Everything below is pure: it turns
+   intent into the exact receiver, method, arguments, gas and deposit that the
+   chain will see, and it is used for BOTH paths — the wallet signs precisely
+   this, and the CLI renderer below prints precisely this. There is deliberately
+   only one description of each action in this project, so the command a user
+   copies cannot drift from the transaction the button sends.
+   ======================================================================== */
+
+export const ONE_YOCTO = "1";
+export const TGAS = (n) => String(BigInt(n) * 1_000_000_000_000n);
+
+/** A decimal string to base units, exactly. Never via a float: in JS
+ *  `Math.round(Number("0.1") * 10**24)` is 100000000000000008388608. */
+export function parseUnits(human, dp) {
+  const t = String(human).trim();
+  if (!/^\d+(\.\d+)?$/.test(t)) throw new Error(`not a positive decimal amount: "${t}"`);
+  const [i, f = ""] = t.split(".");
+  if (f.length > dp) throw new Error(`"${t}" has more than ${dp} decimal places`);
+  return BigInt(i + f.padEnd(dp, "0")).toString();
+}
+
+/** The NEP-141 contract behind a `nep141:<id>` asset id. */
+export const tokenOf = (asset) => String(asset).replace(/^nep141:/, "");
+
+/** Prepay storage. Needed once per account, before the first mandate. */
+export const txStorageDeposit = (yocto) => ({
+  receiverId: VAULT,
+  actions: [{ methodName: "storage_deposit", args: {}, gas: TGAS(30), deposit: String(yocto) }],
+});
+
+/** Open a mandate: the transfer of the origin asset IS the escrow. */
+export const txOpen = (terms, amount) => ({
+  receiverId: tokenOf(terms.origin_asset),
+  actions: [{
+    methodName: "ft_transfer_call",
+    args: { receiver_id: VAULT, amount: String(amount),
+            msg: JSON.stringify({ action: "open", terms }) },
+    gas: TGAS(100), deposit: ONE_YOCTO,
+  }],
+});
+
+/** Fill a mandate: the transfer of the destination asset IS the delivery. */
+export const txFill = (destAsset, mandateId, canonical, signature, amount) => ({
+  receiverId: tokenOf(destAsset),
+  actions: [{
+    methodName: "ft_transfer_call",
+    args: { receiver_id: VAULT, amount: String(amount),
+            msg: JSON.stringify({ action: "fill", mandate_id: mandateId, canonical, signature }) },
+    gas: TGAS(100), deposit: ONE_YOCTO,
+  }],
+});
+
+export const txWithdraw = (asset) => ({
+  receiverId: VAULT,
+  actions: [{ methodName: "withdraw", args: { asset }, gas: TGAS(60), deposit: ONE_YOCTO }],
+});
+export const txCancel = (id) => ({
+  receiverId: VAULT,
+  actions: [{ methodName: "cancel", args: { mandate_id: id }, gas: TGAS(30), deposit: "0" }],
+});
+export const txReap = (id) => ({
+  receiverId: VAULT,
+  actions: [{ methodName: "reap", args: { mandate_id: id }, gas: TGAS(30), deposit: "0" }],
+});
+export const txStorageWithdraw = () => ({
+  receiverId: VAULT,
+  actions: [{ methodName: "storage_withdraw", args: {}, gas: TGAS(60), deposit: ONE_YOCTO }],
+});
+
+/** The same transaction, as a command. One source of truth, two renderings. */
+export function cliFor(txs, signer = "YOUR_ACCOUNT.near") {
+  return txs.map((t) => t.actions.map((a) =>
+    `near contract call-function as-transaction ${t.receiverId} ${a.methodName} \\\n` +
+    `  json-args '${JSON.stringify(a.args)}' \\\n` +
+    `  prepaid-gas '${Number(BigInt(a.gas) / 1_000_000_000_000n)} Tgas' \\\n` +
+    `  attached-deposit '${a.deposit === "0" ? "0 NEAR" : a.deposit === "1" ? "1 yoctoNEAR" : near(a.deposit, 5) + " NEAR"}' \\\n` +
+    `  sign-as ${signer} network-config mainnet sign-with-keychain send`
+  ).join("\n\n")).join("\n\n");
+}

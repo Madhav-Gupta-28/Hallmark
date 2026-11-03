@@ -113,18 +113,22 @@ and `deadline` is why mandates bound the first and not the second.
 cd web && python3 -m http.server 8000
 ```
 
-**See:** seven pages at `localhost:8000` — no framework, no build step, no
-bundler, no dependency, no external font or script.
+**See:** four pages at `localhost:8000`. No framework, no build step, no
+bundler, no external font, and — on three of the four — no dependency at all.
 
 | page | carries |
 |---|---|
 | `/` | the exploit as an artifact, the invariant, FINRA 26-15, the live vault |
-| `/exploit.html` | both failures in depth, and a freshness slider wired to the chain |
-| `/mechanism.html` | an animated fill sequence, the invariant worked on real fixtures |
-| `/proof.html` | live quote → canonicalise → ask the chain. Paste your own |
-| `/contract.html` | exported surface, invariants, exact storage accounting, gas |
-| `/fillers.html` | the three fillers, the race, the official-skill diff |
+| `/app.html` | **the product.** The live book, price a real fill against a real mandate, post one, manage a position |
+| `/how.html` | the mechanism, the hole we found in our own live contract, the contract surface and its invariants, the three fillers |
 | `/limits.html` | everything this is not |
+
+`app.html` is the one page that loads third-party code, and only when you click
+**Connect wallet**: signing needs a full-access signature, which needs a wallet,
+which needs a wallet library. Every action there also renders the exact
+transaction and the exact `near` command that performs it, from the same
+builder — so the command you copy cannot drift from the transaction the button
+sends, and you never have to connect anything to use it.
 
 **Every number on every page is a keyless view call to `hallmarkfi.near`.** The
 site canonicalises quotes and does nothing else, so there is no figure it could
@@ -202,7 +206,15 @@ client/src/lib/canonical.ts  canonicalisation — the one place it exists
 client/src/bin/bound.ts      what a live quote guarantees
 client/src/bin/post.ts       the owner
 client/src/bin/fill.ts       the reference filler
-web/index.html               the proof page — one file, no backend
+client/src/fillers/          the three competing fillers + the race harness
+web/index.html               the overview
+web/app.html                 the app — book, pricing, posting, positions
+web/how.html                 mechanism, the audit, the contract, the fillers
+web/limits.html              everything this is not
+web/assets/hallmark.js       the shared runtime: view calls, canonicalisation, tx builders
+web/assets/app.js            the app's own logic
+web/assets/wallet.js         signing — the only file that loads third-party code
+web/assets/check.py          re-verifies the site's claims against source + chain
 fixtures/                    signed captures + the canonicalisation script
 ARCHITECTURE.md              the full specification
 ```
@@ -227,4 +239,19 @@ already live, and a contract with no key could not have been fixed.
 
 ## Licence
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+## AI tooling
+
+This project was built with AI assistance (Anthropic's Claude, via Claude Code)
+for code, tests and prose, under line-by-line human review. Everything it
+produced was checked by running it: the contract is deployed on NEAR mainnet,
+the 58 Rust tests and 54 client assertions run from a clean clone, and
+`web/assets/check.py` re-verifies the site's factual claims against the source
+and the live chain rather than against anybody's recollection.
+
+The two vulnerabilities in §2.10 and §2.11 were found by auditing a version that
+was **already live**, and both were found by *measuring* — printing real
+`storage_usage` deltas, replaying a genuinely signed three-day-old quote against
+the deployed contract — not by reasoning about the code. Three wrong fixes are
+recorded in ARCHITECTURE.md alongside the right one for the same reason.

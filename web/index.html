@@ -6,7 +6,7 @@
 <title>Hallmark — a not-held order that enforces its own execution bound</title>
 <meta name="description" content="A not-held order whose protection is a number the venue signed itself, checked on-chain. Live on NEAR mainnet. Every figure here is a keyless view call to the contract.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="assets/hallmark.css?v=eaf97545">
+<link rel="stylesheet" href="assets/hallmark.css?v=a99903fd">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%2300ec97' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%2300ec97'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -34,9 +34,9 @@
       </div>
     </div>
     <div class="cta">
-      <a class="btn primary" href="proof.html">Check it yourself, with no key</a>
-      <a class="btn" href="exploit.html">See the exploit</a>
-      <a class="btn" href="mechanism.html">How it works</a>
+      <a class="btn primary" href="app.html">Use it on mainnet &rarr;</a>
+      <a class="btn" href="app.html#price">Price a quote, with no key</a>
+      <a class="btn" href="how.html">How it works</a>
     </div>
   </div>
 
@@ -195,7 +195,7 @@
         <b>depositAddress is assigned after signing</b>, which killed an entire earlier
         design: a vault that sent the owner's funds to a filler-nominated address could
         simply be robbed. The fix was to invert the order of operations so the filler
-        delivers first — <a href="mechanism.html">§2.4, the load-bearing decision</a>.
+        delivers first — <a href="how.html#mech">§2.4, the load-bearing decision</a>.
       </div>
     </div>
   </section>
@@ -325,7 +325,7 @@
           read: <code>timestamp</code>. Mandates now carry
           <code>max_quote_age_secs</code>, checked against it.
         </p>
-        <a class="btn" href="exploit.html">The whole story, with the mainnet receipts</a>
+        <a class="btn" href="how.html#found">The whole story, with the mainnet receipts &rarr;</a>
       </div>
       <div>
         <div class="panel">
@@ -396,15 +396,15 @@
       </div>
     </div>
     <div class="cta">
+      <a class="btn primary" href="app.html">Open the app</a>
       <a class="btn" href="limits.html">Every open item and known limit, in full</a>
-      <a class="btn" href="proof.html">Go and check the claims</a>
     </div>
   </section>
 
 </div>
 
 <script type="module">
-import { view, viewAccount, rows, esc, units, age, near, fixtures } from "./assets/hallmark.js?v=c5f2deef";
+import { view, viewAccount, rows, esc, units, age, near, fixtures } from "./assets/hallmark.js?v=dd791cd6";
 
 const $ = (s) => document.querySelector(s);
 

@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { MandateCard } from "@/components/MandateCard";
-import { EXPLORER, VAULT } from "@/lib/hallmark";
+import { Link, useNavigate } from "react-router-dom";
+import { Heading, L, Source } from "@/components/doc";
+import { Amount } from "@/components/fields";
+import { age, short, VAULT, type BookEntry } from "@/lib/hallmark";
 import { bookQuery, openCountQuery, tokensQuery } from "@/lib/queries";
+import { meta, type TokenTable } from "@/lib/tokens";
 
+const NS_PER_DAY = 86_400_000_000_000n;
+
+/** The register of agreements in force: one ruled line per open mandate. */
 export function BookPage() {
   const book = useQuery(bookQuery);
   const open = useQuery(openCountQuery);
@@ -16,79 +16,93 @@ export function BookPage() {
   const table = tokens.data ?? {};
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <header className="mb-8 space-y-3">
-        <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          The vault · live on NEAR mainnet
+    <main className="doc">
+      <section className="pt-10">
+        <div className="label text-faint">The register · agreements in force</div>
+        <h1 className="mt-3 font-serif text-[clamp(40px,7vw,88px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
+          {open.isSuccess ? <><span className="hl">{open.data}</span> {open.data === 1 ? "agreement" : "agreements"} in force.</> : "The register."}
+        </h1>
+        <p className="mt-5 max-w-[680px] text-[19px]">
+          Every mandate the vault holds right now. Each is an order with its terms attached: the owner has escrowed
+          the input and named the worst all-in cost they will accept. Any filler may take one; the contract refuses
+          them if the arithmetic does not hold.
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight">The open book</h1>
-        <p className="max-w-2xl text-muted-foreground">
-          Every mandate the vault currently holds, straight from <code>get_mandates</code> on{" "}
-          <a className="underline" href={`${EXPLORER}/address/${VAULT}`} target="_blank" rel="noreferrer">
-            {VAULT}
-          </a>
-          . Each one is an order with its own bound attached: the owner escrowed the input and named the
-          worst all-in cost they will accept. Reading needs no wallet.
-        </p>
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <Badge variant="outline">
-            {open.isSuccess ? `${open.data} open` : open.isError ? "count unavailable" : "counting…"}
-          </Badge>
-          {tokens.isError && (
-            <Badge variant="outline" className="text-muted-foreground">
-              1Click token list unavailable — unknown tokens shown in base units
-            </Badge>
-          )}
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          <Link to="/post" className="btn btn-sign">Draw up a new one</Link>
+          <button className="btn btn-sm" onClick={() => { void book.refetch(); void open.refetch(); }} disabled={book.isFetching}>
+            {book.isFetching ? "reading…" : "re-read the chain"}
+          </button>
           {book.dataUpdatedAt > 0 && (
-            <span className="text-muted-foreground">
-              read {new Date(book.dataUpdatedAt).toLocaleTimeString()}
-            </span>
+            <span className="typed text-[13px] text-faint">as of {new Date(book.dataUpdatedAt).toLocaleTimeString()}</span>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { void book.refetch(); void open.refetch(); }}
-            disabled={book.isFetching}
-          >
-            <RefreshCw className={book.isFetching ? "animate-spin" : ""} />
-            Refresh
-          </Button>
         </div>
-      </header>
+      </section>
 
-      {book.isPending && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {[0, 1].map((i) => <Skeleton key={i} className="h-80" />)}
-        </div>
-      )}
+      <Heading kicker="Schedule of agreements">In force</Heading>
 
-      {book.isError && (
-        <Alert variant="destructive">
-          <AlertTitle>Could not read the book</AlertTitle>
-          <AlertDescription>{book.error.message}</AlertDescription>
-        </Alert>
-      )}
-
+      {book.isPending && <p className="typed text-faint">asking {VAULT}…</p>}
+      {book.isError && <p className="typed text-seal">The register could not be read: {book.error.message}</p>}
       {book.isSuccess && book.data.length === 0 && (
-        <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            The vault holds no open mandate right now.
-          </CardContent>
-        </Card>
+        <p className="text-[19px]">
+          No agreement is in force right now. <L to="/post">Draw up the first one.</L>
+        </p>
       )}
+      {book.isSuccess && book.data.length > 0 && <Register rows={book.data} table={table} readAt={book.dataUpdatedAt} />}
 
-      {book.isSuccess && book.data.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {book.data.map(([id, m]) => (
-            <MandateCard key={id} id={id} m={m} table={table} readAt={book.dataUpdatedAt} link />
-          ))}
-        </div>
-      )}
+      <Source>
+        get_mandates on {VAULT}, every page pinned to one block so a mandate closing mid-read cannot be skipped.
+        Re-read every 30 s. {tokens.isError && "1Click's token list is unavailable, so unknown tokens show in base units."}
+      </Source>
+    </main>
+  );
+}
 
-      <p className="mt-8 text-xs text-muted-foreground">
-        ↳ <code>get_mandates</code> reads the contract's index of open mandates only, so this costs what
-        the vault holds rather than everything it has ever recorded. Refreshes every 30 s.
-      </p>
+function Register({ rows, table, readAt }: { rows: BookEntry[]; table: TokenTable; readAt: number }) {
+  const navigate = useNavigate();
+  const now = BigInt(readAt) * 1_000_000n;
+  return (
+    <div className="-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0">
+      <table className="ledger min-w-[880px]">
+        <thead>
+          <tr>
+            <th>No.</th><th>Exchange</th><th className="text-right">Ceiling</th><th className="text-right">Worst taken</th>
+            <th className="text-right">Escrow</th><th className="text-right">Fills</th><th>Fresher than</th>
+            <th>Expires</th><th>Owner</th><th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([id, m]) => {
+            const t = m.terms;
+            const inTok = meta(table, t.origin_asset);
+            const outTok = meta(table, t.destination_asset);
+            const days = (BigInt(t.expiry_ns) - now) / NS_PER_DAY;
+            const pct = t.max_cost_bps ? Math.min(100, (m.worst_bps / t.max_cost_bps) * 100) : 0;
+            return (
+              <tr key={id} className="cursor-pointer" onClick={() => navigate(`/mandate/${id}`)}>
+                <td className="typed font-bold">§{id}</td>
+                <td className="whitespace-nowrap font-semibold">{inTok.symbol} → {outTok.symbol}</td>
+                <td className="num font-bold">{t.max_cost_bps} bps</td>
+                <td className="num">
+                  {m.fills > 0 ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="relative inline-block h-2 w-14 border border-ink" aria-hidden>
+                        <span className="absolute inset-y-0 left-0 bg-sign" style={{ width: `${pct}%` }} />
+                      </span>
+                      {m.worst_bps}
+                    </span>
+                  ) : <span className="text-faint">—</span>}
+                </td>
+                <td className="num"><Amount v={m.escrow} tok={inTok} /></td>
+                <td className="num">{m.fills}</td>
+                <td className="typed whitespace-nowrap text-[15px]">{age(t.max_quote_age_secs)}</td>
+                <td className="typed whitespace-nowrap text-[15px]">{days > 0n ? `${days} days` : <span className="text-seal">expired</span>}</td>
+                <td className="whitespace-nowrap"><L to={`/account/${m.owner}`} className="typed text-[14px]" onClick={(e) => e.stopPropagation()}>{short(m.owner, 6)}</L></td>
+                <td className="text-right"><L to={`/mandate/${id}`} className="typed whitespace-nowrap text-[14px]" onClick={(e) => e.stopPropagation()}>price a fill →</L></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

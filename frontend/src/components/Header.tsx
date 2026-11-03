@@ -32,7 +32,7 @@ export function Header() {
         </NavLink>
         <span className="typed hidden text-[13px] text-faint md:inline">
           Agreement register · {VAULT} · NEAR mainnet ·{" "}
-          {open.isSuccess ? `${open.data} in force` : "…"}
+          <span className="live-dot mx-1" aria-hidden /> {open.isSuccess ? `${open.data} in force` : "…"}
         </span>
         <span className="flex-1" />
         <button

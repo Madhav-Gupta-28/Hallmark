@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { L, Seal, Stamp } from "@/components/doc";
 import { Arrowheads, Figure } from "@/components/figure";
 import { cn } from "@/lib/utils";
+import { Count } from "@/motion/Count";
 
 export function LimitsPage() {
   return (
@@ -43,7 +44,7 @@ export function LimitsPage() {
           ] as const).map(([claim, why], i) => (
             <div key={claim} className="bg-paper p-5 pb-6">
               <Stamp tilt={i % 2 ? 3 : -4} className="mb-3 text-[11px]">excluded</Stamp>
-              <p className="struck font-serif text-[28px] font-extrabold leading-tight">{claim}</p>
+              <p className="font-serif text-[28px] font-extrabold leading-tight"><span className="struck">{claim}</span></p>
               <p className="mt-3 text-[16.5px]">{why}</p>
             </div>
           ))}
@@ -160,8 +161,8 @@ function ThreatBoard() {
   return (
     <div className="sheet p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap gap-6">
-        <span className="font-serif text-[22px]"><b className="typed text-[34px] text-sign">9</b> handled</span>
-        <span className="font-serif text-[22px]"><b className="typed text-[34px] text-seal">2</b> open, and named</span>
+        <span className="font-serif text-[22px]"><b className="typed text-[34px] text-sign"><Count to={9} /></b> handled</span>
+        <span className="font-serif text-[22px]"><b className="typed text-[34px] text-seal"><Count to={2} /></b> open, and named</span>
       </div>
       <ol>
         {THREATS.map(([who, can, v]) => (

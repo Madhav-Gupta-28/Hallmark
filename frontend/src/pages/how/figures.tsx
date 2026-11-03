@@ -11,6 +11,7 @@ import { exhibitTerms } from "@/lib/exhibit";
 import { fixtures, VAULT, view, type Fixtures } from "@/lib/hallmark";
 import { parseCheck, refusalOf } from "@/lib/price";
 import { cn } from "@/lib/utils";
+import { Count } from "@/motion/Count";
 
 const reduced = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const useFixtures = () => useQuery({ queryKey: ["fixtures"], queryFn: fixtures, staleTime: Infinity });
@@ -85,13 +86,13 @@ export function FillFlow() {
                 <text x={22} y={y + 5} textAnchor="middle" fontFamily="var(--font-mono)" fontWeight={700} fontSize={14} fill={state === "now" ? "#fff" : color}>{n}</text>
                 {self ? (
                   <>
-                    <path d={`M${x1 + 6},${y - 8} C${x1 + 70},${y - 26} ${x1 + 70},${y + 22} ${x1 + 8},${y + 8}`} fill="none" stroke={color} strokeWidth={state === "now" ? 3.5 : 2} markerEnd={mk} />
+                    <path d={`M${x1 + 6},${y - 8} C${x1 + 70},${y - 26} ${x1 + 70},${y + 22} ${x1 + 8},${y + 8}`} fill="none" stroke={color} strokeWidth={state === "now" ? 3.5 : 2} markerEnd={mk} className={state === "now" ? "march" : undefined} />
                     <text x={x1 + 78} y={y + 5} fontFamily="var(--font-serif)" fontSize={16} fontWeight={state === "now" ? 700 : 500} fill={color}>{s.label}</text>
                   </>
                 ) : (
                   <>
                     <line x1={x1 + (x2 > x1 ? 6 : -6)} x2={x2 + (x2 > x1 ? -8 : 8)} y1={y} y2={y} stroke={color} strokeWidth={state === "now" ? 3.5 : 2}
-                      strokeDasharray={s.dashed ? "7 6" : undefined} markerEnd={mk} markerStart={s.both ? mk : undefined} />
+                      strokeDasharray={s.dashed ? "7 6" : undefined} markerEnd={mk} markerStart={s.both ? mk : undefined} className={state === "now" ? "march" : undefined} />
                     <text x={(x1 + x2) / 2} y={y - 9} textAnchor="middle" fontFamily="var(--font-serif)" fontSize={16} fontWeight={state === "now" ? 700 : 500} fill={color}>{s.label}</text>
                   </>
                 )}
@@ -264,7 +265,7 @@ export function CostGauge() {
 
       <div className="mt-5 flex flex-wrap items-baseline gap-4 border-t-2 border-ink pt-4">
         <span className="label">{VAULT} prices it at</span>
-        <b className={cn("typed text-[40px] leading-none", over ? "text-seal" : "text-sign")}>{bps ?? "…"} bps</b>
+        <b className={cn("typed text-[40px] leading-none", over ? "text-seal" : "text-sign")}>{bps === undefined ? "…" : <Count to={bps} ms={450} />} bps</b>
         {bps !== undefined && (over ? <Stamp>over a 300 bps ceiling</Stamp> : <Stamp ink="blue">within a 300 bps ceiling</Stamp>)}
       </div>
     </div>
@@ -416,7 +417,7 @@ export function Redline() {
         {rows.map(([n, was, now]) => (
           <li key={n} className="grid gap-x-4 border-b border-ink/25 py-3 sm:grid-cols-[3rem_1fr_1.4fr]">
             <span className="typed font-bold">{n}</span>
-            <span className="struck text-[17px]">{was}</span>
+            <span className="text-[17px]"><span className="struck">{was}</span></span>
             <span className="text-[17px] text-sign"><span className="mr-1 font-bold" aria-hidden>⁁</span>{now}</span>
           </li>
         ))}

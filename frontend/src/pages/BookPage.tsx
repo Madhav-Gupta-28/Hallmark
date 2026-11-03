@@ -5,6 +5,7 @@ import { Amount } from "@/components/fields";
 import { age, short, VAULT, type BookEntry } from "@/lib/hallmark";
 import { bookQuery, openCountQuery, tokensQuery } from "@/lib/queries";
 import { meta, type TokenTable } from "@/lib/tokens";
+import { Count } from "@/motion/Count";
 
 const NS_PER_DAY = 86_400_000_000_000n;
 
@@ -20,7 +21,7 @@ export function BookPage() {
       <section className="pt-10">
         <div className="label text-faint">The register · agreements in force</div>
         <h1 className="mt-3 font-serif text-[clamp(40px,7vw,88px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
-          {open.isSuccess ? <><span className="hl">{open.data}</span> {open.data === 1 ? "agreement" : "agreements"} in force.</> : "The register."}
+          {open.isSuccess ? <><span className="hl"><Count to={open.data} /></span> {open.data === 1 ? "agreement" : "agreements"} in force.</> : "The register."}
         </h1>
         <p className="mt-5 max-w-[680px] text-[19px]">
           Every mandate the vault holds right now. Each is an order with its terms attached: the owner has escrowed

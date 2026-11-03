@@ -133,7 +133,13 @@
     padding: 0 .12em; -webkit-box-decoration-break: clone; box-decoration-break: clone;
   }
   /* struck out in red ink */
-  .struck { color: #8c8780; text-decoration: line-through; text-decoration-color: var(--seal); text-decoration-thickness: .09em; }
+  /* inline only: the line is a background, drawn once per line of text */
+  .struck {
+    display: inline; color: #8c8780;
+    background-image: linear-gradient(var(--seal), var(--seal)); background-repeat: no-repeat;
+    background-size: 100% .09em; background-position: 0 58%;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
 
   /* handwriting, in blue ink */
   .hand { font-family: var(--font-hand); color: var(--sign); font-weight: 700; }
@@ -179,7 +185,12 @@
   .seal::before { content: ""; position: absolute; inset: 7px; border: 2px dashed var(--c); border-radius: 50%; }
   .seal big { display: block; font: 800 1.9em/1 var(--font-serif); letter-spacing: 0; margin: 2px 0; }
   .seal.blue { --c: var(--sign); }
-  .seal.slam { animation: slam .42s cubic-bezier(.2,1.6,.4,1) both; }
+  .seal { animation: sway 7s ease-in-out infinite; }
+  .seal.slam { animation: slam .42s cubic-bezier(.2,1.6,.4,1) both, sway 7s ease-in-out .45s infinite; }
+  @keyframes sway {
+    0%, 100% { transform: rotate(var(--r,-12deg)); }
+    50% { transform: rotate(calc(var(--r,-12deg) + 2.2deg)) translateY(-2px); }
+  }
   @keyframes slam {
     0% { transform: rotate(var(--r,-12deg)) scale(2.2); opacity: 0; }
     60% { opacity: 1; }
@@ -213,7 +224,88 @@
   .sigline { border-top: 2px solid var(--ink); padding-top: 6px; font: 400 13px var(--font-mono); }
 }
 
+/* =============================================================================
+   MOTION — the same document, coming alive. Ink is applied as you read: things
+   rise into place, the highlighter sweeps, strike-throughs draw, signatures
+   write themselves, stamps land. The live tape keeps the page moving.
+   All of it is off under prefers-reduced-motion (and the reveal hook never
+   hides anything there in the first place).
+   ========================================================================== */
+@layer components {
+  /* a page arrives like a fresh sheet laid on the desk */
+  .page-in { animation: page-in .55s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes page-in { from { opacity: 0; transform: translateY(22px) rotate(.3deg); } to { opacity: 1; transform: none; } }
+
+  /* rise into place as it scrolls into view (class added by useReveal) */
+  .rv { opacity: 0; transform: translateY(16px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.8,.2,1); transition-delay: var(--d, 0ms); }
+  .rv.in { opacity: 1; transform: none; }
+
+  /* the highlighter pass, swept left to right */
+  .hl.rv { opacity: 1; transform: none; background-size: 0% 78%; transition: background-size .8s cubic-bezier(.7,0,.2,1) calc(var(--d, 0ms) + 150ms); }
+  .hl.rv.in { background-size: 100% 78%; }
+
+  /* the red line drawn through what is struck out */
+  .struck.rv { opacity: 1; transform: none; background-size: 0% .09em; transition: background-size 1s cubic-bezier(.7,0,.2,1) calc(var(--d, 0ms) + 300ms); }
+  .struck.rv.in { background-size: 100% .09em; }
+
+  /* a signature, written by hand. A sliding mask, not a clip-path: a clipped
+     element has no area, so the observer would never see it to reveal it. */
+  .hand.rv {
+    opacity: 1; transform: none;
+    -webkit-mask-image: linear-gradient(90deg, #000 46%, transparent 54%); mask-image: linear-gradient(90deg, #000 46%, transparent 54%);
+    -webkit-mask-size: 220% 100%; mask-size: 220% 100%;
+    -webkit-mask-position: 100% 0; mask-position: 100% 0;
+    transition: -webkit-mask-position 1.4s cubic-bezier(.45,.05,.3,1) calc(var(--d, 0ms) + 200ms), mask-position 1.4s cubic-bezier(.45,.05,.3,1) calc(var(--d, 0ms) + 200ms);
+  }
+  .hand.rv.in { -webkit-mask-position: 0 0; mask-position: 0 0; }
+
+  /* a stamp, landing */
+  .stamp.rv { transform: rotate(var(--r, -2deg)) scale(1.7); transition: transform .38s cubic-bezier(.2,1.6,.4,1) var(--d, 0ms), opacity .2s ease var(--d, 0ms); }
+  .stamp.rv.in { transform: rotate(var(--r, -2deg)) scale(1); }
+
+  /* the § in the margin leans in when you point at its clause */
+  .clause > .no { transition: transform .2s ease, color .2s ease; }
+  .clause:hover > .no { transform: translateX(5px); color: var(--sign); }
+
+  /* links: the underline thickens like a pen pressing harder */
+  .lnk { transition: text-decoration-thickness .15s ease, background .15s ease; }
+  .lnk:hover { text-decoration-thickness: 3px; }
+
+  /* the live dot */
+  .live-dot { position: relative; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--sign); vertical-align: middle; }
+  .live-dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--sign); animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+  @keyframes ping { from { transform: scale(.5); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }
+
+  /* the register tape */
+  .tape { overflow: hidden; white-space: nowrap; background: var(--ink); color: var(--paper); border-block: 2px solid var(--ink); }
+  .tape-track { display: inline-flex; animation: tape 60s linear infinite; will-change: transform; }
+  .tape:hover .tape-track { animation-play-state: paused; }
+  @keyframes tape { to { transform: translateX(-50%); } }
+
+  /* a typed line, and its caret */
+  .caret::after { content: "▍"; margin-left: 1px; animation: blink 1s steps(1) infinite; color: var(--sign); }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* the one call to action that asks for attention, now and then */
+  .nudge { animation: nudge 5s ease-in-out 2s infinite; }
+  @keyframes nudge {
+    0%, 88%, 100% { transform: none; box-shadow: 4px 4px 0 var(--ink); }
+    92% { transform: translate(-2px,-2px); box-shadow: 7px 7px 0 var(--ink); }
+    96% { transform: translate(1px,1px); box-shadow: 3px 3px 0 var(--ink); }
+  }
+
+  /* an arrow that is happening now: ink flowing along it */
+  .march { stroke-dasharray: 10 7; animation: march .7s linear infinite; }
+  @keyframes march { to { stroke-dashoffset: -17; } }
+
+  /* reading progress: a rule drawn across the top as you read */
+  .progress { position: fixed; inset: 0 0 auto 0; height: 4px; background: var(--sign); transform-origin: left; transform: scaleX(0); z-index: 60; pointer-events: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .seal.slam { animation: none; }
-  .btn { transition: none; }
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; transition-delay: 0ms !important; }
+  .tape-track { animation: none !important; }
+  .rv { opacity: 1 !important; transform: none !important; -webkit-mask: none !important; mask: none !important; }
+  .hl.rv { background-size: 100% 78% !important; }
+  .struck.rv { background-size: 100% .09em !important; }
 }

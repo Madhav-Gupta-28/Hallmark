@@ -1,0 +1,362 @@
+/* ============================================================================
+   Hallmark — the design system.
+   One stylesheet, no framework, no external font, no build step.
+
+   A hallmark is the assay stamp punched into precious metal to certify its
+   content. The accent is therefore brass, on near-black: the name made visual,
+   and institutional rather than loud. Prose is set in the reader's system sans
+   because seven pages of monospace is tiring; every *number* is monospace with
+   tabular figures, because this is a product about basis points and columns of
+   figures have to line up.
+
+   Three semantic colours and no more: refused, allowed, and the accent. All
+   three are desaturated — terracotta rather than red, sage rather than green —
+   and every pairing clears WCAG AA in both themes.
+   ========================================================================= */
+
+:root {
+  --bg:        #0c0f13;
+  --bg-1:      #12171d;
+  --bg-2:      #171e26;
+  --line:      #212a34;
+  --line-2:    #2d3845;
+  --ink:       #c8d0da;
+  --ink-1:     #8a94a0;
+  --ink-2:     #6e7884;
+  --gold:      #cfae5e;
+  --gold-dim:  #8a7437;
+  --gold-wash: #1a1710;
+  --refuse:    #cf8375;
+  --refuse-bg: #1b1310;
+  --refuse-ln: #4a2a24;
+  --allow:     #8caf8f;
+  --allow-bg:  #101710;
+  --allow-ln:  #2a3f2c;
+
+  --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+
+  --r: 7px;
+  --w: 940px;
+  --ease: cubic-bezier(.22,.61,.36,1);
+}
+
+:root[data-theme="light"] {
+  --bg:        #f6f4f0;
+  --bg-1:      #fffefb;
+  --bg-2:      #efece6;
+  --line:      #e0dbd1;
+  --line-2:    #cfc8ba;
+  --ink:       #1b1e23;
+  --ink-1:     #525a64;
+  --ink-2:     #6e7781;
+  --gold:      #7d6318;
+  --gold-dim:  #b09a5e;
+  --gold-wash: #f6f0e0;
+  --refuse:    #9c4433;
+  --refuse-bg: #fbf0ed;
+  --refuse-ln: #e8cec7;
+  --allow:     #3b6442;
+  --allow-bg:  #eef4ef;
+  --allow-ln:  #cbdccd;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:#f6f4f0; --bg-1:#fffefb; --bg-2:#efece6; --line:#e0dbd1; --line-2:#cfc8ba;
+    --ink:#1b1e23; --ink-1:#525a64; --ink-2:#6e7781;
+    --gold:#7d6318; --gold-dim:#b09a5e; --gold-wash:#f6f0e0;
+    --refuse:#9c4433; --refuse-bg:#fbf0ed; --refuse-ln:#e8cec7;
+    --allow:#3b6442; --allow-bg:#eef4ef; --allow-ln:#cbdccd;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15.5px/1.68 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ------------------------------------------------------------------ numerals */
+.mono, code, pre, kbd, .v, .num, table td, .stat-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* --------------------------------------------------------------------- shell */
+.wrap { max-width: var(--w); margin: 0 auto; padding: 0 20px 110px; }
+.wrap.narrow { max-width: 760px; }
+
+/* ----------------------------------------------------------------------- nav */
+.nav {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.nav-in {
+  max-width: var(--w); margin: 0 auto; padding: 0 20px;
+  display: flex; align-items: center; gap: 4px; height: 54px;
+}
+.brand {
+  display: flex; align-items: center; gap: 9px;
+  font-family: var(--mono); font-size: 14px; font-weight: 600;
+  letter-spacing: .02em; color: var(--ink);
+  text-decoration: none; border: 0; margin-right: 10px; flex: 0 0 auto;
+}
+.brand svg { display: block; }
+.nav a.nl {
+  font-size: 13.5px; color: var(--ink-1); text-decoration: none; border: 0;
+  padding: 7px 10px; border-radius: 5px; white-space: nowrap;
+  transition: color .15s, background .15s;
+}
+.nav a.nl:hover { color: var(--ink); background: var(--bg-1); }
+.nav a.nl[aria-current="page"] { color: var(--gold); }
+.nav .spacer { flex: 1 1 auto; }
+.theme-btn {
+  flex: 0 0 auto; width: 32px; height: 32px; padding: 0;
+  display: grid; place-items: center;
+  background: transparent; border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink-1); cursor: pointer;
+}
+.theme-btn:hover { color: var(--gold); border-color: var(--line-2); }
+.nav-toggle { display: none; }
+
+@media (max-width: 880px) {
+  .nav-in { flex-wrap: wrap; height: auto; padding: 10px 20px; }
+  .nav-links {
+    display: none; width: 100%; flex-direction: column; gap: 2px; padding: 8px 0 4px;
+  }
+  .nav-links.open { display: flex; }
+  .nav-toggle {
+    display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px;
+    color: var(--ink-1); cursor: pointer; font-family: var(--mono); font-size: 15px;
+  }
+}
+@media (min-width: 881px) {
+  .nav-links { display: flex; align-items: center; gap: 2px; }
+}
+
+/* -------------------------------------------------------------------- typography */
+h1 {
+  font-size: clamp(30px, 5vw, 44px); line-height: 1.12; letter-spacing: -.022em;
+  font-weight: 650; margin: 0 0 14px;
+}
+h2 {
+  font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .13em;
+  color: var(--ink-1); margin: 0 0 18px;
+  display: flex; align-items: center; gap: 11px;
+}
+h2::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); }
+h3 { font-size: 18px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 10px; }
+h4 { font-size: 14.5px; font-weight: 650; margin: 0 0 8px; }
+p { margin: 0 0 15px; color: var(--ink); }
+p.lede {
+  font-size: clamp(17px, 2.4vw, 20px); line-height: 1.55; color: var(--ink-1);
+  margin: 0 0 22px; max-width: 64ch;
+}
+p.sub { color: var(--ink-1); font-size: 14.5px; }
+.measure { max-width: 72ch; }
+strong, b { font-weight: 650; color: var(--ink); }
+em { font-style: italic; }
+
+a { color: var(--gold); text-decoration: none; border-bottom: 1px solid var(--gold-dim); }
+a:hover { border-bottom-color: var(--gold); }
+a.plain { border: 0; }
+
+section { padding: 54px 0 0; }
+section:first-of-type { padding-top: 40px; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 54px 0 0; }
+
+code {
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 5px; font-size: .88em;
+}
+a code { color: inherit; }
+pre {
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 15px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.6;
+  margin: 0 0 16px; color: var(--ink);
+}
+pre code { background: 0; border: 0; padding: 0; font-size: inherit; }
+pre .c  { color: var(--ink-2); }
+pre .g  { color: var(--allow); }
+pre .r  { color: var(--refuse); }
+pre .y  { color: var(--gold); }
+
+ul, ol { padding-left: 21px; margin: 0 0 16px; }
+li { margin: 6px 0; }
+li::marker { color: var(--ink-2); }
+
+.dim  { color: var(--ink-1); }
+.dim2 { color: var(--ink-2); }
+.gold { color: var(--gold); }
+.refuse { color: var(--refuse); }
+.allow  { color: var(--allow); }
+.nowrap { white-space: nowrap; }
+
+/* ------------------------------------------------------------------- surfaces */
+.panel {
+  background: var(--bg-1); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 19px 21px; margin: 0 0 16px;
+}
+.panel.flush { padding: 0; overflow: hidden; }
+.panel.gold { border-color: var(--gold-dim); background: var(--gold-wash); }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 860px) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 620px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+.row {
+  display: flex; justify-content: space-between; gap: 18px;
+  padding: 7px 0; border-bottom: 1px solid var(--line);
+}
+.row:last-child { border-bottom: 0; }
+.row .k { color: var(--ink-1); flex: 0 1 auto; font-size: 14px; }
+.row .v { text-align: right; flex: 1 1 auto; overflow-wrap: anywhere; font-size: 13.5px; }
+@media (max-width: 560px) {
+  .row { flex-direction: column; gap: 2px; }
+  .row .v { text-align: left; }
+}
+
+/* ---------------------------------------------------------------------- stats */
+.stat { background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 17px; }
+.stat-k { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-2); margin-bottom: 7px; }
+.stat-n { font-size: 25px; font-weight: 600; line-height: 1.15; letter-spacing: -.02em; }
+.stat-s { font-size: 12.5px; color: var(--ink-1); margin-top: 5px; }
+
+/* --------------------------------------------------------------------- tables */
+/* Data tables keep `white-space: nowrap` headers and scroll horizontally inside
+   this wrapper rather than reflowing, because a refusal table that wraps into
+   six lines per row is unreadable. Measured at a 360px layout: the page itself
+   never exceeds the viewport; only the table scrolls, inside here. */
+.tw { overflow-x: auto; margin: 0 0 16px; border: 1px solid var(--line); border-radius: var(--r); -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-2); font-weight: 650; padding: 11px 14px;
+  border-bottom: 1px solid var(--line); background: var(--bg-2); white-space: nowrap;
+}
+tbody td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--bg-2); }
+td.n, th.n { text-align: right; }
+table.prose td { font-family: var(--sans); }
+
+/* --------------------------------------------------------------------- badges */
+.tag {
+  display: inline-block; font-family: var(--mono); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .09em;
+  border: 1px solid var(--line-2); border-radius: 4px; padding: 2px 7px;
+  color: var(--ink-1); vertical-align: middle; white-space: nowrap;
+}
+.tag.live { border-color: var(--allow-ln); color: var(--allow); }
+.tag.no { border-color: var(--refuse-ln); color: var(--refuse); }
+.tag.au { border-color: var(--gold-dim); color: var(--gold); }
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--allow); margin-right: 6px; vertical-align: middle; }
+.dot.pulse { animation: pulse 2.6s var(--ease) infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+.verdict {
+  border: 1px solid var(--line); border-radius: var(--r); padding: 13px 15px;
+  margin: 0 0 14px; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere;
+}
+.verdict.ok { border-color: var(--allow-ln); background: var(--allow-bg); color: var(--allow); }
+.verdict.no { border-color: var(--refuse-ln); background: var(--refuse-bg); color: var(--refuse); }
+
+/* -------------------------------------------------------------------- controls */
+button, .btn {
+  font: 500 14px var(--sans); background: var(--bg-2); color: var(--ink);
+  border: 1px solid var(--line-2); border-radius: 6px; padding: 9px 15px;
+  cursor: pointer; text-decoration: none; display: inline-block;
+  transition: background .15s, border-color .15s;
+}
+button:hover:not(:disabled), .btn:hover { background: var(--bg-1); border-color: var(--gold-dim); }
+button:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--gold); color: #140f03; border-color: var(--gold); font-weight: 600; }
+:root[data-theme="light"] .btn.primary { color: #fffdf6; }
+.btn.primary:hover { filter: brightness(1.08); background: var(--gold); }
+select, input, textarea {
+  font: 14px var(--mono); background: var(--bg-2); color: var(--ink);
+  border: 1px solid var(--line-2); border-radius: 6px; padding: 8px 10px;
+}
+select:focus-visible, input:focus-visible, textarea:focus-visible,
+button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--gold); outline-offset: 2px;
+}
+textarea { width: 100%; min-height: 96px; resize: vertical; font-size: 12.5px; }
+.controls { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 0 0 15px; }
+label.inline { font-size: 13px; color: var(--ink-1); display: inline-flex; align-items: center; gap: 7px; }
+input[type="range"] { accent-color: var(--gold); padding: 0; border: 0; background: 0; width: 100%; }
+
+/* ---------------------------------------------------------------------- notes */
+.note {
+  border-left: 2px solid var(--gold-dim); padding: 2px 0 2px 15px;
+  color: var(--ink-1); font-size: 14px; margin: 0 0 16px;
+}
+.note b { color: var(--ink); }
+.kicker {
+  font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .13em; color: var(--gold); margin: 0 0 12px;
+}
+.src { font-size: 12.5px; color: var(--ink-2); margin: 0; }
+.src b { color: var(--ink-1); font-weight: 500; }
+
+/* ------------------------------------------------------------------ reveal/anim
+   Everything here is suppressed under prefers-reduced-motion. No animation in
+   this project is decorative; each one is explaining an ordering, a bound, or a
+   change in live state. */
+.rv { opacity: 0; transform: translateY(10px); transition: opacity .5s var(--ease), transform .5s var(--ease); }
+.rv.in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .rv { opacity: 1; transform: none; transition: none; }
+  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; }
+}
+
+/* ------------------------------------------------------------------ bound bar
+   The cost bound, drawn. The whole point of the project in one widget: the bar
+   is what the owner is paying, the notch is the ceiling they signed. */
+.bar { position: relative; height: 34px; margin-top: 20px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--allow); opacity: .32; transition: width .45s var(--ease), background .3s; }
+.bar-fill.over { background: var(--refuse); opacity: .34; }
+/* The ceiling notch sits above the fill, or a breaching bar hides the very
+   line it is breaching. */
+.bar-ceil { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--gold); z-index: 2; }
+.bar-ceil::after {
+  content: attr(data-label); position: absolute; top: -17px; left: 0;
+  font: 10px var(--mono); color: var(--gold); white-space: nowrap; padding-left: 4px;
+}
+/* past three-quarters the label would run off the right edge, so flip it */
+.bar-ceil[data-side="right"]::after { left: auto; right: 0; padding: 0 4px 0 0; }
+.bar-txt { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; padding: 0 11px; font: 12.5px var(--mono); gap: 8px; }
+
+/* ------------------------------------------------------------------- footer */
+.foot { border-top: 1px solid var(--line); margin-top: 70px; padding: 26px 0 0; color: var(--ink-2); font-size: 12.5px; }
+.foot a { color: var(--ink-1); border-bottom-color: var(--line-2); }
+.foot a:hover { color: var(--gold); }
+.foot-in { display: flex; gap: 22px; flex-wrap: wrap; justify-content: space-between; }
+.foot-nav { display: flex; flex-wrap: wrap; gap: 6px 18px; align-content: flex-start; }
+
+/* ------------------------------------------------------------------ utilities */
+.hero { padding: 58px 0 10px; }
+.cta { display: flex; gap: 10px; flex-wrap: wrap; margin: 24px 0 0; }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 12px; top: 12px; z-index: 99; background: var(--bg-1); padding: 9px 13px; border-radius: 6px; }
+svg.diagram { width: 100%; height: auto; display: block; }
+svg text { font-family: var(--mono); fill: var(--ink-1); }
+.scroller { overflow-x: auto; }

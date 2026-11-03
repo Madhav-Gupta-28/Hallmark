@@ -1,0 +1,23 @@
+{
+  "honest": {
+    "bytes": 692,
+    "canonical": "{\"amount\":\"10000000\",\"amountIn\":\"10000000\",\"amountInFormatted\":\"10.0\",\"amountInUsd\":\"9.995520000000\",\"amountOut\":\"2217767720571490358571300\",\"amountOutFormatted\":\"2.2177677205714903585713\",\"amountOutUsd\":\"9.935599388160\",\"deadline\":\"2026-11-20T00:00:00.000Z\",\"depositType\":\"ORIGIN_CHAIN\",\"destinationAsset\":\"nep141:wrap.near\",\"dry\":true,\"minAmountIn\":\"10000000\",\"minAmountOut\":\"2195590043365775454985587\",\"originAsset\":\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\",\"recipient\":\"demo.near\",\"recipientType\":\"DESTINATION_CHAIN\",\"refundTo\":\"demo.near\",\"refundType\":\"ORIGIN_CHAIN\",\"slippageTolerance\":100,\"swapType\":\"EXACT_INPUT\",\"timestamp\":\"2026-10-29T18:05:30.496Z\"}",
+    "note": "A normal quote, for scale: 160 bps guaranteed-worst, 60 bps if honoured in full.",
+    "quoteHash": "8no2rMSjesYe97Jhi6RWKxRvvYsYARBVQZXtMDMyhvwp",
+    "signature": "963KgcEZNohPDZVy1VuRP2fkWTj9XeWX43VUoH2XgBcyAYByuwcqwgJqMeJ92CxRXRGaYChGyx2f4NpBa5kN1dd"
+  },
+  "sandbox": {
+    "bytes": 681,
+    "canonical": "{\"amount\":\"5000000000000000000000000\",\"amountIn\":\"5000000000000000000000000\",\"amountInFormatted\":\"5.0\",\"amountInUsd\":\"21.900000000000\",\"amountOut\":\"9620131019130984\",\"amountOutFormatted\":\"0.009620131019130984\",\"amountOutUsd\":\"21.750154221153\",\"deadline\":\"2027-06-01T00:00:00.000Z\",\"depositType\":\"ORIGIN_CHAIN\",\"destinationAsset\":\"nep141:eth.bridge.near\",\"dry\":true,\"minAmountIn\":\"5000000000000000000000000\",\"minAmountOut\":\"9523929708939674\",\"originAsset\":\"nep141:wrap.near\",\"recipient\":\"hallmark.near\",\"recipientType\":\"DESTINATION_CHAIN\",\"refundTo\":\"hallmark.near\",\"refundType\":\"ORIGIN_CHAIN\",\"slippageTolerance\":100,\"swapType\":\"EXACT_INPUT\",\"timestamp\":\"2026-11-01T12:49:42.592Z\"}",
+    "note": "5 wNEAR to ETH, the fixture the sandbox suite is driven by.",
+    "quoteHash": "5TV8CQDmjsTexoYFKLvT6rwdVzGqcJ13tnBcx1eyqdZB",
+    "signature": "2rrPxz2XtkcyZBeZjjHUAcZfvRNrBBTcUouVkUh32GQaWNPPJXZ4GHSnfCFoUkKM1dnfKtf8hZzSRr7cV5rSkJ8b"
+  },
+  "worst": {
+    "bytes": 690,
+    "canonical": "{\"amount\":\"10000000\",\"amountIn\":\"10000000\",\"amountInFormatted\":\"10.0\",\"amountInUsd\":\"9.999220000000\",\"amountOut\":\"2143675304305483601119090\",\"amountOutFormatted\":\"2.14367530430548360111909\",\"amountOutUsd\":\"9.496481598073\",\"deadline\":\"2026-11-20T00:00:00.000Z\",\"depositType\":\"ORIGIN_CHAIN\",\"destinationAsset\":\"nep141:wrap.near\",\"dry\":true,\"minAmountIn\":\"10000000\",\"minAmountOut\":\"214367530430548360111\",\"originAsset\":\"nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\",\"recipient\":\"demo.near\",\"recipientType\":\"DESTINATION_CHAIN\",\"refundTo\":\"demo.near\",\"refundType\":\"ORIGIN_CHAIN\",\"slippageTolerance\":9999,\"swapType\":\"EXACT_INPUT\",\"timestamp\":\"2026-10-31T15:21:14.893Z\"}",
+    "note": "Cryptographically valid, and guarantees a 99.99% loss. slippageTolerance 9999.",
+    "quoteHash": "FTTFigJiyLLbx9Um6FC17P8UvRwfuSA1DRMDeNZvTj33",
+    "signature": "4JSYYUfE3WiSE3ZqixBJ8jksMMe3J3VJkw9hjk8RniFMYg1rZxo6iVFmgzKg5XsEJCXcvPSvB9zSzEyHRtoj3STu"
+  }
+}

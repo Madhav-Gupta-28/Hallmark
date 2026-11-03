@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Check it yourself — Hallmark</title>
+<meta name="description" content="Fetch a live signed NEAR Intents quote, canonicalise it in your browser, and ask the mainnet contract what it actually guarantees. No key, no funds, no server.">
+<meta name="color-scheme" content="dark light">
+<link rel="stylesheet" href="assets/hallmark.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%23cfae5e' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%23cfae5e'/%3E%3C/svg%3E">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="wrap" id="main">
+
+  <div class="hero">
+    <p class="kicker">No key · no funds · no deposit · no server</p>
+    <h1>Check it yourself</h1>
+    <p class="lede">
+      This page computes almost nothing. It canonicalises a quote — deterministic
+      key-sorting you can read in twenty lines — then asks <b>hallmarkfi.near</b> for
+      every number. The crypto, the arithmetic and the verdicts all come from the
+      contract that guards real money. There is no backend, so there is nothing between
+      you and the chain, and no figure here this page could have invented.
+    </p>
+    <div class="panel" id="health"></div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================ live quote -->
+  <section class="rv">
+    <h2>A live quote, priced by the contract</h2>
+    <p class="measure">
+      Fetches a fresh signed quote from the public 1Click API — <code>dry:true</code>, so
+      it is free and commits nothing — canonicalises it here in your browser, and sends
+      those exact bytes to the vault.
+    </p>
+    <div class="panel">
+      <div class="controls">
+        <select id="from" aria-label="from asset"></select>
+        <span class="dim2">→</span>
+        <select id="to" aria-label="to asset"></select>
+        <input id="amt" size="8" value="100" inputmode="decimal" aria-label="amount">
+        <button id="go" class="btn primary">Get a quote</button>
+      </div>
+      <div class="controls" style="margin-bottom:0">
+        <label class="inline">ceiling <input id="ceil" type="number" value="100" min="1" max="10000" style="width:76px"> bps</label>
+        <label class="inline">max quote age <input id="age" type="number" value="300" min="1" max="2592000" style="width:88px"> s</label>
+        <label class="inline">slippage <input id="slip" type="number" value="100" min="1" max="9999" style="width:76px"> bps</label>
+      </div>
+    </div>
+    <div id="live"></div>
+  </section>
+
+  <hr>
+
+  <!-- ============================================ fixtures -->
+  <section class="rv">
+    <h2>Or price a captured one</h2>
+    <p class="measure">
+      The three signed captures in the repository. These need nothing from the venue, so
+      they work even when 1Click is down — which it was, for forty minutes, on 2026-11-02.
+    </p>
+    <div class="controls" id="fxbtns"></div>
+    <div id="fxout"></div>
+  </section>
+
+  <hr>
+
+  <!-- ============================================ paste -->
+  <section class="rv">
+    <h2>Or paste your own</h2>
+    <p class="measure">
+      The canonical signed JSON and its base58 signature. Pre-filled with the honest
+      fixture. Tamper with one character of the JSON and watch <code>is_signed</code>
+      go false — the contract hashes the bytes before it parses them, so no field can be
+      edited after the venue signed.
+    </p>
+    <div class="panel">
+      <textarea id="pcanon" spellcheck="false" aria-label="canonical signed JSON"></textarea>
+      <div class="controls" style="margin:10px 0 0">
+        <input id="psig" placeholder="base58 signature" style="flex:1 1 260px" spellcheck="false" aria-label="signature">
+        <button id="pgo">Check</button>
+      </div>
+    </div>
+    <div id="pout"></div>
+  </section>
+
+  <hr>
+
+  <!-- ============================================ CLI -->
+  <section class="rv">
+    <h2>The same calls, from your terminal</h2>
+    <p class="measure">
+      Nothing on this page is privileged. Every number comes from view calls anybody can
+      make, and here they are without the browser.
+    </p>
+    <pre><code><span class="c"># the key the contract trusts</span>
+near contract call-function as-read-only hallmarkfi.near quote_signer \
+  json-args '{}' network-config mainnet now
+
+<span class="c"># the guaranteed-worst cost of the 99.99% fixture</span>
+near contract call-function as-read-only hallmarkfi.near worst_cost \
+  json-args "$(python3 -c 'import json;print(json.dumps({"canonical":open("contract/fixtures/worst.canonical.json").read()}))')" \
+  network-config mainnet now
+<span class="g">10000</span>
+
+<span class="c"># how stale those USD marks are, as the chain sees it</span>
+near contract call-function as-read-only hallmarkfi.near quote_age_secs \
+  json-args "$(…)" network-config mainnet now
+
+<span class="c"># the order book — a real open mandate, right now</span>
+near contract call-function as-read-only hallmarkfi.near get_mandates \
+  json-args '{}' network-config mainnet now</code></pre>
+    <p class="src">↳ or clone the repository and run <code>cargo test</code>: 58 tests, no network, no key, no funds.</p>
+  </section>
+
+  <hr>
+
+  <!-- ============================================ receipts -->
+  <section class="rv">
+    <h2>What has actually happened on mainnet</h2>
+    <p class="measure">
+      Three deployments, each superseding the last because an audit found something in a
+      contract that was already live. Every hash below was re-checked on-chain.
+    </p>
+    <div class="tw"><table class="prose"><thead><tr>
+      <th>what</th><th>transaction</th><th>result</th></tr></thead><tbody>
+      <tr><td>v3 deploy + <code>migrate</code></td><td><a href="https://nearblocks.io/txns/HosgeB2W1j2nyYvbyGWigdVsXuGRanraJBfMhypkhGZw" target="_blank" rel="noopener" class="mono" style="font-size:12px">HosgeB2W…khGZw</a></td><td class="dim">exact storage accounting + the order-book index</td></tr>
+      <tr><td>mandate opened</td><td><a href="https://nearblocks.io/txns/Fymth8dhDi6BpnLf7R7SkGJWcV1wiupWrqhtaP2NVAZq" target="_blank" rel="noopener" class="mono" style="font-size:12px">Fymth8dh…NVAZq</a></td><td class="dim">0.04 wNEAR → USDT, 300 bps, 300 s — posted <em>during</em> the 1Click outage</td></tr>
+      <tr><td><b>a fill, by NEAR's own agent adapted</b></td><td><a href="https://nearblocks.io/txns/GkEZhvx9iwq4eF8wUWrsS4fUsUxiV2h3AFZGppJnrsix" target="_blank" rel="noopener" class="mono" style="font-size:12px">GkEZhvx9…nrsix</a></td><td class="allow"><b>74 bps</b> against a 300 bps ceiling, 30.48 TGas</td></tr>
+      <tr><td>a stale fill, attempted</td><td><a href="https://nearblocks.io/txns/3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc" target="_blank" rel="noopener" class="mono" style="font-size:12px">3JKAnmbA…6Zyc</a></td><td class="refuse">REFUSED QuoteTooOld — the USDT came back</td></tr>
+      <tr><td>a fake-token fill, attempted</td><td><a href="https://nearblocks.io/txns/BBrcmc6uqzrY4Dko1ary9Zn6VoiYBCY4tbxHwDSnNXAn" target="_blank" rel="noopener" class="mono" style="font-size:12px">BBrcmc6u…NXAn</a></td><td class="refuse">refused — a caller can only claim to be itself</td></tr>
+      <tr><td>both legs withdrawn</td><td class="mono dim2" style="font-size:12px">6kjsYmbb… / CqF5Bbxp…</td><td class="dim">balances closed to the token; credits zero</td></tr>
+    </tbody></table></div>
+  </section>
+
+</div>
+
+<script type="module">
+import { view, viewAccount, getTokens, getQuote, canonicalise, fixtures,
+         rows, esc, units, age, near, UNSIGNED, VAULT } from "./assets/hallmark.js";
+const $ = (s) => document.querySelector(s);
+const FX = await fixtures();
+
+/* ---------------------------------------------------------------- health bar
+   Both dependencies, checked separately. The chain and the venue fail
+   independently and the page should say which. */
+(async () => {
+  const cells = [];
+  let chainOk = false, venueOk = false;
+  try {
+    const [acct, open] = await Promise.all([viewAccount(), view("open_mandate_count")]);
+    chainOk = true;
+    cells.push(`<span class="dot pulse"></span>NEAR mainnet · <b>${VAULT}</b> ·
+      ${near(acct.amount, 3)} NEAR · ${open} open mandate${open === 1 ? "" : "s"}`);
+  } catch (e) {
+    cells.push(`<span class="refuse">NEAR RPC unreachable — ${esc(e.message)}</span>`);
+  }
+  try { await getTokens(); venueOk = true; cells.push(`<span class="tag live">1Click responding</span>`); }
+  catch (e) { cells.push(`<span class="tag no">1Click unavailable</span> <span class="dim2">${esc(e.message)}</span>`); }
+  $("#health").innerHTML =
+    `<div style="font-size:13px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">${cells.join("")}</div>` +
+    (chainOk && !venueOk
+      ? `<p class="src" style="margin-top:10px">↳ the venue is down, so no new quote can be fetched.
+         The captured fixtures below still work, and the vault is still refusing exactly as it
+         would anyway — liveness loss, never a funds loss.</p>` : "");
+})();
+
+/* ---------------------------------------------------------- shared renderer */
+async function render(into, canonical, signature, dp) {
+  const q = JSON.parse(canonical);
+  const ceiling = Math.max(1, Math.min(10000, Number($("#ceil").value) || 100));
+  const maxAge = Math.max(1, Math.min(2592000, Number($("#age").value) || 300));
+  const outDp = dp ?? 18;
+  const terms = {
+    origin_asset: q.originAsset, destination_asset: q.destinationAsset,
+    recipient: q.recipient, max_cost_bps: ceiling, max_fill: q.amountIn,
+    max_quote_age_secs: maxAge, expiry_ns: "4000000000000000000",
+  };
+  const [signed, worst, full, ageS, verdictFloor, verdictFull] = await Promise.all([
+    view("is_signed", { canonical, signature }),
+    view("worst_cost", { canonical }),
+    view("realised_cost", { canonical, delivered: q.amountOut }),
+    view("quote_age_secs", { canonical }),
+    view("dry_check", { canonical, signature, terms, delivered: q.minAmountOut }),
+    view("dry_check", { canonical, signature, terms, delivered: q.amountOut }),
+  ]);
+  const leaked = UNSIGNED.filter((u) => canonical.includes(u));
+  const okFull = verdictFull.startsWith("ALLOWED");
+
+  into.innerHTML = `
+    <div class="panel">${rows([
+      ["signed by NEAR Intents?", `<span class="${signed ? "allow" : "refuse"}">${signed ? "yes — valid ed25519 over these exact bytes" : "NO — these are not the bytes the venue signed"}</span>`],
+      ["canonical bytes", `${new TextEncoder().encode(canonical).length}`],
+      ["unsigned field in the bytes?", leaked.length ? `<span class="refuse">${leaked.join(", ")}</span>` : `<span class="allow">none</span>`],
+      ["in", `$${Number(q.amountInUsd).toFixed(4)}`],
+      ["out <span class='dim2'>at amountOut</span>", `$${Number(q.amountOutUsd).toFixed(4)} &nbsp;<span class="dim2">${units(q.amountOut, outDp)}</span>`],
+      ["the guaranteed floor", `<span class="dim2">${units(q.minAmountOut, outDp)}</span>`],
+      ["<code>slippageTolerance</code> <span class='dim2'>← what a policy engine reads</span>", `${q.slippageTolerance} bps`],
+      ["signed at <span class='dim2'>← inside the signature</span>", `${esc(q.timestamp)} &nbsp;<span class="${Number(ageS) > maxAge ? "refuse" : "allow"}">${age(ageS)} ago</span>`],
+      ["deadline <span class='dim2'>← chosen by whoever asked</span>", `<span class="dim2">${esc(q.deadline)}</span>`],
+      ["cost if honoured in full", `<span style="font-size:21px;font-weight:650">${full} bps</span>`],
+      ["guaranteed&#8209;worst all&#8209;in cost", `<span class="${worst > ceiling ? "refuse" : "allow"}" style="font-size:21px;font-weight:650">${worst} bps</span>`],
+    ])}</div>
+    <div class="verdict ${okFull ? "ok" : "no"}"><b>at the expected fill</b> &nbsp;${esc(verdictFull)}</div>
+    <div class="verdict ${verdictFloor.startsWith("ALLOWED") ? "ok" : "no"}"><b>at the signed floor</b> &nbsp;${esc(verdictFloor)}</div>
+    <p class="src">↳ every figure answered by <b>${VAULT}</b> on NEAR mainnet, against a
+      <b>${ceiling} bps</b> ceiling and a <b>${maxAge} s</b> freshness bound.
+      The gap between the last two cost rows is the product.</p>`;
+}
+
+/* ----------------------------------------------------------------- live quote */
+const DP = {};
+(async () => {
+  try {
+    const toks = (await getTokens()).filter((t) => t.blockchain === "near");
+    toks.sort((a, b) => a.symbol.localeCompare(b.symbol));
+    for (const t of toks) DP[t.assetId] = t.decimals;
+    const opts = toks.map((t) => `<option value="${t.assetId}">${esc(t.symbol)}</option>`).join("");
+    $("#from").innerHTML = opts; $("#to").innerHTML = opts;
+    $("#from").value = toks.find((t) => t.symbol === "USDC")?.assetId ?? toks[0].assetId;
+    $("#to").value = toks.find((t) => t.symbol === "wNEAR")?.assetId ?? toks[1].assetId;
+  } catch (e) {
+    $("#live").innerHTML = `<div class="verdict no">${esc(e.message)} — the fixtures below still work.</div>`;
+    $("#go").disabled = true;
+  }
+})();
+
+$("#go").onclick = async () => {
+  const btn = $("#go"); btn.disabled = true; btn.textContent = "asking…";
+  const out = $("#live");
+  try {
+    const originAsset = $("#from").value, destinationAsset = $("#to").value;
+    if (originAsset === destinationAsset) throw new Error("origin and destination must differ — the contract refuses a mandate where they match");
+    const dp = DP[originAsset] ?? 18;
+    const human = ($("#amt").value || "100").trim();
+    if (!/^\d+(\.\d+)?$/.test(human)) throw new Error(`not a positive decimal amount: "${human}"`);
+    const [i, f = ""] = human.split(".");
+    if (f.length > dp) throw new Error(`${human} has more than ${dp} decimal places`);
+    const amount = BigInt(i + f.padEnd(dp, "0")).toString();
+
+    const res = await getQuote({
+      originAsset, destinationAsset, amount, recipient: VAULT,
+      slippageTolerance: Math.max(1, Math.min(9999, Number($("#slip").value) || 100)),
+    });
+    await render(out, canonicalise(res), res.signature.replace(/^ed25519:/, ""), DP[destinationAsset]);
+  } catch (e) {
+    out.innerHTML = `<div class="verdict no">${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; btn.textContent = "Get a quote"; }
+};
+
+/* ------------------------------------------------------------------ fixtures */
+$("#fxbtns").innerHTML = Object.entries(FX)
+  .map(([n, f]) => `<button data-fx="${n}">${n} <span class="dim2">· ${f.bytes} b</span></button>`).join("")
+  + `<span class="dim2" style="font-size:12.5px">these need nothing from the venue</span>`;
+const FXDP = {
+  honest: 24, worst: 24, sandbox: 18,
+};
+document.querySelectorAll("[data-fx]").forEach((b) => {
+  b.onclick = async () => {
+    const n = b.dataset.fx, f = FX[n];
+    const out = $("#fxout");
+    out.innerHTML = `<p class="note">${esc(f.note)} <span class="dim2">quote hash ${f.quoteHash}</span></p>`;
+    const slot = document.createElement("div"); out.append(slot);
+    try { await render(slot, f.canonical, f.signature, FXDP[n]); }
+    catch (e) { slot.innerHTML = `<div class="verdict no">${esc(e.message)}</div>`; }
+  };
+});
+document.querySelector("[data-fx=worst]")?.click();
+
+/* --------------------------------------------------------------------- paste */
+$("#pcanon").value = FX.honest.canonical;
+$("#psig").value = FX.honest.signature;
+$("#pgo").onclick = async () => {
+  const out = $("#pout");
+  try {
+    const canonical = $("#pcanon").value.trim();
+    const signature = $("#psig").value.trim().replace(/^ed25519:/, "");
+    if (!canonical || !signature) throw new Error("both the canonical JSON and the signature are needed");
+    JSON.parse(canonical);
+    await render(out, canonical, signature, 24);
+  } catch (e) {
+    out.innerHTML = `<div class="verdict no">${esc(e.message)}</div>`;
+  }
+};
+</script>
+</body>
+</html>

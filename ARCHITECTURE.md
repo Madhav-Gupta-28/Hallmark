@@ -1187,7 +1187,11 @@ storage-registered on a token cannot brick a fill.
 | `client/src/fillers/edge.ts` | TypeScript | an independent filler, written from §2.1 and §5.3 alone |
 | `client/src/fillers/adapted.ts` | TypeScript | NEAR's own official Intents agent, pointed at a vault (§6.2) |
 | `client/src/fillers/race.ts` | TypeScript | all three price one mandate; cross-checks the arithmetic three ways |
-| `web/index.html` | one static file | the proof page. **No framework, no backend, no dependency, zero external scripts** |
+| `web/` | 7 static pages | the site. **No framework, no bundler, no dependency, zero external scripts or fonts** — see §4.4 |
+| `web/assets/hallmark.css` | CSS | the design system: one stylesheet, two themes, three semantic colours |
+| `web/assets/hallmark.js` | JS module | the shared runtime: keyless view calls, canonicalisation, chrome |
+| `web/assets/mkfixtures.py` | Python | generates `fixtures.json` from `contract/fixtures/` so no signed quote is ever hand-typed |
+| `web/assets/check.py` | Python | checks the site's factual claims against the code and the live chain |
 | `test-token/` | Rust | NEP-141 + full NEP-145, so a payout can be made to fail on purpose |
 
 > **Correction kept.** This table previously named `near-sdk 5.30` (contradicting
@@ -1195,6 +1199,57 @@ storage-registered on a token cannot brick a fill.
 > exist, and `web/` as Next.js. The proof page needs no framework: both 1Click
 > and NEAR RPC answer with `Access-Control-Allow-Origin: *`, so the page talks
 > to the real API and the real chain from the browser with nothing in between.
+
+### 4.3b The site
+
+Seven pages, hand-written, with **no framework, no build step, no bundler, no
+external font and no external script**. That is not minimalism for its own sake:
+a project whose pitch is *"we removed the things you have to trust"* should not
+ask a reader to trust a 300 KB dependency graph to see the claim. A judge can
+read the whole thing.
+
+| page | for | carries |
+|---|---|---|
+| `index.html` | everyone, first | the exploit as an artifact, the invariant, FINRA 26-15, the refusal list, the live vault |
+| `exploit.html` | the sceptic | both failures in depth, the field map, and the freshness slider |
+| `mechanism.html` | the engineer | the animated fill sequence, the invariant worked on real fixtures, rounding, prior art |
+| `proof.html` | the judge | live quote → canonicalise → ask the chain. Paste your own. The CLI equivalents |
+| `contract.html` | the auditor | exported surface, invariants, exact storage accounting, gas, the toolchain trap |
+| `fillers.html` | an agent developer | the three fillers, the race, the official-skill diff, the economics |
+| `limits.html` | everyone | §2.9 and §14 in full, unhedged |
+
+**The discipline the site inherits from the contract.** It computes almost
+nothing: canonicalisation, and that is all. Every number — every cost, every
+verdict, every balance — is a keyless view call to `hallmarkfi.near`, so there
+is no figure on any page the page could have invented, and no server between the
+reader and the chain. Both dependencies are health-checked separately and
+independently, because the chain and the venue fail independently.
+
+Three rules were set before any markup was written, and each one caught
+something:
+
+1. **Every animation must explain; none may decorate.** The fill sequence exists
+   to show that the output is in the vault *before* the input is credited; the
+   bound bar exists to show a ceiling being crossed. There are no gradients in
+   motion, no particles and no parallax, and everything is suppressed under
+   `prefers-reduced-motion`.
+2. **No signed quote is ever hand-typed.** The first draft transcribed
+   `worst.quote.json` into the markup and got two things wrong —
+   `amountInFormatted` as `"10"` instead of `"10.0"`, one byte, and the signature
+   entirely. The page would have shown `is_signed: false` on a genuinely signed
+   quote, i.e. been wrong about the one thing it exists to demonstrate.
+   `mkfixtures.py` now derives them, and `--check` fails if they drift.
+3. **No widget may fake its result.** A first version of the freshness slider
+   moved a fictional "now" while quietly varying `max_quote_age_secs` behind the
+   reader's back to force a refusal. It was replaced with the control an owner
+   actually has — the age bound itself — so the crossover happens exactly where
+   the fixture's real age falls. Verified against the chain at seven points.
+
+`check.py` holds the site to the same standard as the specification: it extracts
+the method count, the refusal count and the test counts from the source, reads
+the staked balance and the signer off mainnet, and fails if the site disagrees.
+It has already caught one: the landing page said *eight* typed refusals when
+there are nine.
 
 ### 4.3 The canonicaliser exists three times, on purpose
 

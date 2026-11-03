@@ -107,17 +107,33 @@ contract would enforce on it. `dry: true` quotes are free and commit nothing.
 The gap between those two cost lines is the product. The gap between `signed at`
 and `deadline` is why mandates bound the first and not the second.
 
-## 4. Open the proof page
+## 4. Open the site
 
 ```bash
 cd web && python3 -m http.server 8000
 ```
 
-**See:** one static file — no build step, no backend, no dependencies, no
-external scripts. It fetches a live signed quote, canonicalises it in the
-browser, and asks `hallmarkfi.near` what that quote guarantees. **Every number
-it shows is a view call to the live contract**; the page computes only the
-canonical bytes, and `web/index.html` is short enough to read in full.
+**See:** seven pages at `localhost:8000` — no framework, no build step, no
+bundler, no dependency, no external font or script.
+
+| page | carries |
+|---|---|
+| `/` | the exploit as an artifact, the invariant, FINRA 26-15, the live vault |
+| `/exploit.html` | both failures in depth, and a freshness slider wired to the chain |
+| `/mechanism.html` | an animated fill sequence, the invariant worked on real fixtures |
+| `/proof.html` | live quote → canonicalise → ask the chain. Paste your own |
+| `/contract.html` | exported surface, invariants, exact storage accounting, gas |
+| `/fillers.html` | the three fillers, the race, the official-skill diff |
+| `/limits.html` | everything this is not |
+
+**Every number on every page is a keyless view call to `hallmarkfi.near`.** The
+site canonicalises quotes and does nothing else, so there is no figure it could
+have invented and no server between you and the chain.
+
+```bash
+python3 web/assets/check.py       # the site's claims, against the code and the chain
+python3 web/assets/mkfixtures.py --check   # no signed quote is ever hand-typed
+```
 
 Deploys to any static host as-is.
 

@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The contract — Hallmark</title>
+<meta name="description" content="Hallmark's exported surface, typed refusals, invariants, exact storage accounting and gas — with the live state of hallmarkfi.near on NEAR mainnet.">
+<meta name="color-scheme" content="dark light">
+<link rel="stylesheet" href="assets/hallmark.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 20.4 7v10L12 21.6 3.6 17V7Z' fill='none' stroke='%23cfae5e' stroke-width='1.5'/%3E%3Cpath d='M12 7.6 16 10v4l-4 2.4L8 14v-4Z' fill='%23cfae5e'/%3E%3C/svg%3E">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="wrap" id="main">
+
+  <div class="hero">
+    <p class="kicker">hallmarkfi.near · NEAR mainnet</p>
+    <h1>The contract</h1>
+    <p class="lede">
+      Twenty-three exported methods, nine typed refusals, sixteen invariants, and one
+      path that moves value. No admin key, no pause, no upgrade path — and no oracle,
+      because the price authority is the counterparty's own signature.
+    </p>
+    <div class="grid g4" id="state"></div>
+  </div>
+
+  <hr>
+
+  <!-- ====================================================== the one path -->
+  <section class="rv">
+    <h2>One path moves value</h2>
+    <div class="grid g2">
+      <div>
+        <p>
+          Every state change that moves a token starts in <code>ft_on_transfer</code>,
+          which NEP-141 calls when somebody <code>ft_transfer_call</code>s into the vault.
+          That single call carries everything verification needs:
+        </p>
+        <div class="tw"><table class="prose"><thead><tr><th>from</th><th>the vault learns</th></tr></thead><tbody>
+          <tr><td><code>env::predecessor_account_id()</code></td><td><b>which token</b> arrived</td></tr>
+          <tr><td><code>sender_id</code></td><td><b>who</b> sent it</td></tr>
+          <tr><td><code>amount</code></td><td><b>how much</b> arrived</td></tr>
+          <tr><td><code>msg</code></td><td>the canonical quote bytes, the signature, the mandate id</td></tr>
+        </tbody></table></div>
+        <p class="sub">
+          Synchronous, with no cross-contract call — so there is no rollback path, no
+          in-flight record and no stuck state. Payouts are <b>pull, not push</b>, which
+          keeps the verification path free of promises entirely and means a counterparty
+          who is not storage-registered on a token cannot brick a fill for anybody else.
+        </p>
+      </div>
+      <div>
+        <div class="panel">
+          <h4>Which action is legal depends on which token arrived</h4>
+          <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>action</th><th>legal token</th><th>effect</th></tr></thead><tbody>
+            <tr><td><code>open</code></td><td class="dim">the mandate's <b>origin</b></td><td class="dim">create a funded mandate</td></tr>
+            <tr><td><code>fund</code></td><td class="dim">that mandate's <b>origin</b></td><td class="dim">top up the escrow</td></tr>
+            <tr><td><code>fill</code></td><td class="gold">the <b>destination</b></td><td class="dim">the transfer <em>is</em> the delivery</td></tr>
+          </tbody></table></div>
+          <p class="src" style="margin-top:12px">
+            ↳ so an action cannot be performed with the wrong asset. Calling
+            <code>ft_on_transfer</code> directly gets you an asset id derived from your own
+            account — which is why <a href="https://nearblocks.io/txns/BBrcmc6uqzrY4Dko1ary9Zn6VoiYBCY4tbxHwDSnNXAn" target="_blank" rel="noopener">that attack</a>
+            is refused with <em>“this token is not the mandate's destination asset”</em>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== the mandate -->
+  <section class="rv">
+    <h2>What the owner commits to</h2>
+    <p class="measure">
+      Four numbers and two assets. No policy language, no allowlist, no per-protocol
+      configuration — a reader who knows nothing about Intents can audit this in ten
+      seconds, which is deliberate. <b>A bound nobody can read is a bound nobody trusts.</b>
+    </p>
+    <pre><code>pub struct Mandate {
+    pub origin_asset:        String,   <span class="c">// nep141:…</span>
+    pub destination_asset:   String,
+    pub recipient:           String,   <span class="c">// the signed `recipient` a quote must name</span>
+    pub max_cost_bps:        u32,      <span class="y">// the whole point</span>
+    pub max_fill:            U128,     <span class="c">// largest single fill, origin base units</span>
+    pub max_quote_age_secs:  u32,      <span class="y">// how stale the USD marks may be</span>
+    pub expiry_ns:           U64,      <span class="c">// u64 as a string, so a JS client</span>
+}                                      <span class="c">//   cannot silently lose precision</span></code></pre>
+    <h4>Eight kinds of terms <code>open</code> refuses outright</h4>
+    <div class="tw"><table class="prose"><thead><tr><th>refused</th><th>because</th></tr></thead><tbody>
+      <tr><td><code>origin_asset == destination_asset</code></td><td class="dim">one token would match both the funding path and the delivery path, so a fill could be satisfied with the very asset being sold</td></tr>
+      <tr><td><code>destination_asset</code> not <code>nep141:</code></td><td class="dim">credits are paid out via <code>token_account()</code>, which understands nep141 ids only — rejecting here keeps <code>withdraw</code> total</td></tr>
+      <tr><td><code>max_cost_bps &gt; 10_000</code></td><td class="dim">a ceiling above 100% bounds nothing</td></tr>
+      <tr><td><code>max_fill == 0</code></td><td class="dim">nothing could ever fill</td></tr>
+      <tr><td><code>max_quote_age_secs == 0</code></td><td class="dim">nothing could ever fill</td></tr>
+      <tr><td><code>max_quote_age_secs &gt; 30 days</code></td><td class="dim">a ceiling priced in month-old USD marks is decoration. A sanity bound, not a policy — the client defaults to 300 s</td></tr>
+      <tr><td><code>expiry_ns</code> already past</td><td class="dim">nothing could ever fill</td></tr>
+      <tr><td><code>recipient != this vault</code></td><td class="dim">the quote would pay somebody else and the delivery could not be verified</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== exported surface -->
+  <section class="rv">
+    <h2>The exported surface</h2>
+    <p class="measure">
+      Checked by extracting every <code>pub fn</code> from the <code>#[near] impl</code>
+      and diffing it against this table: <b>23 in the code, 23 documented, nothing
+      undocumented.</b> The twelve views are the proof surface — every guarantee in the
+      specification can be exercised with no key, no funds and no deposit.
+    </p>
+    <div class="tw"><table class="prose"><thead><tr><th>method</th><th>kind</th><th>purpose</th><th class="n">live</th></tr></thead>
+      <tbody id="surface"></tbody></table></div>
+    <div class="note">
+      <b>Two views deliberately do not check the signature.</b> <code>worst_cost</code> and
+      <code>realised_cost</code> price whatever bytes they are handed — that is what makes
+      them useful on a quote you are still deciding about, and it is why
+      <code>dry_check</code>, which <em>does</em> verify, is the one a filler consults
+      before spending anything.
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== invariants -->
+  <section class="rv">
+    <h2>Sixteen invariants, each naming what enforces it</h2>
+    <div class="tw"><table class="prose"><thead><tr><th class="n">#</th><th>invariant</th><th>enforced by</th></tr></thead><tbody>
+      <tr><td class="n">1</td><td>No token is credited out unless <code>check()</code> returned <code>Ok</code></td><td class="dim">the <code>Err</code> arm panics before either credit</td></tr>
+      <tr><td class="n">2</td><td><code>reported_cost ≥ true_cost</code>, always</td><td class="dim"><code>div_ceil</code> on the final division</td></tr>
+      <tr><td class="n">3</td><td>The bytes hashed and the bytes parsed are the same bytes</td><td class="dim">verify <code>canonical</code>, then <code>from_slice(canonical)</code></td></tr>
+      <tr><td class="n">4</td><td>No method reads a field outside the signed set</td><td class="dim"><code>SignedQuote</code> has no such field, so reading one is a compile error</td></tr>
+      <tr><td class="n">5</td><td>The verification path makes no cross-contract calls</td><td class="dim">all three <code>Promise</code> sites are in the two payout methods</td></tr>
+      <tr><td class="n">6</td><td>The output is in the vault before the input is credited</td><td class="dim"><code>delivered</code> is an <code>ft_on_transfer</code> argument</td></tr>
+      <tr><td class="n">7</td><td>A mandate can never credit out more origin asset than its escrow</td><td class="dim"><code>require!(amount_in &lt;= rec.escrow.0)</code></td></tr>
+      <tr><td class="n">8</td><td>Realised cost, filler spread included, never exceeds the ceiling</td><td class="dim"><code>cost_bps(&amp;q, delivered) &gt; max_cost_bps</code> refuses</td></tr>
+      <tr><td class="n">9</td><td>No admin key, no pause, no upgrade path</td><td class="dim">there is no such method</td></tr>
+      <tr><td class="n">10</td><td>A failed payout restores the credit rather than burning it</td><td class="dim"><code>resolve_withdraw</code> re-adds on <code>Err</code></td></tr>
+      <tr><td class="n">11</td><td>An action cannot be performed with the wrong token</td><td class="dim">asset id is derived from the predecessor</td></tr>
+      <tr><td class="n">12</td><td>The USD marks are no older than the owner allowed</td><td class="gold">checked against the <b>signed</b> <code>timestamp</code></td></tr>
+      <tr><td class="n">13</td><td>No field the counterparty chooses is ever used as a bound</td><td class="gold"><code>depositAddress</code> unread; <code>deadline</code> never a freshness test</td></tr>
+      <tr><td class="n">14</td><td>The vault never stakes NEAR for state anyone else created</td><td class="gold">every writing path ends in <code>settle_storage</code></td></tr>
+      <tr><td class="n">15</td><td>Its storage is always covered by a prepayment not yet refunded</td><td class="dim"><code>reap</code> refunds only measured bytes freed</td></tr>
+      <tr><td class="n">16</td><td>A signature is 64 bytes or it is refused</td><td class="dim"><code>decode_signature</code> returns <code>None</code> otherwise, never zero-pads</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== storage -->
+  <section class="rv">
+    <h2>Whoever causes a byte to be written pays for that byte</h2>
+    <div class="grid g2">
+      <div>
+        <p>
+          NEAR stakes part of an account's balance per byte of state it holds, so
+          somebody has to pay for a mandate's record. v1's answer was <em>the vault</em>,
+          which gave a stranger about <b>ten times leverage</b> against it: roughly ten
+          cents of gas and a live vault could no longer write state at all — fills and
+          withdrawals included.
+        </p>
+        <p>
+          v2 charged a fixed 1,536 bytes. That was also wrong: it overcharged honest
+          owners and still left a hole for a mandate with more fillers than the fixed
+          allowance covered. <b>And its first version refunded more on
+          <code>cancel</code> than it actually freed</b>, so open-and-cancel in a loop
+          drained the vault anyway, just slower.
+        </p>
+        <p>
+          v3 stops guessing. One helper runs at the end of every path that writes state:
+          flush the collections, diff <code>env::storage_usage()</code>, and charge the
+          caller exactly that — or credit them exactly what shrank.
+        </p>
+        <pre><code>fn settle_storage(&amp;mut self, who: &amp;AccountId, before: u64) {
+    self.mandates.flush();
+    self.open_ids.flush();
+    self.credits.flush();
+    let after = env::storage_usage();
+    if after &gt; before {
+        let owed = bytes_to_near(after - before);
+        require!(balance &gt;= owed, <span class="y">"prepay storage first: …"</span>);
+        <span class="c">// deduct</span>
+    } else if before &gt; after {
+        <span class="c">// credit back bytes_to_near(before - after)</span>
+    }
+}</code></pre>
+        <div class="note">
+          <b>A trap inside the trap.</b> <code>near_sdk::store</code> collections buffer
+          their writes and flush when the call ends, so <code>storage_usage()</code>
+          immediately after a <code>remove</code> still reports the old figure — and the
+          refund came out as <b>zero</b>. Hence the explicit flush.
+        </div>
+      </div>
+      <div>
+        <div class="panel">
+          <h4>Measured on mainnet, to the byte</h4>
+          <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>state</th><th class="n">bytes</th><th class="n">NEAR</th></tr></thead><tbody>
+            <tr><td>a mandate record</td><td class="n">296</td><td class="n dim">0.00296</td></tr>
+            <tr><td>its open-id index entry</td><td class="n">228</td><td class="n dim">0.00228</td></tr>
+            <tr><td>a credit slot</td><td class="n">145</td><td class="n dim">0.00145</td></tr>
+            <tr><td>a prepaid-storage row</td><td class="n">74</td><td class="n dim">0.00074</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="panel">
+          <h4>And it round-trips</h4>
+          <pre style="margin:12px 0 0"><code><span class="c">the v3 mainnet fill</span>
+prepaid after opening          <span class="y">426</span> bytes
+prepaid after the fill         <span class="y">123</span> bytes
+  <span class="c">← 303 charged to the FILLER for the</span>
+  <span class="c">  two credit slots its fill created</span>
+prepaid after both withdrawals <span class="g">426</span> bytes
+  <span class="c">← both slots released, both refunded</span></code></pre>
+        </div>
+        <div class="panel">
+          <h4>Who pays for what</h4>
+          <div class="tw" style="margin:12px 0 0"><table><thead><tr><th>call</th><th>charged to</th></tr></thead><tbody>
+            <tr><td><code>open</code></td><td class="dim">the owner — record + index entry</td></tr>
+            <tr><td><code>fill</code></td><td class="gold">the <b>filler</b> — the credit slots it creates</td></tr>
+            <tr><td><code>fund</code></td><td class="allow">nothing — it writes no new state</td></tr>
+            <tr><td><code>cancel</code></td><td class="dim">the net: index entry out, maybe a credit slot in</td></tr>
+            <tr><td><code>withdraw</code></td><td class="dim">refunds the slot — but only once the payout lands</td></tr>
+            <tr><td><code>reap</code></td><td class="dim">refunds exactly what deleting the record frees</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== order book -->
+  <section class="rv">
+    <h2>The order book costs what the vault holds, not what it remembers</h2>
+    <div class="grid g2">
+      <div>
+        <p>
+          v1 and v2 answered <code>get_mandates</code> by walking <b>every mandate ever
+          created</b> and discarding the closed ones. Correct, and it gets slower forever:
+          with fifty thousand mandates the call has to load and decode fifty thousand
+          records to hand back fifty, and a view call has a gas budget. Past some size
+          <b>the only way a filler can find work stops answering at all</b> — and so does
+          this website.
+        </p>
+        <p class="sub">
+          Not a security hole: with storage prepaid, nobody can inflate that number
+          cheaply. It is a wall you only hit <em>by succeeding</em>, which is exactly why
+          it was worth removing before launch rather than after.
+        </p>
+        <pre><code><span class="c">// v1, v2 — O(all mandates ever)</span>
+self.mandates.iter()
+    .filter(|(_, r)| r.open)
+    .skip(from).take(limit)
+
+<span class="c">// v3 — O(what is open)</span>
+<span class="y">open_ids: IterableSet&lt;u64&gt;</span></code></pre>
+      </div>
+      <div>
+        <div class="panel">
+          <h4>The book, right now</h4>
+          <div id="book"><p class="sub" style="margin:0">reading hallmarkfi.near…</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ====================================================== gas & tests -->
+  <section class="rv">
+    <h2>What it costs to run, and what proves it</h2>
+    <div class="grid g3">
+      <div class="panel">
+        <div class="stat-k">a whole fill, on mainnet</div>
+        <div class="stat-n">30.48 <span class="dim" style="font-size:15px">TGas</span></div>
+        <div class="stat-s">every receipt in the transaction — the filler's <code>ft_transfer_call</code>, the token's hop, <code>sha256</code> + <code>ed25519_verify</code>, the invariant, and both credits. 10% of one transaction's limit.</div>
+      </div>
+      <div class="panel">
+        <div class="stat-k">the verification itself</div>
+        <div class="stat-n">7.8 <span class="dim" style="font-size:15px">TGas</span></div>
+        <div class="stat-s">measured in the sandbox, counting only the fill's own burn. Nothing in the path scales with anything but the length of the signed quote.</div>
+      </div>
+      <div class="panel">
+        <div class="stat-k">tests, from a clean clone</div>
+        <div class="stat-n">58 <span class="dim" style="font-size:15px">+ 54</span></div>
+        <div class="stat-s">30 unit + 28 against a real sandbox node, plus 54 client assertions. No network, no key, no funds.</div>
+      </div>
+    </div>
+    <div class="note">
+      <b>The suite is deterministic, and that took two fixes.</b> Each integration test
+      starts a real nearcore node, and at cargo's default parallelism 28 of them raced for
+      ports until one died inside <code>PeerManagerActor::spawn</code>. Separately, a
+      patched account's state lands before the node has indexed its access key, so an
+      immediate call failed with <em>“access key … has never been observed”</em>. Both
+      were intermittent and both were found by running the suite repeatedly rather than
+      once. <b>“Clone it and run the tests” is the whole claim; a suite that fails one run
+      in three does not support it.</b>
+    </div>
+    <h4 style="margin-top:26px">The toolchain trap, which costs a day if you meet it late</h4>
+    <p class="sub measure">
+      <b>nearcore's VM only accepts MVP WebAssembly.</b> From rustc 1.87 on, the output is
+      unusable — and the failure mode is the trap: <code>DeployContract</code>
+      <em>succeeds</em>, because deploying does not compile the module. Every subsequent
+      call fails with <code>CompilationError(PrepareError(Deserialization))</code>.
+      <code>-C target-cpu=mvp</code> is not sufficient, because the prebuilt
+      <code>std</code> was compiled with the newer features regardless.
+    </p>
+    <div class="tw"><table class="prose"><thead><tr><th>constraint</th><th>value</th></tr></thead><tbody>
+      <tr><td><code>near-sdk</code></td><td><code>=5.24.1</code> — the newest that compiles on 1.86</td></tr>
+      <tr><td>why the <code>=</code></td><td class="dim"><code>"5.24.1"</code> means <code>^5.24.1</code>, which resolves to 5.30 and fails</td></tr>
+      <tr><td><code>near-sys</code></td><td><code>=0.2.9</code> — 0.2.10 and later require rustc 1.93</td></tr>
+      <tr><td>wasm toolchain</td><td><b>1.86</b>, via <code>./build.sh</code></td></tr>
+      <tr><td>test toolchain</td><td><b>1.99.1</b> — <code>near-workspaces</code> needs ≥ 1.88</td></tr>
+    </tbody></table></div>
+    <p class="src">
+      ↳ <code>near-sdk</code> 5.30 requires rustc ≥ 1.95, so <b>5.30 cannot produce a
+      contract this VM will run.</b> An earlier draft of the specification recorded 5.30
+      and 1.99.1 as the build configuration, having verified only that they <em>compile</em>.
+      They do compile, and produce a contract that cannot execute a single call.
+    </p>
+  </section>
+
+</div>
+
+<script type="module">
+import { view, viewAccount, rows, esc, units, age, near, VAULT, EXPLORER } from "./assets/hallmark.js";
+const $ = (s) => document.querySelector(s);
+
+/* -------------------------------------------------------------- live headline */
+(async () => {
+  try {
+    const [a, open, ever, est] = await Promise.all([
+      viewAccount(), view("open_mandate_count"), view("mandate_count"), view("storage_cost_estimate"),
+    ]);
+    const locked = BigInt(a.storage_usage) * 10n ** 19n;
+    $("#state").innerHTML = [
+      ["code hash", `<span style="font-size:13px">${esc(a.code_hash.slice(0, 14))}…</span>`, "matches the local build, byte for byte"],
+      ["state", a.storage_usage.toLocaleString(), `bytes · ${near(locked, 2)} NEAR staked against it`],
+      ["balance", near(a.amount, 3), `NEAR · ${near(BigInt(a.amount) - locked, 3)} free`],
+      ["order book", `${open} / ${ever}`, "open now / opened ever · ids never reused"],
+    ].map(([k, n, s]) => `<div class="stat"><div class="stat-k">${k}</div><div class="stat-n">${n}</div><div class="stat-s">${s}</div></div>`).join("");
+  } catch (e) {
+    $("#state").innerHTML = `<div class="verdict no" style="grid-column:1/-1">${esc(e.message)}</div>`;
+  }
+})();
+
+/* ------------------------------------------------------------ the 23 methods
+   Each view is actually called, so the "live" column is evidence rather than a
+   claim. The calls and the mutating methods are listed but obviously not run. */
+const SURFACE = [
+  ["new", "init", "once, at deploy", null],
+  ["migrate", "private init", "supersede the previous version's state — used twice, v1→v2 and v2→v3", null],
+  ["ft_on_transfer", "call", "<b>the only path that moves value.</b> NEP-141 calls it; <code>msg</code> carries the action", null],
+  ["withdraw", "call, payable", "pull a credited balance. Pull-not-push by design", null],
+  ["resolve_withdraw", "private", "restores the credit if the payout failed, and returns the slot's storage if it did not", null],
+  ["cancel", "call", "owner only; credits the unspent escrow back and keeps the record", null],
+  ["reap", "call", "owner only, closed only; deletes the record and refunds the storage it frees", null],
+  ["storage_deposit", "call, payable", "prepay for the state you will create. Pays for its own ledger row", null],
+  ["storage_withdraw", "call, payable", "take back whatever no mandate is using", null],
+  ["resolve_storage_withdraw", "private", "restores a prepaid balance if paying it out failed", null],
+  ["quote_signer", "view", "the key the contract trusts", "quote_signer"],
+  ["is_signed", "view", "did NEAR Intents really sign exactly these bytes?", null],
+  ["worst_cost", "view", "the guaranteed-worst all-in cost, in bps", null],
+  ["realised_cost", "view", "what the owner would actually pay for a given delivery", null],
+  ["quote_age_secs", "view", "how old the venue's signature is, as the chain sees it", null],
+  ["dry_check", "view", "the full check, exactly as a fill runs it — allowed or refused, and why", null],
+  ["get_mandates", "view", "the order book — open mandates only, in id order", "get_mandates"],
+  ["get_mandate", "view", "one record, open or closed", null],
+  ["mandate_count", "view", "how many have ever been opened", "mandate_count"],
+  ["open_mandate_count", "view", "the length of the book", "open_mandate_count"],
+  ["get_credit", "view", "what an account can withdraw", null],
+  ["storage_balance_of", "view", "what is prepaid", null],
+  ["storage_cost_estimate", "view", "a recommended prepay — not a price", "storage_cost_estimate"],
+];
+$("#surface").innerHTML = SURFACE.map(([m, kind, why, probe]) => {
+  const k = kind.startsWith("view") ? `<span class="tag au">${kind}</span>`
+    : kind.includes("private") ? `<span class="tag">${kind}</span>` : `<span class="tag">${kind}</span>`;
+  return `<tr><td><code>${m}</code></td><td>${k}</td><td class="dim">${why}</td>
+    <td class="n mono" style="font-size:12px" data-probe="${probe ?? ""}">${probe ? "…" : "—"}</td></tr>`;
+}).join("");
+for (const td of document.querySelectorAll("[data-probe]")) {
+  const m = td.dataset.probe;
+  if (!m) continue;
+  view(m).then((v) => {
+    const s = typeof v === "object" ? `${Array.isArray(v) ? v.length : "?"} entr${Array.isArray(v) && v.length === 1 ? "y" : "ies"}` : String(v);
+    td.innerHTML = `<span class="allow">${esc(m === "storage_cost_estimate" ? near(v, 5) : s.length > 24 ? s.slice(0, 22) + "…" : s)}</span>`;
+  }).catch(() => (td.innerHTML = `<span class="refuse">err</span>`));
+}
+
+/* ------------------------------------------------------------------ the book */
+(async () => {
+  try {
+    const ms = await view("get_mandates", {});
+    if (!ms.length) { $("#book").innerHTML = `<p class="sub" style="margin:0">The book is empty right now.</p>`; return; }
+    $("#book").innerHTML = ms.map(([id, m]) => {
+      const t = m.terms;
+      const o = t.origin_asset.split(":")[1], d = t.destination_asset.split(":")[1];
+      const odp = o === "wrap.near" ? 24 : 6;
+      return `<div class="panel" style="margin:0 0 10px;background:var(--bg-2)">
+        ${rows([
+          [`mandate #${id}`, `<a href="${EXPLORER}/address/${esc(m.owner)}" target="_blank" rel="noopener" class="dim2" style="font-size:12px">${esc(m.owner.slice(0, 12))}…</a>`],
+          ["pair", `${esc(o)} → ${esc(d)}`],
+          ["escrow left", `${units(m.escrow, odp)} <span class="dim2">of ${units(t.max_fill, odp)} max fill</span>`],
+          ["cost ceiling", `<span class="gold">${t.max_cost_bps} bps</span>`],
+          ["quotes must be newer than", `${t.max_quote_age_secs} s`],
+          ["fills so far", `${m.fills}${m.fills ? ` <span class="dim2">· worst realised ${m.worst_bps} bps</span>` : ""}`],
+          ["delivered into it", units(m.delivered, d === "wrap.near" ? 24 : 6)],
+        ])}</div>`;
+    }).join("");
+  } catch (e) { $("#book").innerHTML = `<div class="verdict no">${esc(e.message)}</div>`; }
+})();
+</script>
+</body>
+</html>

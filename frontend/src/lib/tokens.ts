@@ -1,5 +1,5 @@
 /**
- * Token symbols and decimals, ported from web/assets/app.js.
+ * Token symbols and decimals.
  *
  * The venue is the authority, but it can be down, so the pair this vault is
  * actually used with is a hard-coded floor and whatever 1Click reports merges

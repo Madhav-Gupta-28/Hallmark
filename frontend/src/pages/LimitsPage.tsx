@@ -1,5 +1,5 @@
 /**
- * Exclusions & limitations — web/limits.html ("the most credible page on this
+ * Exclusions & limitations — "the most credible page on this
  * site"), figure first. Every limit is still here in full, in the folds; what a
  * first-time reader sees is five exhibits. The wallet passage describes this
  * app (selector bundled from npm), not the static site's CDN load.

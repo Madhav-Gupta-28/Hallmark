@@ -1,5 +1,5 @@
 /* ============================================================================
-   Signing — the frontend's counterpart of web/assets/wallet.js.
+   Signing — the wallet selector, built only when the reader asks to connect.
 
    The only module that knows the wallet library's types. Callers hand it
    transactions in the project's own `Tx` shape (lib/hallmark.ts), the same

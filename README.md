@@ -110,36 +110,39 @@ and `deadline` is why mandates bound the first and not the second.
 ## 4. Open the site
 
 ```bash
-cd web && python3 -m http.server 8000
+cd frontend && npm install && npm run dev
 ```
 
-**See:** four pages at `localhost:8000`. No framework, no build step, no
-bundler, no external font, and — on three of the four — no dependency at all.
+**See:** the site at `localhost:5173`.
 
 | page | carries |
 |---|---|
 | `/` | the exploit as an artifact, the invariant, FINRA 26-15, the live vault |
-| `/app.html` | **the product.** The live book, price a real fill against a real mandate, post one, manage a position |
-| `/how.html` | the mechanism, the hole we found in our own live contract, the contract surface and its invariants, the three fillers |
-| `/limits.html` | everything this is not |
+| `/book`, `/mandate/:id` | **the product.** The live register, and every agreement priced against a real quote — then filled |
+| `/post`, `/account/:id` | post an agreement, manage a position |
+| `/verify` | paste any quote; the contract rules on it |
+| `/how` | the mechanism in three figures, each one folded over the full clause |
+| `/limits` | everything this is not |
 
-`app.html` is the one page that loads third-party code, and only when you click
-**Connect wallet**: signing needs a full-access signature, which needs a wallet,
-which needs a wallet library. Every action there also renders the exact
-transaction and the exact `near` command that performs it, from the same
-builder — so the command you copy cannot drift from the transaction the button
-sends, and you never have to connect anything to use it.
+Signing is the one thing that loads third-party code, and only when you click
+**connect**: a full-access signature needs a wallet, which needs a wallet
+library. Every action also renders the exact transaction and the exact `near`
+command that performs it, from the same builder — so the command you copy
+cannot drift from the transaction the button sends, and you never have to
+connect anything to use it.
 
 **Every number on every page is a keyless view call to `hallmarkfi.near`.** The
 site canonicalises quotes and does nothing else, so there is no figure it could
 have invented and no server between you and the chain.
 
 ```bash
-python3 web/assets/check.py       # the site's claims, against the code and the chain
-python3 web/assets/mkfixtures.py --check   # no signed quote is ever hand-typed
+python3 frontend/tools/check.py              # the app's claims, against the code and the chain
+python3 frontend/tools/mkfixtures.py --check # no signed quote is ever hand-typed
+npm --prefix frontend test                   # 84 assertions, no network
 ```
 
-Deploys to any static host as-is.
+`npm run build` emits a static `dist/`; `frontend/vercel.json` carries the
+headers and the single-page rewrite.
 
 ## 5. Watch three different agents price the same mandate
 
@@ -207,14 +210,11 @@ client/src/bin/bound.ts      what a live quote guarantees
 client/src/bin/post.ts       the owner
 client/src/bin/fill.ts       the reference filler
 client/src/fillers/          the three competing fillers + the race harness
-web/index.html               the overview
-web/app.html                 the app — book, pricing, posting, positions
-web/how.html                 mechanism, the audit, the contract, the fillers
-web/limits.html              everything this is not
-web/assets/hallmark.js       the shared runtime: view calls, canonicalisation, tx builders
-web/assets/app.js            the app's own logic
-web/assets/wallet.js         signing — the only file that loads third-party code
-web/assets/check.py          re-verifies the site's claims against source + chain
+frontend/src/pages/          the site: overview, register, agreement, post, account, verify, how, limits
+frontend/src/lib/hallmark.ts the shared runtime: view calls, canonicalisation, tx builders
+frontend/src/lib/fill.ts     filling an agreement; post.ts opens one
+frontend/src/wallet/         signing — the only code that loads a third-party library
+frontend/tools/check.py      re-verifies the app's claims against source + chain
 fixtures/                    signed captures + the canonicalisation script
 ARCHITECTURE.md              the full specification
 ```
@@ -247,7 +247,7 @@ This project was built with AI assistance (Anthropic's Claude, via Claude Code)
 for code, tests and prose, under line-by-line human review. Everything it
 produced was checked by running it: the contract is deployed on NEAR mainnet,
 the 58 Rust tests and 54 client assertions run from a clean clone, and
-`web/assets/check.py` re-verifies the site's factual claims against the source
+`frontend/tools/check.py` re-verifies the app's factual claims against the source
 and the live chain rather than against anybody's recollection.
 
 The two vulnerabilities in §2.10 and §2.11 were found by auditing a version that

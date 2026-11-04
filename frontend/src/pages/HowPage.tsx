@@ -2,7 +2,7 @@
  * How it works — the explanatory memorandum, figure first.
  *
  * Every part leads with one exhibit and one sentence a first-time reader can
- * stop at; the full text of web/how.html is kept, word for word where it
+ * stop at; the full text of the clause is kept, word for word where it
  * mattered, in the fold under each figure. The figures are live where the
  * chain has something to say (the gauntlet, the cost, the freshness bound).
  */
@@ -79,7 +79,7 @@ export function HowPage() {
   → from_slice(THE SAME bytes)`}</Code>
           <p>Hash first, parse second, same bytes both times. If a single byte differs from what the venue signed, verification fails before any field is read. <code>every_single_byte_is_covered_by_the_signature</code> asserts it by flipping each of the 692 bytes in turn.</p>
           <p><b>The signature is over the UTF-8 of the base58 string of the digest, not over the digest.</b> This is the single most load-bearing implementation detail in the project; getting it wrong produces a verifier that rejects every real quote.</p>
-          <p>The canonicaliser exists several times, on purpose — <code>fixtures/mkfix.py</code> (Python + from-scratch ed25519), <code>client/src/lib/canonical.ts</code>, <code>web/assets/hallmark.js</code>, and this app's port, tested against the others on every build. All agree, byte for byte and hash for hash, on all three fixtures.</p>
+          <p>The canonicaliser exists several times, on purpose — <code>fixtures/mkfix.py</code> (Python + from-scratch ed25519), <code>client/src/lib/canonical.ts</code>, and this app's port, tested against the others on every build. All three agree, byte for byte and hash for hash, on all three fixtures.</p>
           <p>Re-serialising JSON inside a contract to re-derive a hash is a reliable way to lose a week: Rust and TypeScript must agree byte-for-byte on key order, number formatting and unicode escaping, forever. Hallmark has no canonicalisation code in Rust at all.</p>
           <p className="mt-8 mb-2 text-[19px] font-semibold">What the owner signs fits on one form:</p>
           <MandateForm />

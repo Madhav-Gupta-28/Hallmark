@@ -1,11 +1,12 @@
 /* ============================================================================
-   Hallmark — the shared runtime, ported from web/assets/hallmark.js.
+   Hallmark — the shared runtime.
 
-   web/ is the reference implementation. This file keeps its logic identical
-   (one deliberate data difference: the third RPC endpoint, see `RPCS`) —
-   RPC failover, the request queue, the view cache, canonicalisation, the 1Click
-   calls and the transaction builders — and only adds types. If the two ever
-   disagree, web/assets/hallmark.js is right and this file is the bug.
+   This began as a port of the static site's hallmark.js, which was the
+   reference implementation until this app replaced it. The canonicaliser is
+   still not the only one: `fixtures/mkfix.py` (Python, from-scratch ed25519)
+   and `client/src/lib/canonical.ts` derive the same bytes and the same hash
+   independently, and the contract verifies against them on every sandbox run.
+   If this file and those two ever disagree, they are right and this is the bug.
 
    Deliberately NOT ported: the DOM chrome (`chrome`, `reveal`, `odometer`,
    `MARK`, the theme toggle) and the HTML-string helpers (`esc`, `rows`).
@@ -24,10 +25,9 @@ export const VAULT = "hallmarkfi.near";
  * through a queue that bounds concurrency, retries with backoff, and fails
  * over. All three answer `Access-Control-Allow-Origin: *`.
  *
- * DIFFERS FROM web/assets/hallmark.js — tell whoever owns web/:
  *   The reference lists `https://1rpc.io/near` third. It is dead for this use:
  *   it answers every `query` (and `status`) with JSON-RPC -32601 "the method
- *   query does not exist/is not available", pinned or unpinned, so in web/ it
+ *   query does not exist/is not available", pinned or unpinned, so it
  *   only ever costs a failed attempt plus backoff. Replaced here with
  *   `https://near.drpc.org` (a different operator from the other two).
  *
@@ -380,7 +380,7 @@ export async function getQuote(p: QuoteParams): Promise<QuoteResponse> {
 
 /* ------------------------------------------------------------------ fixtures
    The signed captures. The reference fetches assets/fixtures.json, generated
-   from contract/fixtures/ by web/assets/mkfixtures.py. Here the same object
+   from contract/fixtures/ by tools/mkfixtures.py. Here the same object
    comes from the `virtual:hallmark-fixtures` module, built from the same files
    by ../../fixtures.ts at build time — never transcribed by hand. Loaded lazily
    so it stays out of the main bundle, and cached like the reference. */

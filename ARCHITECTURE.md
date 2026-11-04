@@ -1187,34 +1187,58 @@ storage-registered on a token cannot brick a fill.
 | `client/src/fillers/edge.ts` | TypeScript | an independent filler, written from §2.1 and §5.3 alone |
 | `client/src/fillers/adapted.ts` | TypeScript | NEAR's own official Intents agent, pointed at a vault (§6.2) |
 | `client/src/fillers/race.ts` | TypeScript | all three price one mandate; cross-checks the arithmetic three ways |
-| `web/` | 7 static pages | the site. **No framework, no bundler, no dependency, zero external scripts or fonts** — see §4.4 |
-| `web/assets/hallmark.css` | CSS | the design system: one stylesheet, two themes, three semantic colours |
-| `web/assets/hallmark.js` | JS module | the shared runtime: keyless view calls, canonicalisation, chrome |
-| `web/assets/mkfixtures.py` | Python | generates `fixtures.json` from `contract/fixtures/` so no signed quote is ever hand-typed |
-| `web/assets/check.py` | Python | checks the site's factual claims against the code and the live chain |
+| `frontend/` | React 19 + Vite, 8 routes | the site — see §4.3b |
+| `frontend/src/lib/hallmark.ts` | TypeScript | the shared runtime: keyless view calls, canonicalisation, transaction builders |
+| `frontend/src/lib/post.ts`, `fill.ts` | TypeScript | opening an agreement, and filling one |
+| `frontend/tools/mkfixtures.py` | Python | generates `fixtures.json` from `contract/fixtures/` so no signed quote is ever hand-typed |
+| `frontend/tools/check.py` | Python | checks the app's factual claims against the code and the live chain |
 | `test-token/` | Rust | NEP-141 + full NEP-145, so a payout can be made to fail on purpose |
 
 > **Correction kept.** This table previously named `near-sdk 5.30` (contradicting
 > §3.14 four pages earlier), a `filler/` and `filler-adapted/` that do not
-> exist, and `web/` as Next.js. The proof page needs no framework: both 1Click
-> and NEAR RPC answer with `Access-Control-Allow-Origin: *`, so the page talks
-> to the real API and the real chain from the browser with nothing in between.
+> exist, and `web/` as Next.js. Both 1Click and NEAR RPC answer with
+> `Access-Control-Allow-Origin: *`, so the page talks to the real API and the
+> real chain from the browser with nothing in between — which is still true of
+> the app that replaced it.
+>
+> **And this decision was later reversed.** The site was hand-written with no
+> framework, for the reason argued in §4.3b, and on **2026-11-04** it was
+> replaced by a React build and `web/` was deleted. What that bought and what it
+> cost is recorded in §4.3b rather than quietly dropped.
 
 ### 4.3b The site
 
-**Four pages.** Hand-written, with no framework, no build step, no bundler and
-no external font. Three of the four load **no third-party code at all**; the
-fourth loads some, lazily, and only to sign. That is not minimalism for its own
-sake: a project whose pitch is *"we removed the things you have to trust"* should
-not ask a reader to trust a 300 KB dependency graph to see the claim. A judge can
-read the whole thing.
+**Eight routes**, a React 19 + Vite application in `frontend/`.
 
-| page | for | carries |
+| route | for | carries |
 |---|---|---|
-| `index.html` | everyone, first | the exploit as an artifact, the invariant, FINRA 26-15, the refusal list, the live vault |
-| `app.html` | **the user, and the judge** | the live book; price a real fill against a real mandate; post one; manage a position |
-| `how.html` | the engineer, the auditor, an agent developer | the mechanism and the animated fill sequence, the field map, the freshness slider, the hole found in the live contract, the exported surface, the invariants, exact storage accounting, gas, the three fillers |
-| `limits.html` | everyone | §2.9 and §14 in full, unhedged |
+| `/` | everyone, first | the exploit as an artifact, the invariant, FINRA 26-15, the live vault |
+| `/book` | the user, and the judge | the live register, every figure a keyless view call |
+| `/mandate/:id` | **the user, and the judge** | one agreement: its terms as written on chain, its performance, a live quote priced at both delivery sizes — and the fill |
+| `/post`, `/account/:id` | the owner | open an agreement; manage a position |
+| `/verify` | the sceptic | paste any quote; the contract rules on it |
+| `/how` | the engineer, the auditor, an agent developer | three figures, each folded over the whole clause |
+| `/limits` | everyone | §2.9 and §14 in full, unhedged |
+
+> **This replaced a hand-written site, and the trade is worth stating.** `web/`
+> was four static pages with no framework, no build step and no bundler, and
+> three of the four loaded no third-party code at all. The argument for it was
+> that a project whose pitch is *"we removed the things you have to trust"*
+> should not ask a reader to trust a dependency graph to see the claim — a judge
+> could read the whole page.
+>
+> That property is gone, and nothing replaces it: the app is a bundle, and
+> reading it is not the same as reading the source. **What is unchanged is the
+> part the claim actually rests on** — the app still computes almost nothing,
+> every figure is still a keyless view call to `hallmarkfi.near`, and the
+> canonicaliser is still cross-checked against two independent implementations
+> that have no framework at all (§5.1). The thing a reader must trust to
+> *verify* Hallmark was never the page; it is the contract, and that is
+> unchanged.
+>
+> What the bundle bought: per-agreement pages, a fill flow with a confirm
+> dialog that re-reads the chain before it asks for a signature, and one
+> implementation instead of two drifting copies of the same runtime.
 
 > **It was seven pages, and that was one page per thing I wanted to say rather
 > than one per thing a reader wanted to do.** `proof.html`, `exploit.html`,
@@ -1251,8 +1275,8 @@ guarantee: a web page cannot be handed a key that quietly moves someone's funds.
 Signing therefore needs a full-access signature, which needs a wallet, which
 needs a wallet library.
 
-That library is confined to `web/assets/wallet.js`, imported by one page, and
-**not fetched at all until the reader clicks Connect**. Two candidates were
+That library is confined to `frontend/src/wallet/`, and the selector is
+**not constructed at all until the reader clicks connect**. Two candidates were
 tested in a real browser from a plain ES-module page with no build step:
 
 | candidate | result |
@@ -1357,7 +1381,7 @@ three independent *producers* of canonical bytes:
 |---|---|---|
 | `fixtures/mkfix.py` | Python, `json.dumps(sort_keys=True)` + from-scratch RFC-8032 ed25519 | generating and re-verifying the fixtures |
 | `client/src/lib/canonical.ts` | TypeScript, `json-stable-stringify` | the CLIs and the reference filler |
-| `web/index.html` | ~20 lines of browser JS, no dependency | the proof page |
+| `frontend/src/lib/hallmark.ts` | TypeScript, hand-written stable stringify | the app |
 
 All three agree, byte for byte and hash for hash, on all three fixtures:
 

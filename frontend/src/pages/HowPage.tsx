@@ -25,37 +25,53 @@ export function HowPage() {
   return (
     <main className="doc">
       <section className="pt-10">
-        <div className="label text-faint">Explanatory memorandum · seven figures · read the folds only if you want to</div>
-        <h1 className="mt-3 font-serif text-[clamp(40px,7vw,88px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
+        <h1 className="font-serif text-[clamp(40px,7vw,88px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
           How the clauses are <span className="hl">enforced.</span>
         </h1>
-        <p className="mt-5 max-w-[700px] text-[20px]">
-          One contract, nine checks, one formula. Each figure below is the whole idea of its section; the fine print
-          is folded underneath.
+        <p className="mt-5 max-w-[640px] text-[20px]">
+          Three figures. Each one is the whole idea of its section — every other
+          diagram, and every word of the fine print, is folded underneath it.
         </p>
         <nav className="typed mt-6 flex flex-wrap gap-x-5 gap-y-1 text-[15px]" aria-label="Figures">
-          {[["#fill", "1 · a fill"], ["#gauntlet", "2 · the nine checks"], ["#cost", "3 · the cost"], ["#hole", "4 · the hole we found"],
-            ["#contract", "5 · the contract"], ["#storage", "6 · storage"], ["#fillers", "7 · the fillers"]].map(([h, t]) => (
+          {[["#fill", "1 · the filler pays first"], ["#cost", "2 · the cost"], ["#bound", "3 · the bound"]].map(([h, t]) => (
             <a key={h} href={h} className="lnk">{t}</a>
           ))}
         </nav>
       </section>
 
-      <Figure id="fill" no="1" title="A fill, in nine steps"
-        takeaway={<>The filler hands over the output <span className="hl">first</span>. Only once it is inside the vault, and checked, does anybody get paid.</>}
+      {/* ------------------------------------------------------- 1 · mechanism */}
+      <Figure id="fill" no="1" title="The filler delivers first"
+        takeaway={<>The output is inside the vault, and checked, <span className="hl">before</span> anybody is paid. There is no moment when either side is exposed.</>}
         full={<>
           <p>Watch where the money is at each step. The output is inside the vault before the input is credited to anybody, so there is no interval in which either side is exposed — and no cross-contract call in the verification path, so there is nothing to roll back.</p>
           <p><b>No unsigned field is trusted.</b> <code>depositAddress</code> is never used, because the vault never sends the owner's funds anywhere a filler nominated.</p>
           <p><b>No attribution problem.</b> The delivered amount is a function argument, not a balance delta — so concurrent fills cannot be confused, and no filler can claim another's delivery.</p>
           <p><b>No custody window.</b> Step 5 completes before step 8 begins. Nobody ever holds a counterparty's funds, so there is nothing to misappropriate and nothing to unwind.</p>
           <p><b>The cost of this choice, stated.</b> The filler must front the output, so it needs destination-asset inventory or must source it first and carry the price risk in between. That is what a dealer does, and it is the price of closing a hole that cannot otherwise be closed.</p>
+          <p className="mt-8 mb-2 text-[19px] font-semibold">Every token that moves comes through one method:</p>
+          <OnePath />
+
+          <p><b>Twenty-three exported methods</b> in <code>contract/src/lib.rs</code>: <code>ft_on_transfer</code> (open · fund · fill), <code>storage_deposit</code>, <code>storage_withdraw</code>, <code>withdraw</code>, <code>cancel</code>, <code>reap</code>, <code>new</code>, <code>migrate</code>, two private payout callbacks, and thirteen views — <code>get_mandates</code>, <code>get_mandate</code>, <code>mandate_count</code>, <code>open_mandate_count</code>, <code>get_credit</code>, <code>storage_balance_of</code>, <code>storage_cost_estimate</code>, <code>is_signed</code>, <code>quote_signer</code>, <code>worst_cost</code>, <code>realised_cost</code>, <code>quote_age_secs</code>, <code>dry_check</code>. The views are the proof surface: every guarantee can be exercised with no key, no funds and no deposit.</p>
+          <p><b>Two views deliberately do not check the signature.</b> <code>worst_cost</code> and <code>realised_cost</code> price whatever bytes they are handed — useful on a quote you are still deciding about — which is why <code>dry_check</code>, which does verify, is the one a filler consults before spending anything.</p>
+          <p><b>Eight kinds of terms <code>open</code> refuses outright:</b> origin equal to destination; a destination that is not <code>nep141:</code>; a ceiling above 10,000 bps; a zero max fill; a zero age bound; an age bound over 30 days; an expiry already past; and a recipient other than the vault.</p>
+          <p><b>What it costs to run.</b> A whole fill on mainnet: 30.48 TGas, every receipt counted — 10% of one transaction's limit. The verification itself: 7.8 TGas. Tests from a clean clone: 58 Rust (30 unit + 28 against a real sandbox node) plus 54 client assertions; no network, no key, no funds.</p>
+          <p><b>The toolchain trap.</b> nearcore's VM only accepts MVP WebAssembly. From rustc 1.87 on the output is unusable — and <code>DeployContract</code> still succeeds, because deploying does not compile the module; every later call fails with <code>CompilationError(PrepareError(Deserialization))</code>. Hence near-sdk <code>=5.24.1</code>, near-sys <code>=0.2.9</code>, and a 1.86 wasm toolchain via <code>./build.sh</code>.</p>
         </>}>
-        <FillFlow />
+        <div className="mx-auto max-w-[960px]"><FillFlow /></div>
       </Figure>
 
-      <Figure id="gauntlet" no="2" title="Nine checks, in the order the contract runs them"
-        takeaway={<>A delivery has to pass every gate. The first one it fails names the clause it broke — and the tokens go straight back.</>}
+      {/* ------------------------------------------------------------ 2 · cost */}
+      <Figure id="cost" no="2" title="The cost is the gap between what you paid and what arrived"
+        takeaway={<>Both dollar figures are signed by the venue, so every hidden fee is already inside the gap — and it is measured on what <i>actually</i> arrived.</>}
         full={<>
+          <Code>cost = 1 − (amountOutUsd × delivered ÷ amountOut) ÷ amountInUsd</Code>
+          <p>Both USD marks are inside the signed payload, so the contract reads bytes it was handed and does integer arithmetic.</p>
+          <p><b>Rounding has exactly one safe direction.</b> Every truncation must make the reported cost larger, never smaller — a bound that understates cost is not a bound. Four of the five steps round down, which pushes cost up; the last, <code>bps = shortfall / 1e9</code>, must round <i>up</i>, and was the one that needed fixing. On the honest fixture the exact cost is 159.348 bps; truncation reported 159, understating the bound. It now uses <code>div_ceil</code> and reports 160, pinned by <code>the_reported_cost_is_never_below_the_true_cost</code>.</p>
+          <p><b>256-bit intermediates are not optional.</b> wNEAR has 24 decimals, so a $1M order is ~1e30 base units and delivered × 1e9 is ~1e39 — which overflows u128 (max ≈ 3.4e38). <code>mul_div</code> computes a·b as a 256-bit (hi, lo) pair and does restoring long division, 128 iterations.</p>
+          <p><b>The quieter failure is in Exhibit A.</b> Honoured in full it still costs 503 bps, because 500 bps of <code>appFees</code> are already baked into the signed <code>amountOutUsd</code>. The contract cannot read <code>appFees</code> — it is not in the bytes being verified — and prices it to the basis point regardless.</p>
+          <p className="mt-8 mb-2 text-[19px] font-semibold">Before that number is computed, a delivery passes nine gates. The first it fails names the clause it broke:</p>
+          <Gauntlet />
+
           <p>The contract never serialises JSON. It is handed the exact bytes the client built, and does this:</p>
           <Code>{`sha256(bytes)
   → base58
@@ -65,70 +81,41 @@ export function HowPage() {
           <p><b>The signature is over the UTF-8 of the base58 string of the digest, not over the digest.</b> This is the single most load-bearing implementation detail in the project; getting it wrong produces a verifier that rejects every real quote.</p>
           <p>The canonicaliser exists several times, on purpose — <code>fixtures/mkfix.py</code> (Python + from-scratch ed25519), <code>client/src/lib/canonical.ts</code>, <code>web/assets/hallmark.js</code>, and this app's port, tested against the others on every build. All agree, byte for byte and hash for hash, on all three fixtures.</p>
           <p>Re-serialising JSON inside a contract to re-derive a hash is a reliable way to lose a week: Rust and TypeScript must agree byte-for-byte on key order, number formatting and unicode escaping, forever. Hallmark has no canonicalisation code in Rust at all.</p>
-        </>}>
-        <Gauntlet />
-      </Figure>
+          <p className="mt-8 mb-2 text-[19px] font-semibold">What the owner signs fits on one form:</p>
+          <MandateForm />
+          <p className="mt-8 mb-2 text-[19px] font-semibold">And each guarantee names the line of code that enforces it:</p>
+          <InvariantWall items={INVARIANTS} />
+          <p className="mt-8 mb-2 text-[19px] font-semibold">Whoever writes a byte pays for that byte — measured, never estimated:</p>
+          <StorageBars />
 
-      <Figure id="cost" no="3" title="The cost is the gap between what you paid and what arrived"
-        takeaway={<>Both dollar figures are signed by the venue, so every hidden fee is already inside the gap. The contract measures it on what <i>actually</i> arrived.</>}
-        full={<>
-          <Code>cost = 1 − (amountOutUsd × delivered ÷ amountOut) ÷ amountInUsd</Code>
-          <p>Both USD marks are inside the signed payload, so the contract reads bytes it was handed and does integer arithmetic.</p>
-          <p><b>Rounding has exactly one safe direction.</b> Every truncation must make the reported cost larger, never smaller — a bound that understates cost is not a bound. Four of the five steps round down, which pushes cost up; the last, <code>bps = shortfall / 1e9</code>, must round <i>up</i>, and was the one that needed fixing. On the honest fixture the exact cost is 159.348 bps; truncation reported 159, understating the bound. It now uses <code>div_ceil</code> and reports 160, pinned by <code>the_reported_cost_is_never_below_the_true_cost</code>.</p>
-          <p><b>256-bit intermediates are not optional.</b> wNEAR has 24 decimals, so a $1M order is ~1e30 base units and delivered × 1e9 is ~1e39 — which overflows u128 (max ≈ 3.4e38). <code>mul_div</code> computes a·b as a 256-bit (hi, lo) pair and does restoring long division, 128 iterations.</p>
-          <p><b>The quieter failure is in Exhibit A.</b> Honoured in full it still costs 503 bps, because 500 bps of <code>appFees</code> are already baked into the signed <code>amountOutUsd</code>. The contract cannot read <code>appFees</code> — it is not in the bytes being verified — and prices it to the basis point regardless.</p>
+          <p>NEAR stakes part of an account's balance per byte of state it holds, so somebody has to pay for a mandate's record. v1's answer was the vault, which gave a stranger about ten times leverage against it: roughly ten cents of gas and a live vault could no longer write state at all. v2 charged a fixed 1,536 bytes — also wrong, and its first version refunded more on cancel than it freed. v3 stops guessing: one helper runs at the end of every path that writes state, flushes the collections, diffs <code>env::storage_usage()</code>, and charges or credits exactly the difference.</p>
+          <p><b>A trap inside the trap.</b> <code>near_sdk::store</code> collections buffer their writes and flush when the call ends, so <code>storage_usage()</code> immediately after a remove still reports the old figure — and the refund came out as zero. Hence the explicit flush.</p>
         </>}>
         <CostGauge />
       </Figure>
 
-      <Figure id="hole" no="4" title="The hole we found in our own live contract"
-        takeaway={<>v1 trusted a deadline the <i>filler</i> chooses — ten years was free. v3 reads the time the <i>venue</i> signed, and refuses anything older than you allow.</>}
-        full={<>
-          <p>The bound is denominated in <code>amountInUsd</code> and <code>amountOutUsd</code>. Those numbers were true when the venue signed, and not necessarily now. v1's only freshness check was the quote's own deadline — and <code>deadline</code> is supplied by whoever requests the quote, which 1Click signs unquestioned. Measured live on 2026-11-01: deadlines of +1, +30, +365 and +3650 days were all signed.</p>
-          <p>And <code>dry:true</code> quotes are free, unauthenticated, and still signed. So the attack cost nothing: ask for quotes matching an open mandate with deadlines years out, keep a library of them — free options on the owner's escrow, each struck at the prices of the day it was minted — and exercise whichever became profitable when the market moved. The owner's <code>max_cost_bps</code> was enforced exactly, against a market that no longer existed.</p>
-          <p>The same keyless <code>dry_check</code>, same four arguments: against v1 on 2026-11-01, <code>ALLOWED at 60 bps</code>; against v2 on 2026-11-02, <code>REFUSED QuoteTooOld</code>. The fix was a field already inside the signature — <code>timestamp</code>, written by the venue — which v1 simply never read. <b>Being signed and being trustworthy are different properties.</b></p>
-          <p><b>And a real transaction, not a simulation.</b> A quote was banked for 326 seconds against a 300-second bound, then a fill was broadcast with real USDT: <A href={`${EXPLORER}/txns/3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc`}>3JKAnmb…</A>. The vault refused it and the tokens came back. <b>A refused fill is a successful transaction</b> — NEP-141 catches the receiver's panic to make the refund work, so the outer status is <code>SuccessValue</code> and the refusal sits in an inner receipt. Anything reporting on a fill must read <code>receipts_outcome</code>.</p>
-          <p><b>Why an audit found these, and reasoning did not.</b> The rounding bug (159 reported for 159.348), the storage bug twice (a fixed charge, then a refund larger than what was freed), and NEAR's own agent example returning HTTP 400 — every one found by running the code, not reading it.</p>
-        </>}>
-        <HoleTimeline />
-        <p className="mb-2 mt-8 text-[19px] font-semibold">Try it: how fresh do you insist on?</p>
-        <FreshnessWidget />
-      </Figure>
-
-      <Figure id="contract" no="5" title="One door in, four numbers, sixteen promises"
-        takeaway={<>Every token that moves comes through a single method. What the owner signs fits on one form. And each guarantee names the line of code that enforces it.</>}
-        full={<>
-          <p><b>Twenty-three exported methods</b> in <code>contract/src/lib.rs</code>: <code>ft_on_transfer</code> (open · fund · fill), <code>storage_deposit</code>, <code>storage_withdraw</code>, <code>withdraw</code>, <code>cancel</code>, <code>reap</code>, <code>new</code>, <code>migrate</code>, two private payout callbacks, and thirteen views — <code>get_mandates</code>, <code>get_mandate</code>, <code>mandate_count</code>, <code>open_mandate_count</code>, <code>get_credit</code>, <code>storage_balance_of</code>, <code>storage_cost_estimate</code>, <code>is_signed</code>, <code>quote_signer</code>, <code>worst_cost</code>, <code>realised_cost</code>, <code>quote_age_secs</code>, <code>dry_check</code>. The views are the proof surface: every guarantee can be exercised with no key, no funds and no deposit.</p>
-          <p><b>Two views deliberately do not check the signature.</b> <code>worst_cost</code> and <code>realised_cost</code> price whatever bytes they are handed — useful on a quote you are still deciding about — which is why <code>dry_check</code>, which does verify, is the one a filler consults before spending anything.</p>
-          <p><b>Eight kinds of terms <code>open</code> refuses outright:</b> origin equal to destination; a destination that is not <code>nep141:</code>; a ceiling above 10,000 bps; a zero max fill; a zero age bound; an age bound over 30 days; an expiry already past; and a recipient other than the vault.</p>
-          <p><b>What it costs to run.</b> A whole fill on mainnet: 30.48 TGas, every receipt counted — 10% of one transaction's limit. The verification itself: 7.8 TGas. Tests from a clean clone: 58 Rust (30 unit + 28 against a real sandbox node) plus 54 client assertions; no network, no key, no funds.</p>
-          <p><b>The toolchain trap.</b> nearcore's VM only accepts MVP WebAssembly. From rustc 1.87 on the output is unusable — and <code>DeployContract</code> still succeeds, because deploying does not compile the module; every later call fails with <code>CompilationError(PrepareError(Deserialization))</code>. Hence near-sdk <code>=5.24.1</code>, near-sys <code>=0.2.9</code>, and a 1.86 wasm toolchain via <code>./build.sh</code>.</p>
-        </>}>
-        <OnePath />
-        <div className="mt-6"><MandateForm /></div>
-        <div className="mt-6"><InvariantWall items={INVARIANTS} /></div>
-      </Figure>
-
-      <Figure id="storage" no="6" title="Whoever writes a byte pays for that byte"
-        takeaway={<>Nothing is estimated. Each call is charged exactly the bytes it wrote, and gets back exactly the bytes it freed.</>}
-        full={<>
-          <p>NEAR stakes part of an account's balance per byte of state it holds, so somebody has to pay for a mandate's record. v1's answer was the vault, which gave a stranger about ten times leverage against it: roughly ten cents of gas and a live vault could no longer write state at all. v2 charged a fixed 1,536 bytes — also wrong, and its first version refunded more on cancel than it freed. v3 stops guessing: one helper runs at the end of every path that writes state, flushes the collections, diffs <code>env::storage_usage()</code>, and charges or credits exactly the difference.</p>
-          <p><b>A trap inside the trap.</b> <code>near_sdk::store</code> collections buffer their writes and flush when the call ends, so <code>storage_usage()</code> immediately after a remove still reports the old figure — and the refund came out as zero. Hence the explicit flush.</p>
-        </>}>
-        <StorageBars />
-      </Figure>
-
-      <Figure id="fillers" no="7" title="Three fillers, one bound — and NEAR's own agent among them"
-        takeaway={<>Same live quote, three strategies, all inside the ceiling. The agreement does not care who fills it.</>}
+      {/* ----------------------------------------------------------- 3 · bound */}
+      <Figure id="bound" no="3" title="Three fillers, one ceiling"
+        takeaway={<>The same live quote, three independent strategies, all inside the owner's bound. The agreement does not care who fills it.</>}
         full={<>
           <p><code>bin/fill.ts</code> splits the spread and asks the contract for a verdict before spending anything. <code>fillers/edge.ts</code> fills only when its spread clears a floor it sets, and computes the cost itself — written from the specification alone, it exits non-zero if it ever disagrees with the contract. <code>fillers/adapted.ts</code> is the official NEAR Intents agent flow pointed at a vault: what a stranger's agent must change to become a filler.</p>
           <p><b>And the limit, stated.</b> First-come-first-served means whoever lands first wins, not whoever is cheapest. The owner gets their ceiling, not the best price in the market. An auction window is the natural next version and is not claimed for v1.</p>
           <p><b>Why a stranger would bother.</b> The spread is the whole fee, so there is no fee field: the filler keeps the gap between what it sourced the output for and what it delivered, and that is already inside the owner's ceiling. For scale, 1Click's own rake is 20 bps. The capital requirement is real — inventory, or source-then-deliver carrying the price risk in between — and it is the price of closing the <code>depositAddress</code> hole. And every fill emits a receipt bound to the filler's account, so a filler accumulates a provable execution record rather than a self-reported one.</p>
           <p><b>What is not claimed.</b> There is no third-party filler ecosystem. Three fillers, all written by us or adapted by us.</p>
+          <p className="mt-8 mb-2 text-[19px] font-semibold">Turning NEAR's own agent into a filler takes four changes:</p>
+          <Redline />
+          <p className="mt-8 mb-2 text-[19px] font-semibold">The bound also has a clock — and v1 got it wrong, on mainnet:</p>
+          <HoleTimeline />
+
+          <p>The bound is denominated in <code>amountInUsd</code> and <code>amountOutUsd</code>. Those numbers were true when the venue signed, and not necessarily now. v1's only freshness check was the quote's own deadline — and <code>deadline</code> is supplied by whoever requests the quote, which 1Click signs unquestioned. Measured live on 2026-11-01: deadlines of +1, +30, +365 and +3650 days were all signed.</p>
+          <p>And <code>dry:true</code> quotes are free, unauthenticated, and still signed. So the attack cost nothing: ask for quotes matching an open mandate with deadlines years out, keep a library of them — free options on the owner's escrow, each struck at the prices of the day it was minted — and exercise whichever became profitable when the market moved. The owner's <code>max_cost_bps</code> was enforced exactly, against a market that no longer existed.</p>
+          <p>The same keyless <code>dry_check</code>, same four arguments: against v1 on 2026-11-01, <code>ALLOWED at 60 bps</code>; against v2 on 2026-11-02, <code>REFUSED QuoteTooOld</code>. The fix was a field already inside the signature — <code>timestamp</code>, written by the venue — which v1 simply never read. <b>Being signed and being trustworthy are different properties.</b></p>
+          <p><b>And a real transaction, not a simulation.</b> A quote was banked for 326 seconds against a 300-second bound, then a fill was broadcast with real USDT: <A href={`${EXPLORER}/txns/3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc`}>3JKAnmb…</A>. The vault refused it and the tokens came back. <b>A refused fill is a successful transaction</b> — NEP-141 catches the receiver's panic to make the refund work, so the outer status is <code>SuccessValue</code> and the refusal sits in an inner receipt. Anything reporting on a fill must read <code>receipts_outcome</code>.</p>
+          <p><b>Why an audit found these, and reasoning did not.</b> The rounding bug (159 reported for 159.348), the storage bug twice (a fixed charge, then a refund larger than what was freed), and NEAR's own agent example returning HTTP 400 — every one found by running the code, not reading it.</p>
+          <p className="mt-8 mb-2 text-[19px] font-semibold">Try it: how fresh do you insist on?</p>
+          <FreshnessWidget />
         </>}>
         <RaceRuler />
-        <p className="mb-2 mt-8 text-[19px] font-semibold">Turning NEAR's own agent into a filler takes four changes:</p>
-        <Redline />
       </Figure>
 
       <p className="mt-16 text-[19px]">

@@ -16,7 +16,6 @@
     "@fontsource/eb-garamond": "^5.3.0",
     "@near-wallet-selector/core": "8.10.2",
     "@near-wallet-selector/meteor-wallet": "8.10.2",
-    "@near-wallet-selector/meteor-wallet-app": "^8.10.2",
     "@near-wallet-selector/my-near-wallet": "8.10.2",
     "@tanstack/react-query": "^5.105.3",
     "buffer": "6.0.3",

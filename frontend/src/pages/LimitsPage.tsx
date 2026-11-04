@@ -20,7 +20,7 @@ export function LimitsPage() {
         </h1>
         <p className="mt-5 max-w-[700px] text-[20px]">
           What Hallmark does not do, the one hole it cannot close, and every limit we know of — collected here rather
-          than buried. Five exhibits; the fine print is folded under each.
+          than buried. Three exhibits; every other limit is folded under them.
         </p>
         <div className="pointer-events-none absolute -top-2 right-0 hidden xl:block">
           <Seal top="read this" big="§D" bottom="before signing" size={140} tilt={11} />
@@ -57,37 +57,29 @@ export function LimitsPage() {
           <p>An attacker could mint quotes with any terms, and Hallmark would accept any that fit the ceiling. The guarantee degrades from cryptographic to the ceiling the owner signed — which still caps the loss at <code>max_cost_bps</code> of <code>max_fill</code> per fill rather than the whole escrow, but the crypto is gone.</p>
           <p><b>This is not fixable from inside the design.</b> It is stated rather than buried.</p>
           <p>The weakest assumption the project is willing to make is the neighbouring one: that 1Click's signed <code>amountInUsd</code> and <code>amountOutUsd</code> marks are honest. The whole bound is denominated in them. If the venue marks dishonestly, the bound is wrong — but it is their own signature, which is why this is the weakest link we accept and why it is worth accepting.</p>
+          <p className="mt-8 mb-2 text-[19px] font-semibold">The second open line: the upgrade key this project still holds, on purpose.</p>
+          <KeyTimeline />
+
+          <p>“Nobody to switch it off” is only true once it is executed. After the final deploy the full-access key gets deleted, so the contract cannot be upgraded or paused by anyone, including us. Two costs, both accepted and both stated: <b>a bug found later cannot be patched</b>, only superseded; and <b>the storage lock becomes permanent</b> — an account with no full-access key cannot be deleted, and deleting the account is the only way to release the NEAR staked against the contract's code, 2.76 NEAR for this contract. Immutability and recoverability are the same key; you cannot keep both.</p>
+          <p><b>The key still exists, deliberately.</b> This project found a critical bug in a contract that was already live, twice — and fixed both by redeploying. Had the key been gone, neither could have been fixed. Because the cost is identical whenever it is paid, the key is deleted last, after the hackathon's winners are announced.</p>
         </>}>
         <KeyChain />
       </Figure>
 
       <Figure no="D3" title="Every adversary, and what happens to them"
         takeaway={<>Of eleven attacks we model, nine are impossible, closed or bounded. Two are open, and they are named.</>}
-        full={<p>The threat model, in full, is the board above: each adversary, what they can do, and the outcome. The two open lines are the venue's signing key (Exhibit D2) and the upgrade key this project still holds (Exhibit D5).</p>}>
+        full={<>
+          <p>The threat model, in full, is the board above: each adversary, what they can do, and the outcome. Both open lines — the venue's signing key and the upgrade key this project still holds — are Exhibit D2.</p>
+          <p className="mt-8 mb-2 text-[19px] font-semibold">And the ten limits that are not attacks, numbered. None of these loses the owner money:</p>
+          <KnownLimits />
+        </>}>
         <ThreatBoard />
       </Figure>
 
-      <Figure no="D4" title="Ten known limits, numbered"
-        takeaway={<>None of these loses the owner money. Most are the price of a guarantee elsewhere — and each is stated.</>}>
-        <KnownLimits />
-      </Figure>
-
-      <Figure no="D5" title="The key that is still held — on purpose"
-        takeaway={<>The contract has no admin function, but the account's upgrade key still exists. It saved the project twice. It is deleted last — and after that, nobody can fix or switch off anything.</>}
-        full={<>
-          <p>“Nobody to switch it off” is only true once it is executed. After the final deploy the full-access key gets deleted, so the contract cannot be upgraded or paused by anyone, including us. Two costs, both accepted and both stated: <b>a bug found later cannot be patched</b>, only superseded; and <b>the storage lock becomes permanent</b> — an account with no full-access key cannot be deleted, and deleting the account is the only way to release the NEAR staked against the contract's code, 2.76 NEAR for this contract. Immutability and recoverability are the same key; you cannot keep both.</p>
-          <p><b>The key still exists, deliberately.</b> This project found a critical bug in a contract that was already live, twice — and fixed both by redeploying. Had the key been gone, neither could have been fixed. Because the cost is identical whenever it is paid, the key is deleted last, after the hackathon's winners are announced.</p>
-        </>}>
-        <KeyTimeline />
-      </Figure>
-
-      <Figure no="D6" title="What success looks like, honestly"
-        takeaway={<>Not a billion-dollar company. A stranger delegating a real order — and a filler they do not know filling it inside the bound.</>}
-        full={<>
-          <p>The near-term test is whether anyone delegates a real order to a mandate they did not write, and whether a filler they do not know fills it inside the bound. That is a small number of people doing a real thing, and it is the only number worth watching first.</p>
-          <p>The larger shape, stated as a thesis and not a projection: if delegated machine execution becomes ordinary, something has to bound it, and the thing that bounds it is positioned to become the standard rather than an implementation. FINRA asking about safe harbors is the tell. Revenue, at 1Click's own 20 bps anchor against $4.80B a month of settled Intents volume, is a real business long before it is a large one. We are not claiming the large one.</p>
-        </>}>
-        <div className="grid gap-px border-2 border-ink bg-ink md:grid-cols-2">
+      <section className="mt-20">
+        <h2 className="font-serif text-[clamp(26px,3.4vw,40px)] font-extrabold leading-tight">What success looks like, honestly</h2>
+        <p className="mt-3 max-w-[820px] text-[clamp(20px,2.2vw,25px)] leading-snug">Not a billion-dollar company. A stranger delegating a real order — and a filler they do not know filling it inside the bound.</p>
+        <div className="mt-7 grid gap-px border-2 border-ink bg-ink md:grid-cols-2">
           <div className="bg-paper p-6">
             <p className="label text-sign">The first number worth watching</p>
             <p className="mt-2 font-serif text-[26px] font-bold leading-snug">One real order, drawn up by someone else, filled by a stranger, inside the bound.</p>
@@ -97,7 +89,7 @@ export function LimitsPage() {
             <p className="mt-2 text-[18px]">If machines execute for us, something has to bound them. At 1Click's 20 bps against <b>$4.80B a month</b> of Intents volume, that is a real business long before it is a large one.</p>
           </div>
         </div>
-      </Figure>
+      </section>
 
       <p className="mt-16 text-[19px]"><L to="/how">How the clauses are enforced →</L> · <L to="/">Back to the agreement</L></p>
     </main>

@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { useReadingProgress, useReveal } from "@/motion/reveal";
 import { AccountIndex, AccountPage } from "@/pages/AccountPage";
 import { BookPage } from "@/pages/BookPage";
+import { FillPage } from "@/pages/FillPage";
 import { HowPage } from "@/pages/HowPage";
 import { Landing } from "@/pages/Landing";
 import { LimitsPage } from "@/pages/LimitsPage";
@@ -44,7 +45,8 @@ export default function App() {
             <Route path="/account" element={<AccountIndex />} />
             <Route path="/account/:id" element={<AccountPage />} />
             <Route path="/verify" element={<VerifyPage />} />
-            <Route path="/how" element={<HowPage />} />
+            <Route path="/fill" element={<FillPage />} />
+          <Route path="/how" element={<HowPage />} />
             <Route path="/limits" element={<LimitsPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

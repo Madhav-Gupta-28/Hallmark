@@ -120,6 +120,7 @@ cd frontend && npm install && npm run dev
 | `/` | the exploit as an artifact, the invariant, FINRA 26-15, the live vault |
 | `/book`, `/mandate/:id` | **the product.** The live register, and every agreement priced against a real quote — then filled |
 | `/post`, `/account/:id` | post an agreement, manage a position |
+| `/fill` | **the other side.** What a filler earns, the four changes that turn NEAR's own agent into one, and what is open right now |
 | `/verify` | paste any quote; the contract rules on it |
 | `/how` | the mechanism in three figures, each one folded over the full clause |
 | `/limits` | everything this is not |
@@ -165,6 +166,34 @@ the spec alone, and by the contract.
 `[1]`..`[4]` in the source. The biggest one: the official agent sends the
 *origin* asset to a `depositAddress`; a filler sends the *destination* asset to
 the vault, because `depositAddress` is not covered by the venue's signature.
+
+### Become the fourth filler
+
+Nobody grants permission and nothing registers you. The register is a keyless
+view call, and the contract never asks who you are — it reads what arrived and
+whether it breaks the owner's terms.
+
+```bash
+npm run bound      # what a live quote actually guarantees — no key, no funds
+npm run race       # three fillers price the same mandate — no key, no funds
+
+export NEAR_ACCOUNT=you.near                 # a key is needed only here
+npm run fill       # deliver against an open agreement, and be credited
+```
+
+The spread **is** the fee: you keep the gap between what you sourced the output
+for and what you delivered, and it is already inside the owner's ceiling. There
+is no fee field because there is nothing to take one from. The capital
+requirement is real — you deliver first, so you need inventory or you carry the
+price risk while you source it — and that is the price of closing the
+`depositAddress` hole rather than living with it.
+
+`fill` asks `dry_check` what the contract would rule *before* it spends
+anything, so it never pays for a delivery that will be refused. `/fill` on the
+site is the same thing with the open agreements listed beside it.
+
+**What is not claimed:** there is no third-party filler ecosystem. Three
+fillers, all written or adapted by us.
 
 ## 6. Post a mandate, and fill one
 

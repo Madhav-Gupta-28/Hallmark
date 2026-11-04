@@ -18,6 +18,7 @@ export function Header() {
   const links: Array<[string, string]> = [
     ["/book", "register"],
     ["/post", "draw up"],
+    ["/fill", "fill"],
     ["/how", "how it works"],
     ["/limits", "limits"],
   ];

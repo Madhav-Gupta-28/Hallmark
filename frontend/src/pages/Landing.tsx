@@ -165,11 +165,19 @@ function WhyNow() {
   return (
     <section>
       <Heading kicker="Part III">Why the promise needs replacing, and why now</Heading>
-      <p className="max-w-[62ch] text-[19px]">
-        On <b>24 July 2026</b> FINRA opened <A href="https://www.finra.org/rules-guidance/notices/26-15">Regulatory
-        Notice 26-15</A>, asking how to modernise best execution under Rule 5310. Section 7 raises two concerns about
-        not-held orders, and both are the same failure: <b>the client's protection lives in prose somebody else
-        drafted</b>. It also asks whether a safe harbor would help.
+      <p className="max-w-[62ch] text-[21px] leading-[1.45]">
+        <b>Software is starting to trade on people's behalf.</b> A not-held order is how you hand that
+        discretion over, and for a century the only thing on the other side of it was a promise to try
+        hard. <span className="hl">If machines execute for us, something has to bound them</span> — and a
+        promise is not a bound, because a promise is prose and prose is argued about afterwards.
+      </p>
+      <p className="mt-4 max-w-[62ch] text-[19px]">
+        That is not a hypothetical worry: the regulator of the primitive has an open docket on exactly this
+        failure. On <b>24 July 2026</b> FINRA opened{" "}
+        <A href="https://www.finra.org/rules-guidance/notices/26-15">Regulatory Notice 26-15</A>, asking how to
+        modernise best execution under Rule 5310. Section 7 raises two concerns about not-held orders, and both
+        are the same one: <b>the client's protection lives in prose somebody else drafted</b>. It also asks
+        whether a safe harbor would help.
       </p>
       <div className="mt-7 grid gap-px border-2 border-ink bg-ink sm:grid-cols-[auto_1fr_1fr]">
         <div className="label bg-paper-2 p-3 text-faint" />
@@ -185,7 +193,8 @@ function WhyNow() {
       </div>
       <p className="mt-6 max-w-[62ch] text-[19px]">
         Nobody has proposed replacing the promise with arithmetic, because in equities no venue
-        cryptographically signs the economics of a fill. <b>On NEAR there is one.</b>
+        cryptographically signs the economics of a fill. <b>On NEAR there is one</b> — which is why the
+        bound can be a number an agent cannot talk its way past, instead of a duty somebody owes you.
       </p>
     </section>
   );

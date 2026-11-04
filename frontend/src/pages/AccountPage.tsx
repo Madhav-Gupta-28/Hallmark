@@ -3,7 +3,8 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmTxDialog, SummaryRows, type Ask } from "@/components/ConfirmTxDialog";
 import { Entry, Heading, L, Seal, Source, Stamp } from "@/components/doc";
-import { SigningResult, useSigned } from "@/components/SigningResult";
+import { SigningResult } from "@/components/SigningResult";
+import { useSigned } from "@/lib/signed";
 import {
   loadAccount, cancelTxs, fundRefusal, fundTxs, reapTxs, storageWithdrawTxs, withdrawTxs,
   type AccountSnapshot, type Credit, type OwnedMandate, type Progress,
@@ -12,7 +13,7 @@ import { age, EXPLORER, near, parseUnits, short, tokenOf, units, view, viewOn, t
 import { depositBlocker, FALLBACK_ESTIMATE, nearAvailable } from "@/lib/post";
 import { tokensQuery } from "@/lib/queries";
 import { FLOOR, meta, type TokenMeta, type TokenTable } from "@/lib/tokens";
-import { useWallet } from "@/wallet/WalletProvider";
+import { useWallet } from "@/wallet/context";
 
 /** NEAR account ids: 2–64 chars, lowercase, `.`-separated parts of [a-z0-9] joined by `-`/`_`. */
 const ACCOUNT = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;

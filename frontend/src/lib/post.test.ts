@@ -81,7 +81,7 @@ describe("blockers", () => {
   });
 });
 
-describe("MyNearWallet callback", () => {
+describe("the wallet redirect callback", () => {
   it("reads the hashes it returns", () => {
     expect(readCallback("?transactionHashes=AAA,BBB")).toEqual({ kind: "signed", hashes: ["AAA", "BBB"] });
   });

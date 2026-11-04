@@ -10,7 +10,7 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { EXPLORER, short, VAULT } from "@/lib/hallmark";
 import { cn } from "@/lib/utils";
-import { useWallet } from "@/wallet/WalletProvider";
+import { useWallet } from "@/wallet/context";
 
 export function Header() {
   const w = useWallet();

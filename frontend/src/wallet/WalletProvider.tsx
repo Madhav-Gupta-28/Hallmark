@@ -3,15 +3,15 @@
  *
  * The selector (./selector.ts) is loaded lazily, and only when there is a
  * reason to: the user clicks Connect, a session already exists in
- * localStorage, or the URL carries a wallet callback (MyNearWallet's sign-in
+ * localStorage, or the URL carries a wallet callback (a redirect wallet's sign-in
  * returns with `account_id`, its signing with `transactionHashes`). Reading
  * the book or a mandate never downloads it.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import type { Tx } from "@/lib/hallmark";
+import { WalletCtx, type WalletState } from "@/wallet/context";
 import type * as Selector from "./selector";
 import type { WalletId } from "./selector";
 
@@ -28,27 +28,6 @@ function hasReasonToLoad(): boolean {
   return CALLBACK_PARAMS.some((p) => q.has(p));
 }
 
-interface WalletState {
-  /** the selector has finished restoring any session (or was never needed) */
-  ready: boolean;
-  accountId: string | null;
-  walletId: WalletId | null;
-  /** MyNearWallet signs by leaving the page */
-  redirects: boolean;
-  error: string | null;
-  openPicker: () => void;
-  disconnect: () => Promise<void>;
-  /** sign and send; for MyNearWallet this navigates away and never resolves */
-  signAndSend: (txs: Tx[], callbackUrl: string) => Promise<string[]>;
-}
-
-const Ctx = createContext<WalletState | null>(null);
-
-export function useWallet(): WalletState {
-  const v = useContext(Ctx);
-  if (!v) throw new Error("useWallet outside WalletProvider");
-  return v;
-}
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [mod, setMod] = useState<typeof Selector | null>(null);
@@ -93,7 +72,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const m = mod ?? (await attach());
-      await m.signIn(id);                      // MyNearWallet leaves the page here
+      await m.signIn(id);                      // a redirect wallet leaves the page here
       setPicking(false);
     } catch (e) {
       setError((e as Error).message || "the wallet refused or the user cancelled");
@@ -104,7 +83,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<WalletState>(() => ({
     ready, accountId, walletId, error,
-    redirects: walletId === "my-near-wallet",
+    // Neither wallet left in the list navigates away to sign: Meteor signs in
+    // place, HERE on the phone. The redirect machinery below stays because it
+    // is what survives one, and NEAR has retired two web wallets this month.
+    redirects: false,
     openPicker: () => { setError(null); setPicking(true); },
     disconnect: async () => {
       if (mod) await mod.signOut();
@@ -118,7 +100,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }), [ready, accountId, walletId, error, mod, attach]);
 
   return (
-    <Ctx.Provider value={value}>
+    <WalletCtx.Provider value={value}>
       {children}
       <Dialog open={picking} onOpenChange={setPicking}>
         <DialogContent className="sheet rounded-none border-2 border-ink p-7 shadow-[10px_10px_0_var(--ink)] sm:max-w-lg">
@@ -133,8 +115,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           <div className="mt-2 grid gap-4">
             {/* static list, so the picker renders without loading the selector */}
             {([
-              ["my-near-wallet", "MyNearWallet", "nothing to install. Make an account and sign on mynearwallet.com; each transaction returns you here"],
-              ["meteor-wallet", "Meteor", "the browser extension, which signs without leaving this page. Its keystore is its own: making an account sends you to Meteor's website, and an account made there is not in the extension until you import it"],
+              ["meteor-wallet", "Meteor", "the browser extension — signs without leaving this page. Making an account sends you to Meteor's website first, and that account is not in the extension until you import it"],
+              ["here-wallet", "HERE", "your phone, or HERE's own web wallet — approve the transaction there"],
             ] as const).map(([id, name, how]) => (
               <button
                 key={id} className="btn h-auto justify-start whitespace-normal py-3 text-left normal-case"
@@ -150,6 +132,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           {error && <p className="typed text-[14px] text-seal">{error}</p>}
         </DialogContent>
       </Dialog>
-    </Ctx.Provider>
+    </WalletCtx.Provider>
   );
 }

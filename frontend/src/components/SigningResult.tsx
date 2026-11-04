@@ -1,33 +1,25 @@
 /**
- * Whatever came back from a wallet — MyNearWallet's redirect or Meteor's
+ * Whatever came back from a wallet — a redirect wallet's return or an in-page
  * hashes — and what each transaction actually did, read from the chain.
  *
- * MyNearWallet returns with a full page load and the result in the URL, so
+ * A redirect wallet returns with a full page load and the result in the URL, so
  * `useSigned` reads it once, purely, at mount; Meteor resolves in place and
  * the page hands its hashes to `setSigned`. The wallet's parameters are then
  * removed from the URL so a reload does not replay them, and the pending
  * record is cleared only once it is held in state (StrictMode runs effects
  * twice; a read-and-clear in one step would lose the signer).
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { A, L, Seal, Stamp } from "@/components/doc";
 import { EXPLORER, forgetCache, near, short } from "@/lib/hallmark";
 import {
-  clearPending, interpret, loadPending, readCallback, txOutcome, withoutCallback,
-  type Callback, type Interpreted, type Pending,
+  clearPending, interpret, readCallback, txOutcome, withoutCallback,
+  type Interpreted,
 } from "@/lib/redirect";
-import { useWallet } from "@/wallet/WalletProvider";
-
-export interface Signed { cb: Callback; pending: Pending | null }
-
-export function useSigned() {
-  return useState<Signed | null>(() => {
-    const cb = readCallback(location.search);
-    return cb ? { cb, pending: loadPending() } : null;
-  });
-}
+import type { Signed } from "@/lib/signed";
+import { useWallet } from "@/wallet/context";
 
 export function SigningResult({ signed }: { signed: Signed }) {
   const navigate = useNavigate();

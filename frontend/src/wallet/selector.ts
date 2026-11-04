@@ -20,27 +20,36 @@
    ========================================================================= */
 import "./polyfills";                       // must stay first: see polyfills.ts
 import { setupWalletSelector, type WalletSelector } from "@near-wallet-selector/core";
-import { setupMyNearWallet } from "@near-wallet-selector/my-near-wallet";
+import { setupHereWallet } from "@near-wallet-selector/here-wallet";
 import { setupMeteorWallet } from "@near-wallet-selector/meteor-wallet";
 import { VAULT, type Tx } from "@/lib/hallmark";
 
-export type WalletId = "my-near-wallet" | "meteor-wallet";
+export type WalletId = "meteor-wallet" | "here-wallet";
 
 let selector: Promise<WalletSelector> | undefined;
 
 export function getSelector(): Promise<WalletSelector> {
   selector ??= setupWalletSelector({
     network: "mainnet",
-    /* Two, and only two. Meteor also publishes `meteor-wallet-app`, which looks
-       like the web wallet at wallet.meteorwallet.app and is not: it is for a
-       dapp running INSIDE Meteor's own in-app browser, and reaches its host
-       through postMessage. In an ordinary tab `window === window.top`, so it
-       throws "Not supported" the moment it is chosen. Tried and removed. A
-       Meteor account made on the web signs here by being imported into the
-       extension. Note that the extension delegates account CREATION to that
-       same website, so a reader with neither wallet reaches a signable account
-       faster through MyNearWallet, which is why the picker lists it first. */
-    modules: [setupMyNearWallet(), setupMeteorWallet()],
+    /* MyNearWallet was here and is gone: it stopped accepting new app
+       connections on 2026-10-31 and now answers every connect with "MyNearWallet
+       can't connect to apps anymore". A dead wallet in this list is worse than a
+       short list, because the reader finds out only after leaving the page.
+
+       Also tried and removed: `meteor-wallet-app`, which looks like Meteor's web
+       wallet and is not — it is for a dapp running INSIDE Meteor's in-app
+       browser and reaches its host by postMessage, so in an ordinary tab
+       (window === window.top) it throws "Not supported" the moment it is
+       chosen.
+
+       And Bitte, which replaced MyNearWallet here for about an hour: its
+       redirect is built correctly and its destination is gone. wallet.bitte.ai
+       and bitte.ai both answer 402 DEPLOYMENT_DISABLED. Checked on 2026-11-04.
+
+       The lesson all three share: a wallet module resolving and a wallet
+       existing are different properties, so every entry in this list has been
+       clicked, followed, and the destination fetched. */
+    modules: [setupMeteorWallet(), setupHereWallet()],
   });
   return selector;
 }
@@ -55,7 +64,7 @@ export function subscribe(s: WalletSelector, f: (accountId: string | null) => vo
   return () => sub.unsubscribe();
 }
 
-/** MyNearWallet navigates away here; Meteor resolves with the account. */
+/** A redirect wallet navigates away here; an in-page one resolves with the account. */
 export async function signIn(id: WalletId): Promise<string | null> {
   const s = await getSelector();
   const w = await s.wallet(id);
@@ -78,7 +87,7 @@ export async function selectedWalletId(): Promise<WalletId | null> {
 /**
  * Sign and send a batch, exactly as given.
  *
- * MyNearWallet redirects to sign and returns to `callbackUrl` with
+ * A redirect wallet signs on its own site and returns to `callbackUrl` with
  * `?transactionHashes=` or `?errorCode=` — this promise never resolves for it,
  * and the page reads the result from the URL on return (lib/redirect.ts).
  * Meteor resolves here with one outcome per transaction; only their hashes are

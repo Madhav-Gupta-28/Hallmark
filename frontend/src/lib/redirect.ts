@@ -1,7 +1,7 @@
 /**
- * Surviving MyNearWallet's redirect, and reading what actually happened.
+ * Surviving a wallet's redirect, and reading what actually happened.
  *
- * MyNearWallet signs on its own site and comes back to the callback URL with
+ * A redirect wallet signs on its own site and comes back to the callback URL with
  * `?transactionHashes=h1,h2` (or `?errorCode=…&errorMessage=…`); the promise
  * that asked for the signature is gone with the page. So before handing off,
  * the page records what it asked for in sessionStorage, and on return it
@@ -41,7 +41,7 @@ export type Callback =
   | { kind: "signed"; hashes: string[] }
   | { kind: "error"; code: string; message: string };
 
-/** What MyNearWallet put in the URL, if anything. */
+/** What the wallet put in the URL on its way back, if anything. */
 export function readCallback(search: string): Callback | null {
   const q = new URLSearchParams(search);
   const hashes = q.get("transactionHashes");

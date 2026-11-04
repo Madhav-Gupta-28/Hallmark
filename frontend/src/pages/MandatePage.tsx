@@ -4,7 +4,8 @@ import { useParams } from "react-router-dom";
 import { ConfirmTxDialog, SummaryRows, type Ask } from "@/components/ConfirmTxDialog";
 import { A, Clause, Entry, Heading, L, Seal, Source, Stamp } from "@/components/doc";
 import { Amount } from "@/components/fields";
-import { SigningResult, useSigned } from "@/components/SigningResult";
+import { SigningResult } from "@/components/SigningResult";
+import { useSigned } from "@/lib/signed";
 import {
   age, EXPLORER, fixtures, short, units, VAULT, type MandateRecord, type MandateTerms,
 } from "@/lib/hallmark";
@@ -16,7 +17,7 @@ import { GAS_HEADROOM, preflight } from "@/lib/post";
 import { mandateQuery, tokensQuery } from "@/lib/queries";
 import { meta, type TokenMeta, type TokenTable } from "@/lib/tokens";
 import { cn } from "@/lib/utils";
-import { useWallet } from "@/wallet/WalletProvider";
+import { useWallet } from "@/wallet/context";
 
 const NS_PER_DAY = 86_400_000_000_000n;
 

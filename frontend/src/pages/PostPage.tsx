@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmTxDialog, SummaryRows, type Ask } from "@/components/ConfirmTxDialog";
 import { Clause, Entry, Heading, Source } from "@/components/doc";
-import { SigningResult, useSigned } from "@/components/SigningResult";
+import { SigningResult } from "@/components/SigningResult";
+import { useSigned } from "@/lib/signed";
 import { TxPreview } from "@/components/TxPreview";
 import {
   canonicalise, getQuote, near, units, VAULT, view, type MandateTerms, type Tx,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/post";
 import { tokensQuery } from "@/lib/queries";
 import { meta, type TokenTable } from "@/lib/tokens";
-import { useWallet } from "@/wallet/WalletProvider";
+import { useWallet } from "@/wallet/context";
 
 /** Which blank an error from `readForm` is about, so that blank can be marked in red. */
 function blameOf(error: string | null): keyof FormInput | "pair" | null {

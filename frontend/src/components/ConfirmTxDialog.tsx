@@ -19,7 +19,7 @@ import { Entry, Stamp } from "@/components/doc";
 import { TxPreview } from "@/components/TxPreview";
 import { forgetCache, type Tx } from "@/lib/hallmark";
 import { clearPending, savePending, type Pending } from "@/lib/redirect";
-import { useWallet } from "@/wallet/WalletProvider";
+import { useWallet } from "@/wallet/context";
 
 export interface Ask {
   /** short label, kept in the pending record, e.g. "withdraw" */
@@ -32,7 +32,7 @@ export interface Ask {
   summary: ReactNode;
   /** reasons not to ask for a signature, read from the chain when the dialog opens */
   check: () => Promise<string[]>;
-  /** where the wallet returns to (MyNearWallet redirect) */
+  /** where the wallet returns to (the Bitte redirect) */
   returnPath: string;
 }
 
@@ -61,10 +61,10 @@ export function ConfirmTxDialog({ ask, onClose, onSigned }: {
     setSending(true);
     setError(null);
     const pending: Pending = { kind: ask.kind, signer: ask.signer, txs: ask.txs, at: Date.now() };
-    savePending(pending);                            // survives MyNearWallet's redirect
+    savePending(pending);                            // survives the redirect
     try {
       const hashes = await w.signAndSend(ask.txs, `${location.origin}${ask.returnPath}`);
-      // Only Meteor gets here; MyNearWallet has navigated away.
+      // Only an in-page wallet gets here; a redirect wallet has navigated away.
       forgetCache();
       void qc.invalidateQueries({ queryKey: ["vault"] });
       void qc.invalidateQueries({ queryKey: ["account"] });
@@ -130,8 +130,8 @@ export function ConfirmTxDialog({ ask, onClose, onSigned }: {
               </div>
               {w.redirects && (
                 <p className="typed mt-4 text-[13px] text-faint">
-                  MyNearWallet signs on its own site: you will leave this page, sign there, and return here, where the
-                  outcome is read from the chain.
+                  This wallet signs on its own site: you will leave this page, sign there, and return here, where
+                  the outcome is read from the chain.
                 </p>
               )}
             </div>
@@ -146,7 +146,7 @@ export function ConfirmTxDialog({ ask, onClose, onSigned }: {
               disabled={!connectedAsSigner || !agreed || sending || !checked.isSuccess || stop.length > 0}
             >
               {sending
-                ? (w.redirects ? "opening MyNearWallet…" : "waiting for your wallet…")
+                ? (w.redirects ? "opening your wallet…" : "waiting for your wallet…")
                 : `Sign ${n === 1 ? "1 transaction" : `${n} transactions`}`}
             </button>
           </div>

@@ -22,16 +22,23 @@ import "./polyfills";                       // must stay first: see polyfills.ts
 import { setupWalletSelector, type WalletSelector } from "@near-wallet-selector/core";
 import { setupMyNearWallet } from "@near-wallet-selector/my-near-wallet";
 import { setupMeteorWallet } from "@near-wallet-selector/meteor-wallet";
+import { setupMeteorWalletApp } from "@near-wallet-selector/meteor-wallet-app";
 import { VAULT, type Tx } from "@/lib/hallmark";
 
-export type WalletId = "my-near-wallet" | "meteor-wallet";
+export type WalletId = "my-near-wallet" | "meteor-wallet" | "meteor-wallet-app";
 
 let selector: Promise<WalletSelector> | undefined;
 
 export function getSelector(): Promise<WalletSelector> {
   selector ??= setupWalletSelector({
     network: "mainnet",
-    modules: [setupMyNearWallet(), setupMeteorWallet()],
+    /* Meteor ships two wallets that do NOT share a keystore: the browser
+       extension and the web wallet at wallet.meteorwallet.app. An account
+       created in one is invisible to the other, so offering only the extension
+       tells a reader with a perfectly good Meteor account that they have no
+       wallet. Both are listed; `contractId` is only the one the web wallet
+       shows on its approval screen. */
+    modules: [setupMyNearWallet(), setupMeteorWallet(), setupMeteorWalletApp({ contractId: VAULT })],
   });
   return selector;
 }

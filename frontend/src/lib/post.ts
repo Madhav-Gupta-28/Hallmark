@@ -1,5 +1,5 @@
 /**
- * Posting a mandate — `readForm` / `openTxs` from web/assets/app.js, plus the
+ * Posting a mandate — `readForm` / `openTxs`, plus the
  * preflight checks the reference does not make.
  *
  * One deliberate fix: app.js sets `recipient: ME || VAULT`, i.e. the signed-in
@@ -117,7 +117,7 @@ export async function nearAvailable(signer: string): Promise<string> {
 }
 
 /** Gas headroom for the batch: 30 + 100 TGas at well under 0.001 NEAR per 100 TGas today. */
-const GAS_HEADROOM = 5n * 10n ** 21n;                // 0.005 NEAR
+export const GAS_HEADROOM = 5n * 10n ** 21n;                // 0.005 NEAR
 
 /** Reasons not to ask for a signature at all. Empty means go. */
 export function blockers(p: Preflight, txs: Tx[], amount: string, symbol: string, dp: number | null): string[] {

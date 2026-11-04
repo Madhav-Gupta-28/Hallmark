@@ -1,17 +1,22 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
+import { ConfirmTxDialog, SummaryRows, type Ask } from "@/components/ConfirmTxDialog";
 import { A, Clause, Entry, Heading, L, Seal, Source, Stamp } from "@/components/doc";
 import { Amount } from "@/components/fields";
+import { SigningResult, useSigned } from "@/components/SigningResult";
 import {
   age, EXPLORER, fixtures, short, units, VAULT, type MandateRecord, type MandateTerms,
 } from "@/lib/hallmark";
 import {
   captureTerms, liveQuote, parseCheck, priceQuote, refusalOf, type ParsedCheck, type Verdict,
 } from "@/lib/price";
+import { fillBlockers, fillTxs } from "@/lib/fill";
+import { GAS_HEADROOM, preflight } from "@/lib/post";
 import { mandateQuery, tokensQuery } from "@/lib/queries";
 import { meta, type TokenMeta, type TokenTable } from "@/lib/tokens";
 import { cn } from "@/lib/utils";
+import { useWallet } from "@/wallet/WalletProvider";
 
 const NS_PER_DAY = 86_400_000_000_000n;
 
@@ -207,12 +212,12 @@ function Compliance({ id, m, table }: { id: number; m: MandateRecord; table: Tok
           <p className="text-[18px]">{price.error.message}. Nothing was signed and nothing moved.</p>
         </div>
       )}
-      {price.isSuccess && <Findings p={price.data} id={id} table={table} at={price.submittedAt} />}
+      {price.isSuccess && <Findings p={price.data} id={id} table={table} at={price.submittedAt} open={m.open} />}
     </section>
   );
 }
 
-function Findings({ p, id, table, at }: { p: Priced; id: number; table: TokenTable; at: number }) {
+function Findings({ p, id, table, at, open }: { p: Priced; id: number; table: TokenTable; at: number; open: boolean }) {
   const r = p.verdict;
   const t = p.terms;
   const inTok = meta(table, t.origin_asset);
@@ -282,9 +287,12 @@ function Findings({ p, id, table, at }: { p: Priced; id: number; table: TokenTab
           )}
         </div>
       </div>
+      {p.source === "live" && open && (full.allowed || floor.allowed) && (
+        <FillAction id={id} p={p} table={table} floor={floor} full={full} />
+      )}
       <Source>
         is_signed · worst_cost · realised_cost · quote_age_secs · dry_check ×2 on {VAULT}, at{" "}
-        {new Date(at).toLocaleTimeString()}. The quote is a dry quote and commits nobody to anything.
+        {new Date(at).toLocaleTimeString()}. Pricing signs nothing and sends nothing.
       </Source>
     </div>
   );
@@ -310,3 +318,91 @@ function Ruling({ title, sub, delivered, raw, c, inTok }: {
 }
 
 const cap = (v: string, tok: TokenMeta) => (tok.dp === null ? `${v} base units` : `${units(v, tok.dp, 6)} ${tok.symbol}`);
+
+
+/* ------------------------------------------------------------------ the fill */
+
+/**
+ * Filling, offered only where the chain has just said it would be honoured:
+ * a live quote, priced against this agreement's own terms, on an open
+ * agreement. A capture priced against illustrative terms is a demonstration,
+ * not an offer, so no button appears under it.
+ *
+ * The full quote comes first. Both are legal deliveries and the floor earns
+ * the filler more, but the floor is also the one the contract refuses whenever
+ * it alone breaches the ceiling — so it is offered only when `dry_check` has
+ * already allowed it, and labelled with what it costs the owner.
+ */
+function FillAction({ id, p, table, floor, full }: {
+  id: number; p: Priced; table: TokenTable; floor: ParsedCheck; full: ParsedCheck;
+}) {
+  const w = useWallet();
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const [signed, setSigned] = useSigned();
+  const r = p.verdict;
+  const outTok = meta(table, p.terms.destination_asset);
+  const inTok = meta(table, p.terms.origin_asset);
+
+  const options = [
+    full.allowed && { key: "full", label: "Deliver the full quote", amount: r.q.amountOut, c: full, sub: "amountOut — the expected fill" },
+    floor.allowed && { key: "floor", label: "Deliver the signed floor", amount: r.q.minAmountOut, c: floor, sub: "minAmountOut — the least the venue guaranteed" },
+  ].filter((o): o is { key: string; label: string; amount: string; c: ParsedCheck; sub: string } => !!o);
+
+  async function review(o: (typeof options)[number]) {
+    if (!w.accountId) return void w.openPicker();
+    const signer = w.accountId;
+    const pre = await preflight(signer, p.terms.destination_asset);
+    const txs = fillTxs(p.terms, id, r.canonical, r.signature, o.amount, pre.prepaid, pre.estimate);
+    setAsk({
+      kind: "fill",
+      title: `Fill agreement §${id}`,
+      signer,
+      txs,
+      summary: (
+        <SummaryRows rows={{
+          "You deliver": <span className="typed"><Amount v={o.amount} tok={outTok} /></span>,
+          "You are credited": <span className="typed">{o.c.earns ? <Amount v={o.c.earns} tok={inTok} /> : "—"}</span>,
+          "Realised cost to the owner": <span className="typed">{o.c.costBps} bps, against a {p.terms.max_cost_bps} bps ceiling</span>,
+          "If the quote goes stale first": <span>the contract refuses and the {outTok.symbol} comes straight back</span>,
+        }} />
+      ),
+      check: async () => {
+        const now = await preflight(signer, p.terms.destination_asset);
+        return fillBlockers({ ...now }, o.amount, outTok.symbol, GAS_HEADROOM);
+      },
+      returnPath: `/mandate/${id}`,
+    });
+  }
+
+  return (
+    <div className="mt-10 border-t-2 border-ink pt-6">
+      {signed && <SigningResult signed={signed} />}
+      <p className="label mb-2">Fill it</p>
+      <p className="max-w-[760px] text-[18px]">
+        The chain has just ruled on both deliveries. Filling sends the {outTok.symbol} to the vault — the transfer
+        <i> is</i> the delivery — with the venue's signed quote attached. If anything has changed by the time it
+        lands, the contract refuses it and the token returns the delivery in full.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-4">
+        {options.map((o, i) => (
+          <button key={o.key} className={cn("btn", i === 0 ? "btn-sign" : undefined)} onClick={() => void review(o)}>
+            {o.label}
+            <span className="typed ml-2 text-[12px] opacity-70">{o.c.costBps} bps</span>
+          </button>
+        ))}
+      </div>
+      <p className="typed mt-3 text-[13px] text-faint">
+        ↳ The cost on each button is what the owner pays, not what you earn — the cheaper one for them is the
+        dearer one for you. A fill also writes two credit slots, which the filler pays for (§6); a
+        <code> storage_deposit</code> joins the batch only if yours is short.
+        {!w.accountId && " Choosing one connects a wallet first; nothing is signed until you have read the batch."}
+      </p>
+      {ask && (
+        <ConfirmTxDialog
+          ask={ask} onClose={() => setAsk(null)}
+          onSigned={(hashes, pending) => setSigned({ cb: { kind: "signed", hashes }, pending })}
+        />
+      )}
+    </div>
+  );
+}

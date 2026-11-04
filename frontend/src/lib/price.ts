@@ -1,6 +1,6 @@
 /**
  * Price a fill against a mandate — the logic of `verdict` and the "Get a live
- * quote" handler in web/assets/app.js, without the DOM.
+ * quote" handler, without the DOM.
  *
  * Nothing here computes a cost. It canonicalises the venue's quote and asks
  * the vault six keyless questions; every number shown comes back from
@@ -28,6 +28,8 @@ export interface SignedFields {
 export interface Verdict {
   q: SignedFields;
   canonical: string;
+  /** the venue's signature over `canonical`, base58, no `ed25519:` prefix */
+  signature: string;
   /** `is_signed` */
   signed: boolean;
   /** `worst_cost` — the cost if only the signed floor (`minAmountOut`) is delivered */
@@ -89,7 +91,7 @@ export async function priceQuote(
     v<string>("dry_check", { canonical, signature, terms, delivered: q.amountOut }),
   ]);
   return {
-    q, canonical, signed,
+    q, canonical, signature, signed,
     worstBps: Number(worst),
     fullBps: Number(full),
     ageSecs: Number(ageS),

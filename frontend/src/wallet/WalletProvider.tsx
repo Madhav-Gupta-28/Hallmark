@@ -133,8 +133,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           <div className="mt-2 grid gap-4">
             {/* static list, so the picker renders without loading the selector */}
             {([
-              ["meteor-wallet", "Meteor", "the browser extension, which signs without leaving this page. It has its own keystore — an account made at wallet.meteorwallet.app is NOT in it until you import it"],
-              ["my-near-wallet", "MyNearWallet", "web wallet — signs on mynearwallet.com and returns you here"],
+              ["my-near-wallet", "MyNearWallet", "nothing to install. Make an account and sign on mynearwallet.com; each transaction returns you here"],
+              ["meteor-wallet", "Meteor", "the browser extension, which signs without leaving this page. Its keystore is its own: making an account sends you to Meteor's website, and an account made there is not in the extension until you import it"],
             ] as const).map(([id, name, how]) => (
               <button
                 key={id} className="btn h-auto justify-start whitespace-normal py-3 text-left normal-case"

@@ -37,7 +37,9 @@ export function getSelector(): Promise<WalletSelector> {
        through postMessage. In an ordinary tab `window === window.top`, so it
        throws "Not supported" the moment it is chosen. Tried and removed. A
        Meteor account made on the web signs here by being imported into the
-       extension, or by being made in the extension in the first place. */
+       extension. Note that the extension delegates account CREATION to that
+       same website, so a reader with neither wallet reaches a signable account
+       faster through MyNearWallet, which is why the picker lists it first. */
     modules: [setupMyNearWallet(), setupMeteorWallet()],
   });
   return selector;

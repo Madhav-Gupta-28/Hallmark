@@ -1,7 +1,7 @@
 /**
  * The signed captures, built from contract/fixtures/ at build time — a port of
- * web/assets/mkfixtures.py, producing the same object it writes to
- * web/assets/fixtures.json.
+ * tools/mkfixtures.py, producing the same object it writes to
+ * src/lib/fixtures.json.
  *
  * Same rule as the reference: no signed quote is ever hand-typed. One wrong
  * byte in the canonical form makes `is_signed` answer false on a genuinely
@@ -30,7 +30,7 @@ export interface Fixture {
   note: string;
 }
 
-/** Copied verbatim from web/assets/mkfixtures.py; the parity test holds them equal. */
+/** Copied verbatim from tools/mkfixtures.py; the parity test holds them equal. */
 const NOTE: Record<FixtureName, string> = {
   honest: "A normal quote, for scale: 160 bps guaranteed-worst, 60 bps if honoured in full.",
   worst: "Cryptographically valid, and guarantees a 99.99% loss. slippageTolerance 9999.",

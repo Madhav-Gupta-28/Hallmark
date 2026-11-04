@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate web/assets/fixtures.json from the signed captures in contract/fixtures/.
+"""Generate frontend/src/lib/fixtures.json from the signed captures in contract/fixtures/.
 
 The site must never carry a hand-typed copy of a signed quote. A transcription
 error in the canonical bytes or the signature would make `is_signed` answer
@@ -10,8 +10,8 @@ this page's first draft: `amountInFormatted` was written as "10" instead of
 
 So the bytes come from the files, every time:
 
-    python3 web/assets/mkfixtures.py        # regenerate
-    python3 web/assets/mkfixtures.py --check  # fail if stale
+    python3 frontend/tools/mkfixtures.py          # regenerate
+    python3 frontend/tools/mkfixtures.py --check  # fail if stale
 """
 import hashlib, json, pathlib, sys
 
@@ -34,7 +34,7 @@ def b58(b: bytes) -> str:
 
 root = pathlib.Path(__file__).resolve().parents[2]
 src = root / "contract" / "fixtures"
-dst = root / "web" / "assets" / "fixtures.json"
+dst = root / "frontend" / "src" / "lib" / "fixtures.json"
 
 NOTE = {
     "honest": "A normal quote, for scale: 160 bps guaranteed-worst, 60 bps if honoured in full.",
@@ -60,7 +60,7 @@ text = json.dumps(out, indent=2, sort_keys=True) + "\n"
 if "--check" in sys.argv:
     current = dst.read_text() if dst.exists() else ""
     if current != text:
-        print("web/assets/fixtures.json is stale — run: python3 web/assets/mkfixtures.py")
+        print("fixtures.json is stale — run: python3 frontend/tools/mkfixtures.py")
         sys.exit(1)
     print("fixtures.json is in sync with contract/fixtures/")
 else:

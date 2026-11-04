@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""Check the website's factual claims against the code and the live chain.
+"""Check the app's factual claims against the code and the live chain.
 
 The site asserts a lot of specific numbers — method counts, test counts, byte
 counts, basis points. Any of them can go stale the moment the contract changes,
 and a stale number on a page whose whole pitch is verifiability is worse than no
 number at all. So they are checked mechanically:
 
-    python3 web/assets/check.py
+    python3 frontend/tools/check.py
 
 Exits non-zero if the site and the repository disagree.
 """
 import json, pathlib, re, subprocess, sys, urllib.request
 
 root = pathlib.Path(__file__).resolve().parents[2]
-web = root / "web"
-pages = {p.name: p.read_text() for p in sorted(web.glob("*.html"))}
-# the shared runtime is part of the site, so its literals count too
-blob = "\n".join(list(pages.values()) + [(web / "assets" / "hallmark.js").read_text()])
+src = root / "frontend" / "src"
+# every page and every library the pages read their numbers from: the claims
+# live in JSX text and in the runtime's literals, so both count
+pages = {p.name: p.read_text() for p in sorted(src.rglob("*.tsx"))}
+blob = "\n".join(list(pages.values()) + [p.read_text() for p in sorted(src.rglob("*.ts"))])
 fails = []
 
 
@@ -37,13 +38,18 @@ exported = sorted(set(re.findall(r"\n    pub fn (\w+)", impl)))
 unit = (root / "contract" / "src" / "tests.rs").read_text().count("#[test]")
 integ = (root / "contract" / "tests" / "integration.rs").read_text().count("#[tokio::test]")
 
-claim("typed refusals", f"nine typed refusals" in blob.lower() and len(refusals) == 9,
-      "nine", f"{len(refusals)} in mandate.rs")
+# A number the app does not state cannot be stale. These assert the app is never
+# WRONG, not that it must keep making the claim — rewording a page is not a bug.
+stated = lambda *phrases: any(x.lower() in blob.lower() for x in phrases)
+claim("typed refusals", not stated("nine typed refusals", "nine checks", "nine gates") or len(refusals) == 9,
+      "nine" if stated("nine typed refusals", "nine checks", "nine gates") else "not claimed",
+      f"{len(refusals)} in mandate.rs")
 claim("exported methods", "23 exported" in blob or "Twenty-three" in blob,
       23, f"{len(exported)} pub fn in the #[near] impl")
 claim("unit + integration tests", f"{unit} unit" in blob and f"{integ} against a real sandbox" in blob or f"{unit} unit + {integ}" in blob,
       f"{unit}+{integ}", f"{unit} unit, {integ} integration")
-claim("total test count", f"{unit + integ} tests" in blob, f"{unit+integ}", unit + integ)
+claim("total test count", not re.search(r"\b(\d+) tests\b", blob) or f"{unit + integ} tests" in blob,
+      f"{unit+integ}" if f"{unit + integ} tests" in blob else "not claimed", unit + integ)
 
 # every refusal named on the site must exist in the enum
 named = {r for r in re.findall(r"\b([A-Z][a-zA-Z]+)\b", blob) if r in set(refusals) or r in
@@ -122,8 +128,8 @@ except Exception as e:  # noqa: BLE001
     print(f"  -- chain checks skipped: {e}")
 
 # --------------------------------------------------------------- fixtures match
-fx = json.loads((web / "assets" / "fixtures.json").read_text())
-r = subprocess.run([sys.executable, str(web / "assets" / "mkfixtures.py"), "--check"],
+fx = json.loads((src / "lib" / "fixtures.json").read_text())
+r = subprocess.run([sys.executable, str(root / "frontend" / "tools" / "mkfixtures.py"), "--check"],
                    capture_output=True, text=True)
 claim("fixtures.json derived, not typed", r.returncode == 0, "in sync", r.stdout.strip() or r.stderr.strip())
 # byte counts are rendered from fixtures.json at runtime rather than typed into

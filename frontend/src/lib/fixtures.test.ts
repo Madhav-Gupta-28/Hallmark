@@ -1,7 +1,7 @@
 /**
  * The fixtures the app replays must be exactly the ones the reference serves,
- * and genuinely signed. ../../fixtures.ts is a port of web/assets/mkfixtures.py;
- * web/assets/fixtures.json is that script's committed output (and
+ * and genuinely signed. ../../fixtures.ts is a port of frontend/tools/mkfixtures.py;
+ * fixtures.json is that script's committed output (and
  * `mkfixtures.py --check` keeps it in sync with contract/fixtures/).
  */
 import { readFileSync } from "node:fs";
@@ -12,12 +12,12 @@ import type { MandateRecord } from "./hallmark";
 import { captureTerms } from "./price";
 
 const reference = JSON.parse(
-  readFileSync(new URL("../../../web/assets/fixtures.json", import.meta.url), "utf8"),
+  readFileSync(new URL("./fixtures.json", import.meta.url), "utf8"),
 );
 const built = buildFixtures();
 
 describe("buildFixtures", () => {
-  it("produces exactly what web/assets/mkfixtures.py produced", () => {
+  it("produces exactly what tools/mkfixtures.py produced", () => {
     expect(built).toEqual(reference);
   });
 

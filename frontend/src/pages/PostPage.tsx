@@ -9,7 +9,8 @@ import {
   canonicalise, getQuote, near, units, VAULT, view, type MandateTerms, type Tx,
 } from "@/lib/hallmark";
 import {
-  blockers, DEFAULTS, FALLBACK_ESTIMATE, NS_PER_DAY, openTxs, preflight, readForm, type FormInput,
+  blockers, DEFAULTS, FALLBACK_ESTIMATE, NS_PER_DAY, openTxs, preflight, readForm, wrapsNear,
+  type FormInput,
 } from "@/lib/post";
 import { tokensQuery } from "@/lib/queries";
 import { meta, type TokenTable } from "@/lib/tokens";
@@ -54,7 +55,7 @@ export function PostPage() {
   });
 
   const txs = parsed.ok
-    ? openTxs(parsed.terms, parsed.amount, pre.data?.prepaid ?? "0", pre.data?.estimate ?? estimate.data ?? FALLBACK_ESTIMATE)
+    ? openTxs(parsed.terms, parsed.amount, pre.data?.prepaid ?? "0", pre.data?.estimate ?? estimate.data ?? FALLBACK_ESTIMATE, pre.data)
     : [];
   const inTok = meta(table, form.origin);
   const outTok = meta(table, form.dest);
@@ -69,7 +70,7 @@ export function PostPage() {
     const now = Date.now();                          // re-stamp expiry at the moment of review
     setStamp(now);
     const p = readForm(form, table, now);
-    const frozen = openTxs(p.terms, p.amount, pre.data?.prepaid ?? "0", pre.data?.estimate ?? estimate.data ?? FALLBACK_ESTIMATE);
+    const frozen = openTxs(p.terms, p.amount, pre.data?.prepaid ?? "0", pre.data?.estimate ?? estimate.data ?? FALLBACK_ESTIMATE, pre.data);
     setAsk(postAsk(w.accountId, p.terms, p.amount, frozen, table));
   };
 
@@ -143,7 +144,12 @@ export function PostPage() {
         <div>
           <Entry k="Recommended prepayment" v={<span className="typed">{estimate.data ? `${near(estimate.data, 5)} NEAR` : "…"}</span>} />
           <Entry k="Already prepaid by you" v={<span className="typed">{!w.accountId ? "connect to check" : pre.data ? `${near(pre.data.prepaid, 5)} NEAR` : pre.isError ? "unavailable" : "…"}</span>} />
-          <Entry k="storage_deposit first?" v={<span className="typed">{!w.accountId ? "assumed yes" : pre.data ? (txs.length > 1 ? "yes" : "no — already prepaid") : "…"}</span>} />
+          <Entry k="storage_deposit first?" v={<span className="typed">{!w.accountId ? "assumed yes" : pre.data ? (txs.some((t) => t.receiverId === VAULT) ? "yes" : "no — already prepaid") : "…"}</span>} />
+          {wrapsNear(txs) && (
+            <Entry k="wNEAR to mint first" v={<span className="typed text-sign">
+              {near(txs.find((t) => wrapsNear([t]))!.actions[0].deposit, 5)} NEAR → wNEAR, in this batch
+            </span>} />
+          )}
         </div>
         <p className="py-2 text-[17px]">
           Whoever causes a byte to be written pays for that byte. The estimate is a recommendation, not a price: the

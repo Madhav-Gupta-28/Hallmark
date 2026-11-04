@@ -10,7 +10,8 @@
  * the recipient is always the vault.
  */
 import {
-  near, parseUnits, tokenOf, txOpen, txStorageDeposit, VAULT, view, viewAccount, viewOn,
+  near, parseUnits, tokenOf, TOKEN_STORAGE, txOpen, txStorageDeposit, txTokenStorageDeposit,
+  txWrapNear, VAULT, view, viewAccount, viewOn, WNEAR,
   type MandateTerms, type Tx,
 } from "./hallmark";
 import { meta, type TokenTable } from "./tokens";
@@ -62,13 +63,32 @@ export function readForm(f: FormInput, table: TokenTable, nowMs: number): { term
   };
 }
 
-/** storage_deposit only if the prepaid balance is below the estimate, then the open. app.js's `openTxs`. */
-export function openTxs(terms: MandateTerms, amount: string, prepaid: string, estimate: string): Tx[] {
+/**
+ * Everything the open needs, in the order it needs it.
+ *
+ * The escrow is a NEP-141 transfer, so the owner must already hold the origin
+ * token — and the commonest way to arrive here is holding native NEAR and no
+ * wNEAR at all, which is not a thing to send somebody to a DEX for: wNEAR is
+ * minted one-for-one by `near_deposit` and burned by `near_withdraw`, so the
+ * batch can simply do it. That is only possible for wrap.near; any other
+ * origin token has to be acquired, and `blockers` still says so.
+ */
+export function openTxs(
+  terms: MandateTerms, amount: string, prepaid: string, estimate: string, p?: Preflight,
+): Tx[] {
   const txs: Tx[] = [];
+  if (p && tokenOf(terms.origin_asset) === WNEAR && BigInt(p.tokenBalance) < BigInt(amount)) {
+    if (!p.signerRegistered) txs.push(txTokenStorageDeposit(WNEAR, TOKEN_STORAGE));
+    txs.push(txWrapNear(BigInt(amount) - BigInt(p.tokenBalance)));
+  }
   if (BigInt(prepaid) < BigInt(estimate)) txs.push(txStorageDeposit(estimate));
   txs.push(txOpen(terms, amount));
   return txs;
 }
+
+/** Will this batch mint wNEAR on the way through? */
+export const wrapsNear = (txs: Tx[]) =>
+  txs.some((t) => t.receiverId === WNEAR && t.actions[0].methodName === "near_deposit");
 
 /** What the chain says about this account and this token, before anything is signed. */
 export interface Preflight {
@@ -78,6 +98,8 @@ export interface Preflight {
   tokenBalance: string;
   /** null when the vault has no storage on the origin token: ft_transfer_call to it would fail */
   vaultRegistered: boolean;
+  /** the signer's own NEP-145 registration on the origin token */
+  signerRegistered: boolean;
   /** NEAR available to the signer for the storage deposit and gas, yocto */
   nearAvailable: string;
 }
@@ -87,16 +109,18 @@ export const FALLBACK_ESTIMATE = "10240000000000000000000";
 
 export async function preflight(signer: string, originAsset: string): Promise<Preflight> {
   const token = tokenOf(originAsset);
-  const [estimate, prepaid, tokenBalance, vaultStorage, acct] = await Promise.all([
+  const [estimate, prepaid, tokenBalance, vaultStorage, mineStorage, acct] = await Promise.all([
     view<string>("storage_cost_estimate").catch(() => FALLBACK_ESTIMATE),
     view<string>("storage_balance_of", { account_id: signer }),
-    viewOn<string>(token, "ft_balance_of", { account_id: signer }),
+    viewOn<string>(token, "ft_balance_of", { account_id: signer }).catch(() => "0"),
     viewOn<unknown>(token, "storage_balance_of", { account_id: VAULT }),
+    viewOn<unknown>(token, "storage_balance_of", { account_id: signer }),
     viewAccount(signer),
   ]);
   return {
     estimate, prepaid, tokenBalance,
     vaultRegistered: vaultStorage !== null,
+    signerRegistered: mineStorage !== null,
     nearAvailable: spendable(acct),
   };
 }
@@ -124,7 +148,7 @@ export function blockers(p: Preflight, txs: Tx[], amount: string, symbol: string
   const out: string[] = [];
   if (!p.vaultRegistered)
     out.push(`${VAULT} is not storage-registered on this token, so the transfer to it would fail. Pick another token.`);
-  if (BigInt(p.tokenBalance) < BigInt(amount)) {
+  if (BigInt(p.tokenBalance) < BigInt(amount) && !wrapsNear(txs)) {
     const have = dp === null ? `${p.tokenBalance} base units` : `${fmt(p.tokenBalance, dp)} ${symbol}`;
     out.push(`you hold ${have}, less than the amount to escrow.`);
   }

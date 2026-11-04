@@ -464,6 +464,31 @@ export const txOpen = (terms: MandateTerms, amount: string | bigint): Tx => ({
   }],
 });
 
+/** The wrapped-NEAR contract: the only token this app can mint for you. */
+export const WNEAR = "wrap.near";
+
+/**
+ * NEP-145 registration on a token. 0.00125 NEAR is the standard minimum and is
+ * what `wrap.near` asks for; anything unused is refundable with
+ * `storage_unregister`.
+ */
+export const TOKEN_STORAGE = "1250000000000000000000";
+
+export const txTokenStorageDeposit = (token: string, yocto: string | bigint = TOKEN_STORAGE): Tx => ({
+  receiverId: token,
+  actions: [{ methodName: "storage_deposit", args: {}, gas: TGAS(30), deposit: String(yocto) }],
+});
+
+/**
+ * Turn native NEAR into wNEAR. The deposit IS the amount wrapped, one to one,
+ * and `near_withdraw` reverses it, so nothing here is a swap and nothing is
+ * priced.
+ */
+export const txWrapNear = (yocto: string | bigint): Tx => ({
+  receiverId: WNEAR,
+  actions: [{ methodName: "near_deposit", args: {}, gas: TGAS(30), deposit: String(yocto) }],
+});
+
 /** Fill a mandate: the transfer of the destination asset IS the delivery. */
 export const txFill = (
   destAsset: string, mandateId: number, canonical: string, signature: string, amount: string | bigint,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { cliFor, VAULT, type Tx } from "./hallmark";
-import { blockers, DEFAULTS, FALLBACK_ESTIMATE, NS_PER_DAY, openTxs, readForm, type Preflight } from "./post";
+import {
+  blockers, DEFAULTS, FALLBACK_ESTIMATE, NS_PER_DAY, openTxs, readForm, wrapsNear, type Preflight,
+} from "./post";
 import { interpret, readCallback, withoutCallback, type ExecutionOutcome } from "./redirect";
 import { FLOOR } from "./tokens";
 
@@ -130,5 +132,52 @@ describe("interpret", () => {
       transaction: { hash: "H", receiver_id: VAULT, actions: [{ FunctionCall: { method_name: "storage_deposit" } }] },
       receipts_outcome: [],
     })).toEqual({ kind: "storage_deposit", ok: true, credited: "10230000000000000000000" });
+  });
+});
+
+
+/* The state a first-time owner actually arrives in: native NEAR, no wNEAR, not
+   registered on the token, nothing prepaid with the vault. Taken from
+   strongflour3266.near on 2026-11-04, which is how this case was found. */
+describe("opening when the owner holds NEAR and no wNEAR", () => {
+  const fresh: Preflight = {
+    estimate: FALLBACK_ESTIMATE,
+    prepaid: "0",
+    tokenBalance: "0",
+    vaultRegistered: true,
+    signerRegistered: false,
+    nearAvailable: "760900000000000000000000",      // 0.7609 NEAR
+  };
+  const { terms, amount } = readForm({ ...DEFAULTS, amount: "0.05" }, FLOOR, NOW);
+
+  it("mints exactly the shortfall, registers first, and still ends in the open", () => {
+    const txs = openTxs(terms, amount, fresh.prepaid, fresh.estimate, fresh);
+    expect(txs.map((t) => [t.receiverId, t.actions[0].methodName])).toEqual([
+      ["wrap.near", "storage_deposit"],
+      ["wrap.near", "near_deposit"],
+      [VAULT, "storage_deposit"],
+      ["wrap.near", "ft_transfer_call"],
+    ]);
+    expect(txs[1].actions[0].deposit).toBe(amount);           // 0 held, so the whole escrow
+    expect(wrapsNear(txs)).toBe(true);
+  });
+
+  it("does not block on a wNEAR balance it is about to mint", () => {
+    const txs = openTxs(terms, amount, fresh.prepaid, fresh.estimate, fresh);
+    expect(blockers(fresh, txs, amount, "wNEAR", 24)).toEqual([]);
+  });
+
+  it("mints only the difference when some wNEAR is already held", () => {
+    const part = { ...fresh, tokenBalance: "20000000000000000000000", signerRegistered: true };
+    const txs = openTxs(terms, amount, part.prepaid, part.estimate, part);
+    expect(txs.map((t) => t.actions[0].methodName)).toEqual(["near_deposit", "storage_deposit", "ft_transfer_call"]);
+    expect(txs[0].actions[0].deposit).toBe("30000000000000000000000");   // 0.05 - 0.02
+  });
+
+  it("still blocks on a token it cannot mint", () => {
+    const usdt = readForm({ ...DEFAULTS, origin: "nep141:usdt.tether-token.near", dest: "nep141:wrap.near", amount: "1" }, FLOOR, NOW);
+    const txs = openTxs(usdt.terms, usdt.amount, fresh.prepaid, fresh.estimate, fresh);
+    expect(wrapsNear(txs)).toBe(false);
+    expect(blockers(fresh, txs, usdt.amount, "USDT", 6)[0]).toMatch(/less than the amount to escrow/);
   });
 });

@@ -1,10 +1,12 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmTxDialog, SummaryRows, type Ask } from "@/components/ConfirmTxDialog";
 import { Clause, Entry, Heading, Source } from "@/components/doc";
 import { SigningResult, useSigned } from "@/components/SigningResult";
 import { TxPreview } from "@/components/TxPreview";
-import { near, units, VAULT, view, type MandateTerms, type Tx } from "@/lib/hallmark";
+import {
+  canonicalise, getQuote, near, units, VAULT, view, type MandateTerms, type Tx,
+} from "@/lib/hallmark";
 import {
   blockers, DEFAULTS, FALLBACK_ESTIMATE, NS_PER_DAY, openTxs, preflight, readForm, type FormInput,
 } from "@/lib/post";
@@ -113,6 +115,11 @@ export function PostPage() {
         <Clause no="§1" title="Ceiling">
           I will pay no more than {blank("bps", "6ch", "numeric")} basis points all-in on any fill
           <span className="typed text-[0.75em] text-faint"> (100 = 1%)</span>, measured on what actually arrives.
+          <MarketReference
+            origin={form.origin} dest={form.dest}
+            amount={parsed.ok ? parsed.amount : null} ceiling={Number(form.bps)}
+            onUse={(bps) => set("bps")(String(bps))}
+          />
         </Clause>
         <Clause no="§1a" title="Size">
           Any filler may take up to the whole escrow in a single fill.
@@ -216,5 +223,84 @@ function TokenBlank({ value, onChange, table, invalid }: {
     >
       {ids.map((id) => <option key={id} value={id}>{meta(table, id).symbol}</option>)}
     </select>
+  );
+}
+
+
+/* ------------------------------------------------------- the market, right now */
+
+/**
+ * The ceiling is the only number in this form that cannot be guessed, and until
+ * now the form let you guess it. This asks the venue for a real quote on the
+ * pair and size you have typed, then asks the contract what that quote costs —
+ * `worst_cost` and `realised_cost`, the two views that price bytes without
+ * checking a signature, so no key and no signature are needed to read them.
+ *
+ * The number that matters is the FLOOR, not the expected fill. A filler on a
+ * first-come-first-served book delivers the least it legally can, so a ceiling
+ * below the guaranteed-worst cost is a mandate nothing can ever fill. That is
+ * the one piece of advice this page can give that a reader could not work out
+ * from the form.
+ */
+function MarketReference({ origin, dest, amount, ceiling, onUse }: {
+  origin: string; dest: string; amount: string | null; ceiling: number; onUse: (bps: number) => void;
+}) {
+  // the form changes on every keystroke; the venue should not
+  const [settled, setSettled] = useState<string | null>(amount);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(amount), 600);
+    return () => clearTimeout(t);
+  }, [amount]);
+
+  const q = useQuery({
+    queryKey: ["market", origin, dest, settled],
+    enabled: !!settled && origin !== dest,
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await getQuote({
+        originAsset: origin, destinationAsset: dest, amount: settled!, recipient: VAULT,
+      });
+      const canonical = canonicalise(res);
+      const [worst, full] = await Promise.all([
+        view<number>("worst_cost", { canonical }),
+        view<number>("realised_cost", { canonical, delivered: JSON.parse(canonical).amountOut }),
+      ]);
+      return { worst: Number(worst), full: Number(full) };
+    },
+  });
+
+  if (!settled || origin === dest) return null;
+
+  const body = () => {
+    if (q.isPending) return <span className="text-faint">asking the venue, then the vault…</span>;
+    if (q.isError) return <span className="text-faint">no live quote for this pair right now — the ceiling is still yours to set.</span>;
+    const { worst, full } = q.data!;
+    const unfillable = ceiling > 0 && ceiling <= worst;
+    const suggestion = Math.ceil((worst * 1.25) / 25) * 25;
+    return (
+      <>
+        <span>
+          Right now this pair prices at <b className="text-sign">{full} bps</b> delivered in full, and{" "}
+          <b className={unfillable ? "text-seal" : "text-sign"}>{worst} bps</b> at the floor the venue guarantees.
+        </span>{" "}
+        {unfillable ? (
+          <span className="text-seal">
+            <b>A ceiling of {ceiling} would refuse every fill</b> — a filler may legally deliver the floor, and the
+            floor alone already costs {worst}.{" "}
+            <button type="button" className="lnk" onClick={() => onUse(suggestion)}>use {suggestion} bps</button>
+          </span>
+        ) : (
+          <span className="text-faint">
+            Your {ceiling} bps leaves {(ceiling / Math.max(worst, 1)).toFixed(1)}× headroom over the floor. Anything
+            above it is refused, whoever fills.
+          </span>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <p className="typed mt-3 block text-[13px] leading-relaxed">↳ {body()}</p>
   );
 }

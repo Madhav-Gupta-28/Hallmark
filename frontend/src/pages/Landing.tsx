@@ -7,6 +7,7 @@
  * long thing left is the exhibit — because the exhibit is the proof, and the
  * proof is read from the live contract while you watch.
  */
+import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { A, Clause, Entry, Heading, L, Seal, Source, Stamp } from "@/components/doc";
@@ -24,6 +25,7 @@ export function Landing() {
       <Terms />
       <Invariant />
       <ExhibitA />
+      <WhyNow />
       <ScheduleB />
       <Execute />
     </main>
@@ -143,6 +145,48 @@ function ExhibitA() {
           )}
         </div>
       </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------- why now */
+
+/**
+ * The one piece of outside evidence that this is a real problem and not a
+ * invented one: the regulator of the primitive has an open docket on exactly
+ * this failure. Kept short on purpose — the full argument is in ARCHITECTURE.
+ */
+function WhyNow() {
+  const rows: Array<[string, string, string]> = [
+    ["the primitive", "FIX ExecInst tag 18 = 1", "the same order"],
+    ["its protection", "a promise — “reasonable diligence”", "a number the venue signed"],
+    ["enforced", "after the fact, against a benchmark", "before anything moves"],
+  ];
+  return (
+    <section>
+      <Heading kicker="Part III">Why the promise needs replacing, and why now</Heading>
+      <p className="max-w-[62ch] text-[19px]">
+        On <b>24 July 2026</b> FINRA opened <A href="https://www.finra.org/rules-guidance/notices/26-15">Regulatory
+        Notice 26-15</A>, asking how to modernise best execution under Rule 5310. Section 7 raises two concerns about
+        not-held orders, and both are the same failure: <b>the client's protection lives in prose somebody else
+        drafted</b>. It also asks whether a safe harbor would help.
+      </p>
+      <div className="mt-7 grid gap-px border-2 border-ink bg-ink sm:grid-cols-[auto_1fr_1fr]">
+        <div className="label bg-paper-2 p-3 text-faint" />
+        <div className="label bg-paper-2 p-3 text-faint">Equities, today</div>
+        <div className="label bg-paper-2 p-3 text-faint">Hallmark</div>
+        {rows.map(([k, then, now]) => (
+          <Fragment key={k}>
+            <div className="label bg-paper p-3 text-faint sm:whitespace-nowrap">{k}</div>
+            <div className="bg-paper p-3 text-[17px]">{then}</div>
+            <div className="bg-paper p-3 text-[17px] font-semibold">{now}</div>
+          </Fragment>
+        ))}
+      </div>
+      <p className="mt-6 max-w-[62ch] text-[19px]">
+        Nobody has proposed replacing the promise with arithmetic, because in equities no venue
+        cryptographically signs the economics of a fill. <b>On NEAR there is one.</b>
+      </p>
     </section>
   );
 }

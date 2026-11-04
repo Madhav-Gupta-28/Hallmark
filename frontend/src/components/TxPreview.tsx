@@ -1,16 +1,20 @@
 /**
  * A batch as exactly what it is — receiver, method, gas, deposit, arguments —
- * plus the `near` CLI command that performs it: the agreement's annex.
+ * and, where asked for, the `near` CLI command that performs it.
  *
  * Both renderings come from the same `Tx` objects the wallet is handed, so the
  * command a user copies cannot drift from the transaction a button sends.
+ *
+ * `cli` is off inside the execution page. The page that opened it already shows
+ * the command, and printing it twice made a dialog nobody could read to the
+ * bottom — which is the one place every byte genuinely has to be read.
  */
 import { useState, type ReactNode } from "react";
 import { cliFor, near, VAULT, type Tx } from "@/lib/hallmark";
 
 const deposit = (d: string) => (d === "1" ? "1 yoctoNEAR" : d === "0" ? "none" : `${near(d, 5)} NEAR`);
 
-export function TxPreview({ txs, signer }: { txs: Tx[]; signer: string | null }) {
+export function TxPreview({ txs, signer, cli = true }: { txs: Tx[]; signer: string | null; cli?: boolean }) {
   const cmd = cliFor(txs, signer ?? "YOUR_ACCOUNT.near");
   const acts = txs.flatMap((t, i) => t.actions.map((a) => ({ t, a, i })));
 
@@ -33,7 +37,7 @@ export function TxPreview({ txs, signer }: { txs: Tx[]; signer: string | null })
           <pre className="mt-2 overflow-x-auto border-2 border-ink bg-paper-2 p-3 text-[13px] leading-snug">{JSON.stringify(a.args, null, 1)}</pre>
         </div>
       ))}
-      <div>
+      {cli && <div>
         <div className="mb-2 flex flex-wrap items-center gap-3">
           <p className="label">Or run it yourself</p>
           <CopyButton text={cmd} />
@@ -42,7 +46,7 @@ export function TxPreview({ txs, signer }: { txs: Tx[]; signer: string | null })
           </span>
         </div>
         <pre className="overflow-x-auto border-2 border-ink bg-ink p-3 text-[13px] leading-snug text-paper">{cmd}</pre>
-      </div>
+      </div>}
     </div>
   );
 }

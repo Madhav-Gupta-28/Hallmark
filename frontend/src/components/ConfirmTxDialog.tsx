@@ -85,15 +85,14 @@ export function ConfirmTxDialog({ ask, onClose, onSigned }: {
             <p className="label text-faint">Execution page · NEAR mainnet · real funds</p>
             <DialogTitle className="mt-1 font-serif text-[clamp(28px,4vw,40px)] font-extrabold leading-tight">{ask.title}</DialogTitle>
             <DialogDescription className="text-[17px] text-ink">
-              To be signed by <b className="typed break-all">{ask.signer}</b>. Read every line below: it is exactly what the
-              wallet will be asked to sign, and nothing more.
+              To be signed by <b className="typed break-all">{ask.signer}</b> — exactly this, and nothing more.
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-6">{ask.summary}</div>
 
           <p className="label mt-8 border-b-[6px] border-double border-ink pb-1">Annex — the transactions</p>
-          <div className="mt-4"><TxPreview txs={ask.txs} signer={ask.signer} /></div>
+          <div className="mt-4"><TxPreview txs={ask.txs} signer={ask.signer} cli={false} /></div>
 
           <div className="mt-8 space-y-3">
             {checked.isPending && <p className="typed text-[14px] text-faint">re-reading the chain before asking for a signature…</p>}

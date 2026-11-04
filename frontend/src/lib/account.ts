@@ -33,6 +33,8 @@ export interface AccountSnapshot {
   scanned: number;
   mandates: OwnedMandate[];
   credits: Credit[];
+  /** how many assets were actually asked about — the provenance line says so */
+  assetsChecked: number;
   /** assets whose credit read failed; their credits are unknown, not zero */
   creditErrors: string[];
   storage: string;
@@ -56,7 +58,13 @@ async function each<T, R>(items: T[], width: number, f: (t: T) => Promise<R>, ti
 
 export async function loadAccount(
   account: string,
-  listedAssets: string[],
+  /**
+   * Assets to check even when no mandate names them — the vault's known pair.
+   * This was 1Click's whole NEAR token list, 39 of them, one `get_credit` each:
+   * the page took 46 view calls and six seconds to answer a question whose
+   * answer could only ever involve the assets below. See the note at `assets`.
+   */
+  fallbackAssets: string[],
   onProgress: (p: Progress) => void = () => {},
   r: Reader = read,
 ): Promise<AccountSnapshot> {
@@ -67,7 +75,7 @@ export async function loadAccount(
 
   const ids = Array.from({ length: count }, (_, i) => i + 1);
   let done = 0;
-  let assetsTotal = listedAssets.length;           // grows once the account's own assets are known
+  let assetsTotal = fallbackAssets.length;         // grows once the register's assets are known
   const total = () => ids.length + assetsTotal;
   const tick = () => onProgress({ done: ++done, total: total() });
   onProgress({ done, total: total() });
@@ -78,8 +86,25 @@ export async function loadAccount(
     .map((m, i) => ({ id: ids[i], m }))
     .filter((x): x is OwnedMandate => !!x.m && x.m.owner === account);
 
+  /**
+   * A credit exists only where the contract wrote one, and it writes one in
+   * exactly two places: a fill credits the owner the destination asset and the
+   * filler the origin asset; a cancel credits the owner the origin asset. Every
+   * one of those assets is named by some mandate's terms — and those records
+   * are already in hand, so the asset universe is free rather than 39 calls.
+   *
+   * The register, not just this account's own mandates: as a filler you are
+   * credited the origin asset of somebody else's agreement.
+   *
+   * KNOWN LIMIT: a reaped mandate's record reads as null, so a credit left over
+   * from an agreement that was later reaped is not found this way. That is what
+   * `fallbackAssets` is for — the pair this vault is known to hold is always
+   * checked — and it is a real gap for any other asset. It is not closable
+   * without a `list my credits` view the contract does not have.
+   */
+  const inRegister = records.flatMap((m) => (m ? [m.terms.origin_asset, m.terms.destination_asset] : []));
   const own = mandates.flatMap(({ m }) => [m.terms.origin_asset, m.terms.destination_asset]);
-  const assets = [...new Set([...listedAssets, ...own])];
+  const assets = [...new Set([...fallbackAssets, ...inRegister, ...own])];
   assetsTotal = assets.length;
   const creditErrors: string[] = [];
   const amounts = await each(assets, 4, async (asset) => {
@@ -90,7 +115,7 @@ export async function loadAccount(
     .map((asset, i) => ({ asset, amount: amounts[i] }))
     .filter((c) => BigInt(c.amount) > 0n);
 
-  return { blockHeight: block, scanned: count, mandates, credits, creditErrors, storage };
+  return { blockHeight: block, scanned: count, mandates, credits, assetsChecked: assets.length, creditErrors, storage };
 }
 
 /* ------------------------------------------------------------- actions */

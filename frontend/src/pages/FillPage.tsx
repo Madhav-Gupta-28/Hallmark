@@ -26,16 +26,15 @@ export function FillPage() {
           Anyone may fill. <span className="hl">Including you.</span>
         </h1>
         <p className="mt-6 max-w-[58ch] text-[21px] leading-[1.45]">
-          A filler delivers the output an agreement asks for and is credited the escrow. Nobody grants
-          permission, nothing registers you, and the contract never asks who you are — it reads what arrived
-          and whether it breaks the owner's terms.
+          Deliver what an agreement asks for and the escrow is yours. Nobody grants permission — the contract
+          reads what arrived, not who sent it.
         </p>
       </section>
 
       <Open />
 
       <Figure id="earn" no="1" title="What there is to earn"
-        takeaway={<>The spread <i>is</i> the fee. You keep the gap between what you sourced the output for and what you delivered — and it is already inside the owner's ceiling.</>}
+        takeaway={<>The spread <i>is</i> the fee: you keep the gap between what the output cost you and what you delivered.</>}
         full={<>
           <p>There is no fee field and no rake, because there is nothing to take one from: the owner's ceiling
             is the only number, and anything you do not spend sourcing the output is yours. For scale, 1Click's

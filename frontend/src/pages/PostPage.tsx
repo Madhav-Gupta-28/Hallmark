@@ -58,7 +58,6 @@ export function PostPage() {
     ? openTxs(parsed.terms, parsed.amount, pre.data?.prepaid ?? "0", pre.data?.estimate ?? estimate.data ?? FALLBACK_ESTIMATE, pre.data)
     : [];
   const inTok = meta(table, form.origin);
-  const outTok = meta(table, form.dest);
   const days = Number(form.days);
   const expiry = Number.isInteger(days) && days > 0
     ? new Date(Number((BigInt(stamp) * 1_000_000n + BigInt(days) * NS_PER_DAY) / 1_000_000n)).toISOString().slice(0, 10)
@@ -158,14 +157,6 @@ export function PostPage() {
       </div>
       {pre.isError && <p className="typed mt-3 text-[14px] text-seal">Could not read your account: {pre.error.message}</p>}
 
-      <Heading kicker="Annex">The exact transactions</Heading>
-      <p className="mb-6 max-w-[760px] text-[18px]">
-        What signing will send — and the same thing as a command you can run yourself, with no wallet connected.
-        {inTok.symbol && outTok.symbol && <> Two transactions at most: prepay storage, then transfer the {inTok.symbol} to the vault
-          with these terms attached. The transfer <i>is</i> the escrow.</>}
-      </p>
-      {parsed.ok ? <TxPreview txs={txs} signer={w.accountId} /> : <p className="typed text-faint">Correct the defect above to see them.</p>}
-
       <section className="mt-14 flex flex-wrap items-end justify-between gap-8 border-t-[6px] border-double border-ink pt-8">
         <div className="min-w-[260px] flex-1">
           <div className="hand text-[30px] leading-none">{w.accountId ?? " "}</div>
@@ -176,6 +167,16 @@ export function PostPage() {
         </button>
       </section>
       <Source>No signature is requested until you have read the execution page, re-checked against the chain.</Source>
+
+      {/* Below the button on purpose: the action is what most readers came for,
+          and the annex is for whoever wants to read every byte or run it
+          themselves. The execution page shows the same transactions again, but
+          not this command — it lives here, once. */}
+      <Heading kicker="Annex">The exact transactions</Heading>
+      <p className="mb-6 max-w-[64ch] text-[18px]">
+        What signing will send, and the same thing as a command you can run yourself with no wallet connected.
+      </p>
+      {parsed.ok ? <TxPreview txs={txs} signer={w.accountId} /> : <p className="typed text-faint">Correct the defect above to see them.</p>}
 
       {ask && (
         <ConfirmTxDialog

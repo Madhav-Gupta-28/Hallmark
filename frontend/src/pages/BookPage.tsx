@@ -6,11 +6,13 @@ import { age, short, VAULT, type BookEntry } from "@/lib/hallmark";
 import { bookQuery, openCountQuery, tokensQuery } from "@/lib/queries";
 import { meta, type TokenTable } from "@/lib/tokens";
 import { Count } from "@/motion/Count";
+import { useWallet } from "@/wallet/context";
 
 const NS_PER_DAY = 86_400_000_000_000n;
 
 /** The register of agreements in force: one ruled line per open mandate. */
 export function BookPage() {
+  const w = useWallet();
   const book = useQuery(bookQuery);
   const open = useQuery(openCountQuery);
   const tokens = useQuery(tokensQuery);
@@ -23,11 +25,16 @@ export function BookPage() {
         <h1 className="mt-3 font-serif text-[clamp(40px,7vw,88px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
           {open.isSuccess ? <><span className="hl"><Count to={open.data} /></span> {open.data === 1 ? "agreement" : "agreements"} in force.</> : "The register."}
         </h1>
-        <p className="mt-5 max-w-[680px] text-[19px]">
-          Every mandate the vault holds right now. Each is an order with its terms attached: the owner has escrowed
-          the input and named the worst all-in cost they will accept. Any filler may take one; the contract refuses
-          them if the arithmetic does not hold.
+        <p className="mt-5 max-w-[62ch] text-[19px]">
+          Every agreement the vault holds. The owner has escrowed the input and named the worst all-in cost they
+          will accept; any filler may take one, and the contract refuses the ones that breach it.
         </p>
+        {w.accountId && (
+          <p className="typed mt-3 text-[14px]">
+            ↳ <L to={`/account/${w.accountId}`}>Your own statement</L> — what you are owed, your prepaid storage,
+            and the agreements you have drawn up.
+          </p>
+        )}
         <div className="mt-6 flex flex-wrap items-center gap-4">
           <Link to="/post" className="btn btn-sign">Draw up a new one</Link>
           <button className="btn btn-sm" onClick={() => { void book.refetch(); void open.refetch(); }} disabled={book.isFetching}>

@@ -182,9 +182,8 @@ function Compliance({ id, m, table }: { id: number; m: MandateRecord; table: Tok
     <section>
       <Heading kicker="Part II">Test of compliance</Heading>
       <p className="max-w-[760px] text-[19px]">
-        Would a fill against this agreement be honoured right now? Fetch a real, freshly signed quote from NEAR
-        Intents for this exact pair and size, and the contract answers: it verifies the venue's signature, reads
-        four signed numbers, and rules at two delivery sizes. Nothing is signed by you and nothing is sent.
+        Would a fill be honoured right now? Fetch a real signed quote for this pair and size, and the contract
+        rules on it at both delivery sizes. Nothing is signed and nothing is sent.
       </p>
       {!m.open && (
         <p className="mt-4 max-w-[760px] text-[19px]">

@@ -60,16 +60,20 @@ export function AccountPage() {
   const [ask, setAsk] = useState<Ask | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
 
-  // Wait for 1Click's real list (not the placeholder floor) before scanning;
-  // if 1Click is down, scan the floor and say so.
-  const listReady = (tokens.isSuccess && !tokens.isPlaceholderData) || tokens.isError;
+  // The scan no longer waits for 1Click. It used to: the credit sweep ran over
+  // 1Click's whole token list, so the list had to arrive first — which put a
+  // third-party HTTP round trip in front of every read of this page. The list
+  // is now only used to put a symbol next to a number, so it can land late and
+  // simply re-render.
   const table: TokenTable = useMemo(() => (tokens.isError ? FLOOR : tokens.data ?? FLOOR), [tokens.isError, tokens.data]);
-  const listed = useMemo(() => Object.keys(table).sort(), [table]);
+  // The pair this vault is known to hold, always checked; everything else the
+  // register names is derived from the records the load already reads.
+  const FALLBACK_ASSETS = useMemo(() => Object.keys(FLOOR), []);
 
   const snap = useQuery({
-    queryKey: ["account", id, listed.length],
-    queryFn: () => loadAccount(id, listed, setProgress),
-    enabled: ACCOUNT.test(id) && listReady,
+    queryKey: ["account", id],
+    queryFn: () => loadAccount(id, FALLBACK_ASSETS, setProgress),
+    enabled: ACCOUNT.test(id),
     staleTime: 30_000,
   });
   const estimate = useQuery({
@@ -115,21 +119,13 @@ export function AccountPage() {
           <button className="btn btn-sm" onClick={() => void snap.refetch()} disabled={snap.isFetching}>
             {snap.isFetching ? "reading…" : "re-read the chain"}
           </button>
-          {s && <span className="typed text-[13px] text-faint">as at block {s.blockHeight.toLocaleString()} · {s.scanned} agreement{s.scanned === 1 ? "" : "s"} and {listed.length} tokens examined</span>}
+          {s && <span className="typed text-[13px] text-faint">as at block {s.blockHeight.toLocaleString()} · {s.scanned} agreement{s.scanned === 1 ? "" : "s"} and {s.assetsChecked} token{s.assetsChecked === 1 ? "" : "s"} examined</span>}
         </div>
       </section>
 
-      {tokens.isError && (
-        <p className="mt-6 max-w-[760px] border-l-4 border-seal pl-4 text-[17px]">
-          1Click's token list is unavailable, so credits were checked only for wNEAR, USDT and this account's own
-          agreements' tokens. A credit in any other token would not appear here.
-        </p>
-      )}
-
-      {(snap.isPending || !listReady) && (
+      {snap.isPending && (
         <p className="typed mt-10 text-[15px] text-faint">
-          {!listReady ? "fetching the token list…"
-            : progress ? `examining the chain… ${progress.done} of ${progress.total} entries` : "examining the chain…"}
+          {progress ? `examining the chain… ${progress.done} of ${progress.total} entries` : "examining the chain…"}
         </p>
       )}
       {snap.isError && <p className="typed mt-10 text-seal">This statement could not be prepared: {snap.error.message}</p>}
@@ -138,8 +134,7 @@ export function AccountPage() {
         <>
           <Heading kicker="Part I">Owed to this account</Heading>
           <p className="mb-4 max-w-[760px] text-[17px]">
-            Payouts are pulled, never pushed. A fill credits the filler the input and the owner the output, a cancel
-            credits the unspent escrow — and nothing moves until it is withdrawn.
+            Payouts are pulled, never pushed: the vault owes it until you take it.
           </p>
           {s.credits.length === 0
             ? <p className="text-[19px]">Nothing is owed to this account.</p>
@@ -169,8 +164,7 @@ export function AccountPage() {
           <Heading kicker="Part II">Prepaid storage</Heading>
           <div className="flex flex-wrap items-center justify-between gap-6">
             <p className="max-w-[640px] text-[17px]">
-              NEAR prepaid against the state this account writes. The vault charges the measured bytes and refunds what
-              reaping frees; the rest is this account's to take back.
+              NEAR against the bytes this account writes. Charged as measured; the rest is yours to take back.
             </p>
             <div className="flex items-center gap-5">
               <span className="typed text-[26px] font-bold">{near(s.storage, 5)} NEAR</span>
@@ -186,8 +180,7 @@ export function AccountPage() {
 
           <Heading kicker="Part IV">Closed, awaiting reaping <span className="typed text-[0.5em] text-faint">({closed.length})</span></Heading>
           <p className="mb-2 max-w-[760px] text-[17px]">
-            A closed agreement's record stays as its own receipt until the owner reaps it. Reaping deletes the record
-            and returns the storage it frees to the prepaid balance.
+            A closed agreement stays as its own receipt until it is reaped, which deletes it and refunds its bytes.
           </p>
           {closed.length === 0 && <p className="text-[19px]">None.</p>}
           {closed.map((o) => <Held key={o.id} o={o} table={table} readAt={readAt}>
@@ -195,7 +188,7 @@ export function AccountPage() {
           </Held>)}
 
           <Source>
-            get_mandate(1…{s.scanned}), get_credit × {listed.length}, storage_balance_of — every read pinned to block{" "}
+            get_mandate(1…{s.scanned}), get_credit × {s.assetsChecked}, storage_balance_of — every read pinned to block{" "}
             {s.blockHeight.toLocaleString()} so this statement is consistent with itself.{" "}
             {!isMe && "Actions open the execution page so anyone can read the exact transaction; only this account can sign."}
           </Source>

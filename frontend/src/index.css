@@ -227,7 +227,7 @@
 /* =============================================================================
    MOTION — the same document, coming alive. Ink is applied as you read: things
    rise into place, the highlighter sweeps, strike-throughs draw, signatures
-   write themselves, stamps land. The live tape keeps the page moving.
+   write themselves, stamps land.
    All of it is off under prefers-reduced-motion (and the reveal hook never
    hides anything there in the first place).
    ========================================================================== */
@@ -280,11 +280,6 @@
   .live-dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--sign); animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
   @keyframes ping { from { transform: scale(.5); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }
 
-  /* the register tape */
-  .tape { overflow: hidden; white-space: nowrap; background: var(--ink); color: var(--paper); border-block: 2px solid var(--ink); }
-  .tape-track { display: inline-flex; animation: tape 60s linear infinite; will-change: transform; }
-  .tape:hover .tape-track { animation-play-state: paused; }
-  @keyframes tape { to { transform: translateX(-50%); } }
 
   /* a typed line, and its caret */
   .caret::after { content: "▍"; margin-left: 1px; animation: blink 1s steps(1) infinite; color: var(--sign); }
@@ -308,7 +303,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; transition-delay: 0ms !important; }
-  .tape-track { animation: none !important; }
   .rv { opacity: 1 !important; transform: none !important; -webkit-mask: none !important; mask: none !important; }
   .hl.rv { background-size: 100% 78% !important; }
   .struck.rv { background-size: 100% .09em !important; }

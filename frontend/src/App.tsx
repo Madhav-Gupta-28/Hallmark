@@ -3,7 +3,6 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { useReadingProgress, useReveal } from "@/motion/reveal";
-import { Tape } from "@/motion/Tape";
 import { AccountIndex, AccountPage } from "@/pages/AccountPage";
 import { BookPage } from "@/pages/BookPage";
 import { HowPage } from "@/pages/HowPage";
@@ -35,7 +34,6 @@ export default function App() {
       <div ref={bar} className="progress" aria-hidden />
       <div ref={root}>
         <Header />
-        <div className="mt-4"><Tape /></div>
         {/* keyed by path: each page is laid down as a fresh sheet */}
         <div key={pathname} className="page-in">
           <Routes>

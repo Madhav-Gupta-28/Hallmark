@@ -1,50 +1,54 @@
 /**
- * The masthead: the document's title, which agreement register this is, and
- * the table of contents as plain links. The wallet is a link too — connecting
- * is an act of identification, not a feature.
+ * The masthead: the title, the one account every figure on the site is read
+ * from, and four places to go. Everything else that used to live up here —
+ * which register this is, which network, how many agreements are in force —
+ * is either obvious or is on the page you are about to open, so it is gone.
+ * The wallet is a link too: connecting is an act of identification, not a
+ * feature.
  */
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { short, VAULT } from "@/lib/hallmark";
-import { openCountQuery } from "@/lib/queries";
+import { EXPLORER, short, VAULT } from "@/lib/hallmark";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/wallet/WalletProvider";
 
 export function Header() {
   const w = useWallet();
-  const open = useQuery(openCountQuery);
   const [menu, setMenu] = useState(false);
   const links: Array<[string, string]> = [
     ["/book", "register"],
     ["/post", "draw up"],
-    ["/verify", "verify"],
-    [w.accountId ? `/account/${w.accountId}` : "/account", "statement"],
-    ["/how", "how"],
+    ["/how", "how it works"],
     ["/limits", "limits"],
   ];
 
   return (
     <header className="doc pt-6">
-      <div className="double-rule flex flex-wrap items-end gap-x-6 gap-y-3 pb-3">
-        <NavLink to="/" className="font-serif text-[34px] font-extrabold leading-none tracking-[0.01em]">
-          HALLMARK.
-        </NavLink>
-        <span className="typed hidden text-[13px] text-faint md:inline">
-          Agreement register · {VAULT} · NEAR mainnet ·{" "}
-          <span className="live-dot mx-1" aria-hidden /> {open.isSuccess ? `${open.data} in force` : "…"}
-        </span>
-        <span className="flex-1" />
-        <button
-          className="typed text-[14px] underline md:hidden"
-          aria-expanded={menu}
-          onClick={() => setMenu((m) => !m)}
-        >
-          {menu ? "close" : "contents"}
-        </button>
+      <div className="double-rule pb-3.5">
+        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+          <NavLink to="/" className="font-serif text-[34px] font-extrabold leading-none tracking-[0.01em]">
+            HALLMARK.
+          </NavLink>
+          <a
+            className="lnk typed text-[13px]"
+            href={`${EXPLORER}/address/${VAULT}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {VAULT} ↗
+          </a>
+          <span className="flex-1" />
+          <button
+            className="typed text-[14px] underline md:hidden"
+            aria-expanded={menu}
+            onClick={() => setMenu((m) => !m)}
+          >
+            {menu ? "close" : "contents"}
+          </button>
+        </div>
         <nav
           aria-label="Contents"
-          className={cn("w-full flex-wrap gap-x-5 gap-y-1 md:flex md:w-auto", menu ? "flex" : "hidden")}
+          className={cn("mt-3 w-full flex-wrap gap-x-5 gap-y-1 md:flex", menu ? "flex" : "hidden md:flex")}
         >
           {links.map(([to, label]) => (
             <NavLink
@@ -54,11 +58,14 @@ export function Header() {
               {label}
             </NavLink>
           ))}
+          <span className="hidden flex-1 md:block" />
           {!w.ready ? (
             <span className="typed text-[15px] text-faint">restoring…</span>
           ) : w.accountId ? (
             <span className="typed text-[15px]">
-              <span className="hand text-[20px]" title={w.accountId}>{short(w.accountId, 8)}</span>{" "}
+              <NavLink to={`/account/${w.accountId}`} className="lnk" onClick={() => setMenu(false)}>
+                {short(w.accountId, 8)}
+              </NavLink>{" "}
               <button className="lnk" onClick={() => void w.disconnect()}>sign out</button>
             </span>
           ) : (

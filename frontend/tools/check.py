@@ -118,8 +118,15 @@ def rpc(method, args=None, account="hallmarkfi.near"):
 try:
     acct = rpc(None)
     locked = acct["storage_usage"] * 10 ** 19 / 10 ** 24
-    claim("NEAR staked against the code", f"{locked:.2f} NEAR" in blob,
-          f"{locked:.2f} NEAR", f"{locked:.4f} ({acct['storage_usage']:,} bytes)")
+    # This one WAS a typed constant and went stale the moment a second mandate
+    # was drawn up: the figure is the account's whole storage stake, and state
+    # is part of it. It is rendered from a live view now, so the check is that
+    # no stale copy has crept back into the markup.
+    typed = re.findall(r"(\d\.\d\d) NEAR\b.{0,40}stak", blob, re.S) + re.findall(r"stak.{0,40}?(\d\.\d\d) NEAR\b", blob, re.S)
+    stale = [v for v in typed if v != f"{locked:.2f}"]
+    claim("NEAR staked, not typed into the markup", not stale,
+          "rendered live" if not typed else ",".join(typed),
+          f"{locked:.4f} ({acct['storage_usage']:,} bytes)")
     signer = rpc("quote_signer")
     claim("the signer key", signer in blob, signer[:22] + "…", "matches the chain")
     est = rpc("storage_cost_estimate")

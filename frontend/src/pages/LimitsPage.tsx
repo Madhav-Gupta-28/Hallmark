@@ -5,6 +5,8 @@
  * app (selector bundled from npm), not the static site's CDN load.
  */
 import type { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { viewAccount } from "@/lib/hallmark";
 import { L, Seal, Stamp } from "@/components/doc";
 import { Arrowheads, Figure } from "@/components/figure";
 import { cn } from "@/lib/utils";
@@ -60,7 +62,7 @@ export function LimitsPage() {
           <p className="mt-8 mb-2 text-[19px] font-semibold">The second open line: the upgrade key this project still holds, on purpose.</p>
           <KeyTimeline />
 
-          <p>“Nobody to switch it off” is only true once it is executed. After the final deploy the full-access key gets deleted, so the contract cannot be upgraded or paused by anyone, including us. Two costs, both accepted and both stated: <b>a bug found later cannot be patched</b>, only superseded; and <b>the storage lock becomes permanent</b> — an account with no full-access key cannot be deleted, and deleting the account is the only way to release the NEAR staked against the contract's code, 2.76 NEAR for this contract. Immutability and recoverability are the same key; you cannot keep both.</p>
+          <p>“Nobody to switch it off” is only true once it is executed. After the final deploy the full-access key gets deleted, so the contract cannot be upgraded or paused by anyone, including us. Two costs, both accepted and both stated: <b>a bug found later cannot be patched</b>, only superseded; and <b>the storage lock becomes permanent</b> — an account with no full-access key cannot be deleted, and deleting the account is the only way to release the NEAR the vault has staked against its own state, <Staked /> today — mostly the code, and growing by a few hundred bytes with every agreement drawn up. Immutability and recoverability are the same key; you cannot keep both.</p>
           <p><b>The key still exists, deliberately.</b> This project found a critical bug in a contract that was already live, twice — and fixed both by redeploying. Had the key been gone, neither could have been fixed. Because the cost is identical whenever it is paid, the key is deleted last, after the hackathon's winners are announced.</p>
         </>}>
         <KeyChain />
@@ -94,6 +96,20 @@ export function LimitsPage() {
       <p className="mt-16 text-[19px]"><L to="/how">How the clauses are enforced →</L> · <L to="/">Back to the agreement</L></p>
     </main>
   );
+}
+
+/**
+ * What the vault has staked, read from the chain rather than typed.
+ *
+ * It was a constant, and it went stale the moment the second agreement was
+ * drawn up: NEAR stakes a deposit per byte of state, and a mandate record is
+ * state. The code is most of it and does not move, but the total does, so the
+ * only honest version of this number is a live one.
+ */
+function Staked() {
+  const a = useQuery({ queryKey: ["vault", "account"], queryFn: () => viewAccount(), staleTime: 60_000 });
+  const n = a.data ? (a.data.storage_usage * 1e19) / 1e24 : null;
+  return <span className="typed">{n === null ? "…" : `${n.toFixed(2)} NEAR`}</span>;
 }
 
 /* ---------------------------------------------------- D2 — the key chain */
@@ -236,7 +252,7 @@ function KeyTimeline() {
       </ol>
       <div className="mt-8 grid gap-px border-2 border-ink bg-ink sm:grid-cols-2">
         <div className="bg-paper p-4"><p className="label text-seal">After deletion, forever</p><p className="mt-1 text-[17px]">A bug found later <b>cannot be patched</b> — only superseded by a new deployment owners move to.</p></div>
-        <div className="bg-paper p-4"><p className="label text-seal">And the deposit is locked</p><p className="mt-1 text-[17px]"><b>2.76 NEAR</b> staked against the contract's code can never be released. Immutability and recoverability are the same key.</p></div>
+        <div className="bg-paper p-4"><p className="label text-seal">And the deposit is locked</p><p className="mt-1 text-[17px]"><b><Staked /></b> the vault has staked against its own state can never be released. Immutability and recoverability are the same key.</p></div>
       </div>
     </div>
   );

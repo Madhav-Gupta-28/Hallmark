@@ -3,6 +3,7 @@ import { cliFor, VAULT, type Tx } from "./hallmark";
 import {
   blockers, DEFAULTS, FALLBACK_ESTIMATE, NS_PER_DAY, openTxs, readForm, wrapsNear, type Preflight,
 } from "./post";
+import { withdrawTxs } from "./account";
 import { interpret, readCallback, withoutCallback, type ExecutionOutcome } from "./redirect";
 import { FLOOR } from "./tokens";
 
@@ -179,5 +180,27 @@ describe("opening when the owner holds NEAR and no wNEAR", () => {
     const txs = openTxs(usdt.terms, usdt.amount, fresh.prepaid, fresh.estimate, fresh);
     expect(wrapsNear(txs)).toBe(false);
     expect(blockers(fresh, txs, usdt.amount, "USDT", 6)[0]).toMatch(/less than the amount to escrow/);
+  });
+});
+
+
+/* Both sides of the first real fill hit this: paid in a token they had never
+   held, so not registered on it, so the payout would have failed. */
+describe("withdrawing a credit in a token the account has never held", () => {
+  const credit = { asset: "nep141:usdt.tether-token.near", amount: "210248" };
+
+  it("registers on the token first, then withdraws", () => {
+    expect(withdrawTxs(credit, false).map((t) => [t.receiverId, t.actions[0].methodName])).toEqual([
+      ["usdt.tether-token.near", "storage_deposit"],
+      [VAULT, "withdraw"],
+    ]);
+  });
+
+  it("does not register an account that already is", () => {
+    expect(withdrawTxs(credit, true).map((t) => t.actions[0].methodName)).toEqual(["withdraw"]);
+  });
+
+  it("leaves a token with no storage_balance_of alone", () => {
+    expect(withdrawTxs(credit, undefined).map((t) => t.actions[0].methodName)).toEqual(["withdraw"]);
   });
 });

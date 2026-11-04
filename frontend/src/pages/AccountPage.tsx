@@ -153,7 +153,7 @@ export function AccountPage() {
                       <tr key={c.asset}>
                         <td className="font-semibold">{tok.symbol} <span className="typed text-[13px] font-normal text-faint">{tokenOf(c.asset)}</span></td>
                         <td className="num text-[18px] font-bold"><AmountOf v={c.amount} tok={tok} /></td>
-                        <td className="text-right"><button className="btn btn-sm btn-sign" onClick={() => setAsk(asks.withdraw(c))}>withdraw</button></td>
+                        <td className="text-right"><button className="btn btn-sm btn-sign" onClick={() => void asks.withdraw(c).then(setAsk)}>withdraw</button></td>
                       </tr>
                     );
                   })}
@@ -286,9 +286,13 @@ function actions(account: string, s: AccountSnapshot, table: TokenTable, estimat
   const fresh = (id: number) => view<MandateRecord | null>("get_mandate", { mandate_id: id });
 
   return {
-    withdraw(c: Credit): Ask {
+    async withdraw(c: Credit): Promise<Ask> {
       const tok = meta(table, c.asset);
-      const txs = withdrawTxs(c);
+      // read the registration BEFORE the batch is built, so a missing one is
+      // added to it rather than reported as a reason not to sign
+      const reg = await viewOn<unknown>(tokenOf(c.asset), "storage_balance_of", { account_id: account })
+        .catch(() => undefined);
+      const txs = withdrawTxs(c, reg === undefined ? undefined : reg !== null);
       return {
         kind: "withdraw", title: `Withdraw ${tok.symbol}`, signer: account, txs, returnPath: ret,
         summary: <SummaryRows rows={{
@@ -303,8 +307,10 @@ function actions(account: string, s: AccountSnapshot, table: TokenTable, estimat
           // A payout to an account not registered on the token fails; the vault
           // restores the credit, but the gas is spent. Tokens that do not
           // implement storage_balance_of are not judged.
-          const reg = await viewOn<unknown>(tokenOf(c.asset), "storage_balance_of", { account_id: account }).catch(() => undefined);
-          if (reg === null) out.push(`${account} is not registered on ${tokenOf(c.asset)}, so the payout would fail and the credit be restored. Register with storage_deposit on that token first.`);
+          const now2 = await viewOn<unknown>(tokenOf(c.asset), "storage_balance_of", { account_id: account }).catch(() => undefined);
+          const registering = txs.some((t) => t.actions[0].methodName === "storage_deposit");
+          if (now2 === null && !registering)
+            out.push(`${account} is not registered on ${tokenOf(c.asset)}, so the payout would fail and the credit be restored.`);
           return out;
         },
       };

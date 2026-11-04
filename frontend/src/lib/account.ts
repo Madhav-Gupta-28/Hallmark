@@ -14,7 +14,8 @@
  * `mandate_count` was read at, so the picture is consistent while it loads.
  */
 import {
-  txCancel, txFund, txReap, txStorageDeposit, txStorageWithdraw, txWithdraw, viewAt,
+  tokenOf, txCancel, txFund, txReap, txStorageDeposit, txStorageWithdraw,
+  txTokenStorageDeposit, txWithdraw, viewAt,
   type MandateRecord, type Tx,
 } from "./hallmark";
 
@@ -117,7 +118,20 @@ export function cancelTxs(o: OwnedMandate, snap: AccountSnapshot, estimate: stri
 }
 
 export const reapTxs = (o: OwnedMandate): Tx[] => [txReap(o.id)];
-export const withdrawTxs = (c: Credit): Tx[] => [txWithdraw(c.asset)];
+/**
+ * A payout to an account with no NEP-145 registration on the token fails: the
+ * vault restores the credit, so nothing is lost but the gas. Registering is
+ * the whole prerequisite, it costs 0.00125 NEAR, and an owner who has just
+ * been paid in a token they have never held is the ordinary case rather than
+ * the odd one — so the batch does it, instead of naming it and stopping.
+ *
+ * `registered` is undefined for a token with no `storage_balance_of`, and
+ * those are not judged either way.
+ */
+export const withdrawTxs = (c: Credit, registered?: boolean): Tx[] =>
+  registered === false
+    ? [txTokenStorageDeposit(tokenOf(c.asset)), txWithdraw(c.asset)]
+    : [txWithdraw(c.asset)];
 export const storageWithdrawTxs = (): Tx[] => [txStorageWithdraw()];
 export const fundTxs = (o: OwnedMandate, amount: string): Tx[] => [txFund(o.m.terms.origin_asset, o.id, amount)];
 

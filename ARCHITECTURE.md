@@ -364,8 +364,8 @@ Kept because it is the most useful thing here for anyone rebuilding this.
 - **Not best execution.** Hallmark proves a *bound* and enforces a *realised
   cost*, not optimality. With one filler and first-come-first-served, the filler
   delivers near the floor and keeps the spread; the owner gets their ceiling, not
-  the best price in the market. An auction window is the documented next step
-  (§14), not a v1 claim.
+  the best price in the market. A **sealed-bid, commit-then-deliver** auction is
+  the documented next step (§14.7), not a v1 claim.
 - **Not an independent price benchmark.** Killed by measurement (§3.12).
 - **Not a reputation or counterparty-scoring system.** No account-age
   heuristics, no blocklists, no contract-change detection. Six public NEAR repos
@@ -2164,9 +2164,33 @@ races (§12).
    credited ~0.00145 NEAR for releasing it. Never a loss to the vault, and it
    cannot be farmed, because every such transfer requires a real delivery.
 7. **First-come-first-served means the filler delivers near the floor.** The
-   owner gets their ceiling, not the best price available. An auction window —
-   collect deliveries for N blocks, settle the best — is the natural next
-   version and is **not** claimed for v1.
+   owner gets their ceiling, not the best price available.
+
+   **The next version is a sealed-bid auction, and it must not be the obvious
+   one.** The obvious design — collect deliveries for N blocks and settle the
+   best — would have the vault holding N fillers' tokens and returning N−1 of
+   them. That is a custody window of exactly N blocks, and it is the twelfth
+   design in §2.8 that does not survive "**not a custodian, ever**". An earlier
+   draft of this document published it as the roadmap in three places; it was
+   caught by reading §14.7 against §2.9 rather than by anything failing.
+
+   **What survives: bid, then deliver.** A filler commits
+   `H = sha256(mandate_id ‖ min_delivery ‖ nonce)` — a hash, no tokens. After
+   the window closes each bidder reveals `(min_delivery, nonce)`; the contract
+   keeps the largest revealed delivery and grants that filler an exclusive
+   right to fill for a further K blocks, at or above the amount they named.
+   Everybody else delivered nothing, so there is nothing to return, and
+   **nothing was ever held**. The custody window is zero, §2.4's ordering is
+   unchanged, and the winner is still verified against the venue's signature
+   exactly as today.
+
+   **Its own costs, stated.** A winner who never delivers costs the owner K
+   blocks of latency; the mandate then reopens to the next revealed bid. Bonding
+   the bid would fix that and is rejected for the same reason the obvious design
+   is — a bond is custody. A bidder who never reveals is simply dropped. And
+   two rounds mean two transactions before any token moves, which is strictly
+   worse than today's one for the common case of a single filler; the auction is
+   therefore opt-in per mandate, not the default.
 8. **1Click signer-key compromise is unmitigated** (§10.1).
 9. **No independent price benchmark exists** (§3.12). A bound, never best
    execution.

@@ -115,6 +115,7 @@ The sections below are the same things one at a time, with what each one proves.
 | all 692 bytes are covered by that signature | `every_single_byte_is_covered_by_the_signature` — each byte flipped, each rejected |
 | the contract prices a 500 bps `appFee` it is not allowed to read | `the_malicious_quote_is_refused_at_its_floor_but_fine_at_its_expected_fill` (§2.3) |
 | a signature alone is not enough — a stale quote is refused | `a_stale_quote_is_refused_even_though_it_is_signed_and_inside_its_deadline`, and on-chain in `3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc` |
+| a filler with no NEAR inventory served a NEAR mandate out of USDC on Base | `cd client && npm run fill:sourced -- --from base` — the route priced for free; §3.17 for the Base and NEAR hashes of the one that ran |
 | the ceiling turned away a real fill, on mainnet, that no spend policy would have stopped | `cd client && npm run breach` — tx `Fjz5cqJfiWyh…`, **532 bps against a 300 bps ceiling**, delivery refunded in the same transaction |
 | the filler delivers first, so nobody ever holds a counterparty's funds | the 28 sandbox tests; §2.4 for why it is load-bearing |
 | whoever writes a byte pays for it, and the vault never subsidises | `the_vault_never_pays_for_state_someone_else_created` |
@@ -315,11 +316,29 @@ whether it breaks the owner's terms.
 npm run bound      # what a live quote actually guarantees — no key, no funds
 npm run race       # three fillers price the same mandate — no key, no funds
 npm run breach     # try to overcharge an owner, and be refused — no key, no funds
+npm run fill:sourced -- --from base    # price a fill out of inventory on Base
 
 export NEAR_ACCOUNT=you.near                 # a key is needed only here
 npm run fill       # deliver against an open agreement, and be credited
 npm run breach -- 1    # and send the bad fill anyway. It costs gas and refunds
+npm run fill:sourced -- --from base --go   # and run the cross-chain route
 ```
+
+**Your inventory does not have to be on NEAR.** A mandate is NEAR-local because
+the contract has to watch the delivery arrive before it credits anything — that
+is where the *bound* lives, and it is constantly mistaken for a claim about
+where the *market* lives. You are a counterparty, not a component, and your
+balance sheet is your own. `fill:sourced` holds USDC on Base, reads a NEAR
+mandate, prices what the delivery has to be, sources exactly that much through
+1Click, waits for it to land, and fills — and the ceiling is still enforced on
+NEAR against the venue's signature, because that is the only place it can be.
+
+Done on mainnet on 2026-11-05 from a wallet with **zero** NEAR-side USDT:
+0.154397 USDC on Base became a fill at **97 bps against a 300 bps ceiling** in
+38 seconds, the sourcing leg priced at **0 bps**, and the earnings went back to
+Base. Every hash is in §3.17. The sourcing leg trusts an unsigned
+`depositAddress` and the fill does not — which is the right way round, because
+the sourcing leg risks the filler's inventory and the fill risks the owner's.
 
 `breach` is there because the guard in `fill.ts` is a courtesy and the one in
 the app is a courtesy, and a filler is not obliged to run either. It asks the
@@ -451,8 +470,9 @@ are written out in `contract/src/quote.rs` so the whole bound is readable in one
 file.
 
 **Client** — `near-api-js` and `@near-js/crypto` to sign, `bs58`,
-`json-stable-stringify` (the canonical form 1Click's own SDK relies on), `tsx`,
-`typescript`.
+`json-stable-stringify` (the canonical form 1Click's own SDK relies on), `viem`
+(only in `fillers/sourced.ts`, to move the filler's own inventory on Base),
+`tsx`, `typescript`.
 
 **Frontend** — React 19, `react-router-dom`, `@tanstack/react-query`,
 `@near-wallet-selector/core` with the Meteor and HERE modules, `near-api-js`,

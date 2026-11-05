@@ -70,6 +70,63 @@ export async function getQuote(p: QuoteParams) {
   });
 }
 
+/**
+ * Where to send the funds, and what happened to them.
+ *
+ * `depositAddress` is only present on a `dry: false` quote, and asking for one
+ * commits nothing: it reserves an address and expires unused. Note what it is
+ * NOT — it is outside the signed payload. The venue signs the amounts and the
+ * recipient; the address you are told to pay is advice. That is the hole §2.4
+ * is about, and the reason a Hallmark filler risks only its own inventory on
+ * it: by the time an owner's escrow moves, the delivery is already in the vault.
+ */
+export interface Reservation {
+  depositAddress: string;
+  amountIn: string;
+  amountOut: string;
+  minAmountOut: string;
+  timeEstimate: number;
+  deadline: string;
+}
+
+/** Terminal states, so a poller knows when to stop rather than when to hope. */
+export type SwapStatus =
+  | "PENDING_DEPOSIT"
+  | "KNOWN_DEPOSIT_TX"
+  | "PROCESSING"
+  | "SUCCESS"
+  | "REFUNDED"
+  | "FAILED"
+  | "INCOMPLETE_DEPOSIT";
+
+export interface SwapState {
+  status: SwapStatus;
+  swapDetails: {
+    amountOut: string | null;
+    amountOutFormatted: string | null;
+    originChainTxHashes: { hash: string; explorerUrl?: string }[] | string[];
+    destinationChainTxHashes: { hash: string; explorerUrl?: string }[] | string[];
+    intentHashes: string[];
+    nearTxHashes: string[];
+    refundedAmount: string;
+    refundReason: string | null;
+  };
+}
+
+/** What became of a deposit. Keyless, like everything else here. */
+export async function getStatus(depositAddress: string): Promise<SwapState> {
+  const res = await fetch(
+    `${ONECLICK}/v0/status?depositAddress=${encodeURIComponent(depositAddress)}`,
+    { headers: { "User-Agent": "hallmark/0.1" } },
+  );
+  if (!res.ok) throw new Error(`1Click /v0/status -> HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
+
+/** `[{hash}]` or `["hash"]`, depending on the field. Flatten both. */
+export const hashes = (xs: { hash: string }[] | string[] | undefined): string[] =>
+  (xs ?? []).map((x) => (typeof x === "string" ? x : x.hash));
+
 export interface TokenInfo {
   assetId: string;
   symbol: string;

@@ -1130,6 +1130,48 @@ EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
 Balances before the mandate and after both withdrawals are identical —
 0.040000 wNEAR, 0.518409 USDT — and every credit is zero.
 
+**A fill sourced on Base, delivered on NEAR.** `npm run fill:sourced -- --from
+base --go`, run on 2026-11-05 from a filler holding **no NEAR inventory at all**
+— 0.180684 USDC on Base, 0.0000149 ETH for gas, and a NEAR-side USDT balance of
+exactly zero, which is checkable because the arrival transaction below is the
+balance's whole history.
+
+| step | where | tx | |
+|---|---|---|---|
+| priced the delivery | NEAR | — | a live signed quote says 0.147045 USDT has to arrive → **75 bps** against a 300 bps ceiling |
+| sourced 0.154397 USDC | **Base** | `0xcc0b220d4dc4eaa469bb1e6e0d21008fe861d0b5a3fd8a24fd2372dab55810d5` | block 53,594,606, 62,159 gas, **$0.00084** |
+| settled 0.154535 USDT | NEAR | `94vikLCz5gYsbFfxhgcpEoZ3XDSEbd3XDLeMcSzc4QAk` | **0 bps**, 38 s wall clock, Base→NEAR |
+| **the fill** | NEAR | `4AgkUn5WfhBu5YVi37BMrzG4MzW1Czna3JzmeCYEe7be` | **97 bps** against 300, quote **4 s** old, 30.12 TGas |
+| withdrew 0.146727 USDT | NEAR | `3nvgHeXg3r9ZZydPsCQTQUvk4W5XP59797xmM1JZdbCE` | the owner's leg |
+| withdrew 0.04 wNEAR | NEAR | `FChpRz3tCBJjAMwDcVjsRFvMijQLZpTGwSsxniyUSGkc` | the filler's earnings |
+| sent the earnings home | NEAR → **Base** | `2ZLyGHwiu2Q5G71TSdRQkfnrBeuW6vGAUw66fM7FTPTC` → `0xc130f0bea5f1a8809b2307fb4f298e6fe64cd5988bbcc2b482369d07d7b5d00a` | 0.04 wNEAR → 0.144251 USDC, 49 bps |
+
+```
+EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
+  "data":[{"mandate_id":"1","filler":"d3bc151a…b7bd484",
+           "amount_in":"40000000000000000000000","delivered":"146727",
+           "cost_bps":97,"ceiling_bps":300}]}
+```
+
+The filler **began and ended on Base** and never held a NEAR-native position it
+had not just acquired to deliver. Mandate #1 went to `escrow 0, fills 2,
+worst_bps 97` and the register still answers `open_mandate_count` without a key.
+
+Two numbers are worth separating, because conflating them flatters the result.
+The **mechanism's** cost is the sourcing leg and the fill: **0 bps** across the
+bridge, 38 seconds, $0.00084 of Base gas, 30.12 TGas on NEAR. The **exercise's**
+cost includes getting the inventory onto Base in the first place and bringing
+the earnings home, which no filler in production would pay per fill — ten
+on-chain actions, four bridge legs and two chains, measured by differencing
+every balance before and after: **$0.038 all in**, of which $0.014 is storage
+deposits parked on token contracts for one-shot deposit addresses. The estimate
+written down before any of it ran was "under $0.25".
+
+What this does **not** show is a cross-chain *mandate*. There isn't one and
+there cannot be (§6.4b). The owner's asset, the delivery and the ceiling are all
+on NEAR, in one transaction, because the bound is enforced on a delivery the
+contract watched arrive. Only the filler's balance sheet moved chains.
+
 **And the ceiling refused a fill that no spend policy would have stopped.**
 Every guard in this repository outside the contract is a courtesy: `fill.ts`
 prices a quote before it spends anything, and the app will not offer a fill it
@@ -1880,6 +1922,42 @@ front the output. Two ways to do it, both legitimate:
   ~10 s, §3.6), then deliver it into the vault. Two transactions, and the filler
   carries the price risk in between — which is exactly the risk it is being paid
   the spread to carry.
+- **Source it from another chain.** The same thing, with the inventory starting
+  somewhere that is not NEAR. Demonstrated on mainnet — `fillers/sourced.ts`,
+  and the hashes are in §3.17.
+
+#### §6.4b Where the bound lives is not where the liquidity lives
+
+A Hallmark mandate is NEAR-local by construction. `open` requires a `nep141:`
+asset on **both** legs (§5.2), and it has to: the contract credits the owner
+against a delivery it watched arrive, in the same transaction, which is the
+whole of §2.4. There is no version of this mechanism where the bound is enforced
+on a chain the delivery does not land on.
+
+That is a statement about the **bound**, and it is routinely mistaken for a
+statement about the **market**. The filler is a separate party with its own
+balance sheet, and nothing in the mandate says where that balance sheet is. A
+filler can hold USDC on Base, read a NEAR mandate, price what the delivery has
+to be, source exactly that much through 1Click, and deliver — and the owner's
+ceiling is enforced on NEAR against NEAR Intents' own signature either way,
+because that is the only place and the only thing that can enforce it.
+
+So the honest shape of the claim is:
+
+| | where it lives | why it cannot live elsewhere |
+|---|---|---|
+| the bound | NEAR, in one transaction | it is enforced on the **realised** delivery, so it has to see the delivery (§2.4) |
+| the liquidity | anywhere 1Click reaches | the filler is a counterparty, not a component. Its inventory is its own problem |
+| the risk of sourcing | entirely on the filler | `depositAddress` is **not** inside the signed payload (§2.4). The filler trusts it with its own money; the owner never does |
+
+That last row is the one worth reading twice. The sourcing leg genuinely does
+depend on an unsigned `depositAddress` — the same hole this project exists to
+close. It is tolerable there and intolerable in a fill, for a reason that is
+structural rather than a matter of degree: when a filler is defrauded by a
+deposit address it loses its own inventory and the mandate is untouched, and
+when an owner is defrauded by one it loses its escrow. Hallmark does not fix the
+deposit-address hole. It arranges for the party exposed to it to be the party
+that chose to be.
 
 ### §6.5 What is not claimed
 

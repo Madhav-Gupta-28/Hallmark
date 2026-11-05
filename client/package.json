@@ -12,6 +12,7 @@
     "breach": "tsx src/bin/breach.ts",
     "fill:edge": "tsx src/fillers/edge.ts",
     "fill:adapted": "tsx src/fillers/adapted.ts",
+    "fill:sourced": "tsx src/fillers/sourced.ts",
     "race": "tsx src/fillers/race.ts",
     "agree": "tsx src/fillers/agree.ts",
     "policy": "tsx src/bin/policy.ts"
@@ -20,7 +21,8 @@
     "@near-js/crypto": "^1.4.1",
     "bs58": "^6.0.0",
     "json-stable-stringify": "^1.1.1",
-    "near-api-js": "^7.4.0"
+    "near-api-js": "^7.4.0",
+    "viem": "^2.21.55"
   },
   "devDependencies": {
     "@types/json-stable-stringify": "^1.0.36",

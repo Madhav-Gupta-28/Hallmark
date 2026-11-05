@@ -114,6 +114,33 @@ print(json.dumps({"canonical":c,"signature":"1"*(len(s)-len(s.lstrip(b"\x00")))+
     && ok "an overflowing magnitude panics rather than pricing a fill at zero (§8.4)" \
     || no "the mul_div guard did not fire"
 
+  # The refusal, as it actually happened. A refused fill is an `ft_transfer_call`
+  # whose OUTER status is SuccessValue, so this looks inside the receipts for the
+  # panic — the same trap `receiptFailure` exists for (§6.3).
+  #
+  # Archival, deliberately. A normal RPC garbage-collects transaction outcomes
+  # after about five epochs, so by judging week the ordinary endpoints answer
+  # "unknown transaction" for a transaction that certainly happened.
+  REFUSAL=$(curl -s --max-time 25 -H 'content-type: application/json' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tx","params":{"tx_hash":"Fjz5cqJfiWyhYAhAqekVPfp6nGpgrNAM51Y2XnRsn3vx","sender_account_id":"d3bc151ad71667a0d3ee538c285ae8d72070b77aef6989e000bd44f05b7bd484","wait_until":"FINAL"}}' \
+    https://archival-rpc.mainnet.near.org \
+    | python3 -c 'import sys,json
+try: d = json.load(sys.stdin)
+except Exception: print("UNREACHABLE"); raise SystemExit
+if "result" not in d: print("UNREACHABLE"); raise SystemExit
+for o in d["result"]["receipts_outcome"]:
+    f = o["outcome"]["status"].get("Failure")
+    if f: print(f["ActionError"]["kind"]["FunctionCallError"]["ExecutionError"]); break
+else: print("NO FAILED RECEIPT")' 2>/dev/null)
+  case "$REFUSAL" in
+    *"CostCeilingBreached { worst_bps: 532, ceiling_bps: 300 }"*)
+      ok "mainnet refused a real fill the owner's ceiling did not allow (532 > 300 bps)" ;;
+    UNREACHABLE|"")
+      skip "the recorded refusal" "archival RPC did not answer; see §3.17 for the hash" ;;
+    *)
+      no "the refusal transaction reads '$REFUSAL'" ;;
+  esac
+
   OPEN=$(ask open_mandate_count '{}' | python3 -c 'import sys,json;r=json.load(sys.stdin);print("".join(map(chr,r["result"]["result"])))' 2>/dev/null)
   [ -n "$OPEN" ] && ok "the register answers with no key: $OPEN agreement(s) in force" \
                  || no "open_mandate_count did not answer"

@@ -1130,6 +1130,41 @@ EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
 Balances before the mandate and after both withdrawals are identical —
 0.040000 wNEAR, 0.518409 USDT — and every credit is zero.
 
+**And the ceiling refused a fill that no spend policy would have stopped.**
+Every guard in this repository outside the contract is a courtesy: `fill.ts`
+prices a quote before it spends anything, and the app will not offer a fill it
+knows the contract rejects. Both save the filler a wasted transaction. Neither
+is the bound, because a filler is not obliged to run our code. `npm run breach`
+is the filler that does not — it asks the venue for an ordinary quote, delivers
+exactly the floor that quote guarantees, and sends it.
+
+| | |
+|---|---|
+| the attempt | `Fjz5cqJfiWyhYAhAqekVPfp6nGpgrNAM51Y2XnRsn3vx` |
+| what it asked for | 0.04 wNEAR → USDT, recipient `hallmarkfi.near`, `slippageTolerance` **500 bps** |
+| what every check saw | right assets, right recipient, inside `max_fill`, quote **1 s** old, delivery **at** the signed floor |
+| realised cost if honoured in full | **33 bps**, comfortably inside the 300 bps ceiling |
+| realised cost at the floor the venue actually signed | **532 bps** |
+| the contract | `REFUSED CostCeilingBreached { worst_bps: 532, ceiling_bps: 300 }` |
+| burnt | 0.00075 NEAR, 29.76 TGas |
+
+500 bps is not an absurd slippage tolerance; it is an ordinary one. That is the
+point. Nothing in the request is out of policy — the only thing wrong with it is
+the loss it authorises, and that number appears in no field a policy engine
+reads. It has to be computed from the venue's own signature, which is what the
+ceiling does.
+
+Two things about this transaction are worth reading carefully. Its **outer
+status is `SuccessValue`**: `ft_transfer_call` succeeds even when the receiver
+panics, because NEP-141 catches the panic and refunds the sender — so anything
+that judges a fill by the transaction's status reports this refused fill as
+filled (§6.3, and `receiptFailure` in the client). And the refund is **in the
+same transaction**, visible as a second `ft_transfer` log sending the 0.140280
+USDT straight back. The filler's balance is 0.218409 USDT before and after,
+mandate #1 is still `escrow 0.04 wNEAR, fills 1, worst_bps 74`, and every credit
+is unchanged. A refusal costs the filler gas and nothing else, which is why it
+can be demonstrated on mainnet rather than argued for in a test.
+
 **And the storage round-trips to the byte**, which is the §2.11 invariant
 observed on mainnet rather than in a sandbox:
 

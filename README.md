@@ -92,14 +92,15 @@ is a documented path, not a shipped one.
 No key, no funds, no wallet. It runs every test, re-derives every number this
 README and the site state, and then asks the live mainnet contract — anonymously
 — whether NEAR Intents really signed the 99.99%-loss quote, what it prices that
-quote's floor at, and whether a malformed magnitude is refused. Non-zero if
-anything disagrees.
+quote's floor at, whether a malformed magnitude is refused, and whether the
+ceiling really did turn away a real fill. Non-zero if anything disagrees.
 
 ```
 ▸ The live contract on NEAR mainnet, asked anonymously
   PASS  NEAR Intents really signed the 99.99%-loss quote (is_signed = true)
   PASS  and the contract prices its floor at 10000 bps — a total loss
   PASS  an overflowing magnitude panics rather than pricing a fill at zero (§8.4)
+  PASS  mainnet refused a real fill the owner's ceiling did not allow (532 > 300 bps)
   PASS  the register answers with no key: 2 agreement(s) in force
 ```
 
@@ -114,6 +115,7 @@ The sections below are the same things one at a time, with what each one proves.
 | all 692 bytes are covered by that signature | `every_single_byte_is_covered_by_the_signature` — each byte flipped, each rejected |
 | the contract prices a 500 bps `appFee` it is not allowed to read | `the_malicious_quote_is_refused_at_its_floor_but_fine_at_its_expected_fill` (§2.3) |
 | a signature alone is not enough — a stale quote is refused | `a_stale_quote_is_refused_even_though_it_is_signed_and_inside_its_deadline`, and on-chain in `3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc` |
+| the ceiling turned away a real fill, on mainnet, that no spend policy would have stopped | `cd client && npm run breach` — tx `Fjz5cqJfiWyh…`, **532 bps against a 300 bps ceiling**, delivery refunded in the same transaction |
 | the filler delivers first, so nobody ever holds a counterparty's funds | the 28 sandbox tests; §2.4 for why it is load-bearing |
 | whoever writes a byte pays for it, and the vault never subsidises | `the_vault_never_pays_for_state_someone_else_created` |
 | the reported cost is never below the true cost | `the_reported_cost_is_never_below_the_true_cost` (§8.1), and §8.4 for the overflow that broke it |
@@ -312,10 +314,22 @@ whether it breaks the owner's terms.
 ```bash
 npm run bound      # what a live quote actually guarantees — no key, no funds
 npm run race       # three fillers price the same mandate — no key, no funds
+npm run breach     # try to overcharge an owner, and be refused — no key, no funds
 
 export NEAR_ACCOUNT=you.near                 # a key is needed only here
 npm run fill       # deliver against an open agreement, and be credited
+npm run breach -- 1    # and send the bad fill anyway. It costs gas and refunds
 ```
+
+`breach` is there because the guard in `fill.ts` is a courtesy and the one in
+the app is a courtesy, and a filler is not obliged to run either. It asks the
+venue for an ordinary quote — `slippageTolerance` 500 bps, the kind a policy
+engine waves through — delivers exactly the floor that quote guarantees, and
+sends it. Right assets, right recipient, inside `max_fill`, quote one second
+old, delivery at the signed floor: every check passes but the ceiling. **That
+transaction is on mainnet**, and its outer status is `SuccessValue`, because
+`ft_transfer_call` succeeds even when the receiver panics. The refusal is in an
+inner receipt and so is the refund.
 
 The spread **is** the fee: you keep the gap between what you sourced the output
 for and what you delivered, and it is already inside the owner's ceiling. There

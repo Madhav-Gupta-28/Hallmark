@@ -27,7 +27,11 @@ export function Header() {
     <header className="doc pt-6">
       <div className="double-rule pb-3.5">
         <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-          <NavLink to="/" className="font-serif text-[34px] font-extrabold leading-none tracking-[0.01em]">
+          <NavLink
+            to="/"
+            className="flex items-center gap-2.5 font-serif text-[34px] font-extrabold leading-none tracking-[0.01em]"
+          >
+            <img src="/logo-ink.svg" alt="" width={30} height={30} aria-hidden="true" />
             HALLMARK.
           </NavLink>
           <a

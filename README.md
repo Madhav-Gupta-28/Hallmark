@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="frontend/public/logo-paper.svg">
+  <img alt="Hallmark" src="frontend/public/logo-ink.svg" width="56" height="56">
+</picture>
+
 # Hallmark
 
 **A not-held order that enforces its own execution bound.**

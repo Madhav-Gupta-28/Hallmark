@@ -139,15 +139,21 @@ type FinalError = Error & { final?: boolean };
  * One JSON-RPC request, queued, retried, and failed over. `method` defaults to
  * `query`, which is all the reference uses; the frontend also reads `tx`.
  *
- * `timeoutMs` (default: none, as in the reference) bounds each attempt, so a
- * node that holds the connection open fails over instead of stalling. `tx`
- * needs it: asked with `wait_until` about a transaction it does not have — not
- * archival, or not yet seen — a node waits rather than answering; measured on
- * rpc.mainnet.near.org and free.rpc.fastnear.com, 2026-11-03, >20 s each.
+ * `timeoutMs` bounds each attempt, so a node that holds the connection open
+ * fails over instead of stalling. `tx` needs a longer one: asked with
+ * `wait_until` about a transaction it does not have — not archival, or not yet
+ * seen — a node waits rather than answering; measured on rpc.mainnet.near.org
+ * and free.rpc.fastnear.com, 2026-11-03, >20 s each.
+ *
+ * It defaults to ten seconds rather than to nothing. Failover only triggers on
+ * an error, and a hung socket is not an error: without a bound, one unresponsive
+ * endpoint holds a slot out of MAX_INFLIGHT for as long as it likes, and three
+ * of them stop the page reading the chain at all — with no failure anywhere to
+ * show for it. Every view call on the site settles well inside a second.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function rpc(
-  params: Record<string, unknown>, label: string, method = "query", timeoutMs?: number,
+  params: Record<string, unknown>, label: string, method = "query", timeoutMs = 10_000,
 ): Promise<any> {
   await slot();
   try {
@@ -159,7 +165,7 @@ export async function rpc(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-          signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+          signal: AbortSignal.timeout(timeoutMs),
         });
         if (r.status === 429 || r.status >= 500) throw new Error(`HTTP ${r.status}`);
         const b = await r.json();
@@ -171,7 +177,9 @@ export async function rpc(
       } catch (e) {
         if ((e as FinalError).final) throw e;
         lastErr = e as Error;
-        await sleep(160 * (attempt + 1));          // back off, then try the next endpoint
+        // Back off, then try the next endpoint — but not after the last one,
+        // where the only thing the sleep delays is the error itself.
+        if (attempt < RPCS.length * 2 - 1) await sleep(160 * (attempt + 1));
       }
     }
     throw new Error(`${label}: the chain did not answer — ${lastErr?.message ?? "unknown"}`);

@@ -1,10 +1,18 @@
 /**
- * Canonicalisation lives here and nowhere else.
+ * The reference canonicaliser.
  *
  * The contract never serialises JSON. It is handed the exact bytes this module
  * produces, hashes them, verifies the venue's signature over that hash, and
- * then parses the same bytes. So there is no second implementation of canonical
- * form to drift out of sync — see ARCHITECTURE.md §2.6.
+ * then parses the same bytes — so Rust has no canonical form of its own to
+ * drift out of sync (ARCHITECTURE.md §2.6).
+ *
+ * There are nevertheless three canonicalisers, on purpose: this one,
+ * `fixtures/mkfix.py` (Python, with from-scratch ed25519) and the browser port
+ * in `frontend/src/lib/hallmark.ts`. One implementation can be confidently
+ * wrong; three that agree byte for byte and hash for hash on all three
+ * captured fixtures cannot be, and `frontend/src/lib/hallmark.test.ts` checks
+ * exactly that against this file on every build. This one is the reference the
+ * others are measured against.
  *
  * Two details are easy to get wrong and fatal if you do:
  *   1. the signed payload is a *subset* of the quote — `appFees`,

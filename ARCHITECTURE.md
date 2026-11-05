@@ -1651,12 +1651,14 @@ in it that scales with anything but the length of the signed quote.
 
 The honest answer, in five parts.
 
-**1. On day one the filler is the owner's own agent, and the mandate still does
-all of its work.** Hallmark's guarantee is not "someone will trade for me"; it is
+### §6.1 On day one the filler is the owner's own agent, and the mandate still does all of its work
+
+Hallmark's guarantee is not "someone will trade for me"; it is
 "I need not trust whoever does." One owner and one agent is already a complete
 product. No network is required for the mechanism to be sound (§1.5).
 
-**2. The demonstrated supply side is three fillers, and no more is claimed.**
+### §6.2 The demonstrated supply side is three fillers, and no more is claimed
+
 They are deliberately not three copies of each other:
 
 | | strategy | written from | what it proves |
@@ -1735,14 +1737,18 @@ word can be proved.** Same API, opposite direction of trust.
 > open mandates, obtain a quote, source the output, deliver — plus a reason to
 > care.
 
-**3. Growth runs on two incentives, and the second works at zero volume.** Short
+### §6.3 Growth runs on two incentives, and the second works at zero volume
+
+Short
 term, the spread (§2.5). Long term, every fill emits a receipt bound to the
 filler's account, so a filler accumulates a **provable** execution record rather
 than a self-reported one. A new agent developer wants fills in order to build a
 track record they can later sell. The receipt already exists; indexing it by
 filler costs almost nothing.
 
-**4. The capital requirement is real and is the price of §2.4.** A filler must
+### §6.4 The capital requirement is real and is the price of §2.4
+
+A filler must
 front the output. Two ways to do it, both legitimate:
 
 - **Inventory.** Hold the destination asset and quote against it. Lowest
@@ -1752,8 +1758,9 @@ front the output. Two ways to do it, both legitimate:
   carries the price risk in between — which is exactly the risk it is being paid
   the spread to carry.
 
-**5. What is not claimed:** there is no live filler ecosystem, and this spec does
-not pretend otherwise.
+### §6.5 What is not claimed
+
+There is no live filler ecosystem, and this spec does not pretend otherwise.
 
 ---
 

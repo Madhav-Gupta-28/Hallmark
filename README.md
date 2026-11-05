@@ -111,6 +111,7 @@ The sections below are the same things one at a time, with what each one proves.
 | every number on the site is a keyless view call, not a literal | `python3 frontend/tools/check.py` — 12 claims, re-derived from source and chain |
 | every number in this README is still true | the same script; it fails if any of them drifts |
 | it works on mainnet, filled and withdrawn by two different accounts | §3.17 of ARCHITECTURE.md — every transaction hash, and `open_mandate_count` answers live |
+| a spend-policy guard approves a payment that loses 99.99% | `cd client && npm run policy` — the shape written out, run against both captures |
 | what it is **not** | `/limits`, and §14 — fourteen known limits, written down before anyone asked |
 
 ## 1. See a validly signed quote that guarantees a 99.99% loss
@@ -229,7 +230,48 @@ npm --prefix frontend test                   # 99 tests, no network
 `npm run build` emits a static `dist/`; `frontend/vercel.json` carries the
 headers and the single-page rewrite.
 
-## 5. Watch three different agents price the same mandate
+## 5. Watch a spend-policy guard approve a 99.99% loss
+
+```bash
+cd client && npm run policy
+```
+
+Every agent-guard project on NEAR implements the same shape: a recipient
+allowlist, a per-transaction cap, a daily cap, an allowed-method list. Eight
+more of them were posted during this hackathon alone. This writes that shape
+out plainly and runs it against both captures. No key, no funds, no network,
+and nobody else's code.
+
+**See:** the same verdict twice.
+
+```
+honest.quote.json   the agent signs: ft_transfer_call, $10.00 → intents.near
+                    the guard says: APPROVED
+                    slippageTolerance it would read, if it could: 100 bps
+                    ACTUAL guaranteed-worst all-in cost: 160 bps
+
+worst.quote.json    the agent signs: ft_transfer_call, $10.00 → intents.near
+                    the guard says: APPROVED
+                    appFees, unsigned and unreadable: 250bps→attacker-wallet.near, 250bps→…
+                    ACTUAL guaranteed-worst all-in cost: 10000 bps
+```
+
+The guard is not being careless. **The loss is not in the transaction it
+inspects.** An agent swapping through 1Click signs `ft_transfer_call` of the
+origin asset; `amountOut`, `minAmountOut`, `amountOutUsd` and `appFees` live in
+the quote, which is off-chain and is not an argument to that call. Both
+payments are the same size, to the same place, by the same method.
+
+And handing the guard the quote would not fix it. Look at the honest one: its
+`slippageTolerance` says 100 bps and its guaranteed-worst all-in cost is 160,
+because slippage is not the only thing sitting between `amountOut` and
+`minAmountOut`.
+
+A policy engine bounds **who** may be paid and **how much**. Hallmark bounds
+**the price** — against what actually arrived, measured on four figures the
+venue signed.
+
+## 6. Watch three different agents price the same mandate
 
 ```bash
 cd client && npm run race
@@ -279,7 +321,7 @@ site is the same thing with the open agreements listed beside it.
 **What is not claimed:** there is no third-party filler ecosystem. Three
 fillers, all written or adapted by us.
 
-## 6. Post a mandate, and fill one
+## 7. Post a mandate, and fill one
 
 Needs a key and funds. Mainnet only — there is no Intents testnet.
 

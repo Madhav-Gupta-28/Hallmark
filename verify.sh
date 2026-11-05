@@ -64,6 +64,13 @@ else
   skip "client assertions" "run: npm --prefix client install"
 fi
 
+step "The differentiator, run rather than asserted"
+if [ -d client/node_modules ]; then
+  run "a spend-policy guard approves a payment that loses 99.99%" npm --prefix client run policy
+else
+  skip "policy bench" "run: npm --prefix client install"
+fi
+
 step "The app, and its claims against the source and the chain"
 if [ -d frontend/node_modules ]; then
   run "99 frontend tests (ported canonicaliser matches the reference byte for byte)" npm --prefix frontend test

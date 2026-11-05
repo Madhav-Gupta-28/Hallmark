@@ -1052,11 +1052,27 @@ the strongest argument available for not having built it.
 
 The distinction is not rigour, it is *what is being bounded*. A policy gate
 bounds **who** the agent may pay and **how much**, which is a bound on the
-transaction. None of them bounds the **price** — a payment to an allowed
-address, inside the cap, at a rate that loses 99.99%, passes every one of them,
-because the quote is not what they inspect. `worst.quote.json` is a payment of
-exactly that shape. The fixture is the differentiator and it costs one command
-to reproduce.
+transaction. None of them bounds the **price**.
+
+**This was asserted here for three versions, which in this document is a
+defect.** It is now `npm run policy`, and it executes nobody else's code: the
+shape is written out plainly in `client/src/bin/policy.ts` and run against both
+captures. The verdict is the same for both — APPROVED — because the two
+transactions are the same size, to the same place, by the same method.
+
+The reason is not carelessness on the guard's part. **The loss is not in the
+transaction.** An agent swapping through 1Click signs `ft_transfer_call` of the
+origin asset to a deposit address; `amountOut`, `minAmountOut`, `amountOutUsd`
+and `appFees` are fields of the *quote*, which is off-chain and is not an
+argument to that call. A guard reading the transaction is looking at the wrong
+object, and no amount of care fixes that.
+
+Nor does handing it the quote. `honest.quote.json` declares
+`slippageTolerance: 100` and carries a guaranteed-worst all-in cost of **160
+bps**, because slippage is not the only thing between `amountOut` and
+`minAmountOut` — the 20 bps `appFee` and the venue's own spread are in there
+too. The field a careful guard would reach for understates the number that
+matters.
 
 ### 3.17 Live on mainnet
 

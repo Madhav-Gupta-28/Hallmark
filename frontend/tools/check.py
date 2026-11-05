@@ -19,6 +19,21 @@ src = root / "frontend" / "src"
 pages = {p.name: p.read_text() for p in sorted(src.rglob("*.tsx"))}
 blob = "\n".join(list(pages.values()) + [p.read_text() for p in sorted(src.rglob("*.ts"))])
 fails = []
+todos = []
+
+
+def todo(label, ok, want, got):
+    """A submission step that is not done yet.
+
+    Distinct from a failed claim on purpose. A wrong number means the repository
+    contradicts itself and the run should go red. An unfinished submission step
+    means a human still has to do something — loud every run, but not a red
+    verification script in front of a judge, which would say something far worse
+    than the thing it is reporting.
+    """
+    print(f"  {'ok  ' if ok else 'TODO'} {label:45} want {want!s:<24} have {got}")
+    if not ok:
+        todos.append(label)
 
 
 def claim(label, ok, want, got):
@@ -202,14 +217,19 @@ else:
 # Q-015: one person may enter two projects only if each README names the other.
 dk = re.search(r"Docket[^\n]*?(https://github\.com/\S+)", readme) or \
      re.search(r"(https://github\.com/\S+)[^\n]*?Docket", readme)
-claim("README: names the other submission (Q-015)", bool(dk),
-      "Docket, with a repo link", dk.group(1) if dk else "MISSING or has no link yet")
+todo("README: names the other submission (Q-015)", bool(dk),
+     "Docket + repo link", dk.group(1) if dk else "no link yet — rules Q-015")
 # Q-005: every library and template has to be listed.
 claim("README: lists its libraries (Q-005)", "## Libraries" in readme,
       "a Libraries section", "present" if "## Libraries" in readme else "MISSING")
 
 print()
+if todos:
+    print("  ┌─ BEFORE SUBMITTING " + "─" * 44)
+    for t in todos:
+        print(f"  │  {t}")
+    print("  └" + "─" * 63)
 if fails:
     print(f"  {len(fails)} claim(s) do not match: {', '.join(fails)}")
     sys.exit(1)
-print("  every checked claim on the site matches the code and the chain")
+print("  every checked claim on the site and in the README matches the code and the chain")

@@ -49,7 +49,8 @@ function Title() {
       </h1>
       <p className="mt-7 max-w-[56ch] text-[21px] leading-[1.45]">
         Hand the trade to anyone. Name the worst all-in cost you will accept — and the contract
-        refuses any fill that goes over it, measured on what actually arrived.
+        refuses any fill that goes over it, measured on what actually arrived, against{" "}
+        <b>NEAR Intents' own signature</b>.
       </p>
       <div className="mt-8 flex flex-wrap gap-4">
         <Link to="/post" className="btn btn-ink nudge">Draw up an agreement</Link>

@@ -55,8 +55,29 @@ the one thing §2.4 exists to refuse.
 
 ---
 
-Every section below is **do this — see that**. Nothing here needs a key or funds
-unless it says so.
+## Everything at once
+
+```bash
+./verify.sh              # ~3 minutes
+./verify.sh --fast       # ~30 seconds, skips the sandbox integration suite
+```
+
+No key, no funds, no wallet. It runs every test, re-derives every number this
+README and the site state, and then asks the live mainnet contract — anonymously
+— whether NEAR Intents really signed the 99.99%-loss quote, what it prices that
+quote's floor at, and whether a malformed magnitude is refused. Non-zero if
+anything disagrees.
+
+```
+▸ The live contract on NEAR mainnet, asked anonymously
+  PASS  NEAR Intents really signed the 99.99%-loss quote (is_signed = true)
+  PASS  and the contract prices its floor at 10000 bps — a total loss
+  PASS  an overflowing magnitude panics rather than pricing a fill at zero (§8.4)
+  PASS  the register answers with no key: 2 agreement(s) in force
+```
+
+The sections below are the same things one at a time, with what each one proves.
+**Do this — see that.** Nothing needs a key or funds unless it says so.
 
 ## 1. See a validly signed quote that guarantees a 99.99% loss
 
@@ -258,6 +279,7 @@ comes back.
 ## Layout
 
 ```
+verify.sh                    every claim in this README, in one command
 contract/src/quote.rs        the signed quote, the signature, the arithmetic
 contract/src/mandate.rs      the mandate, the typed refusals, the check
 contract/src/lib.rs          the vault

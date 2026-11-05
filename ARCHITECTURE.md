@@ -624,6 +624,34 @@ bounded by real economic activity, instead of the vault's whole history. Ids are
 never reused, `mandate_count()` still reports how many have ever existed, and
 `open_mandate_count()` reports the book's length so a caller can size a page.
 
+**And the new shape has its own ceiling, so here is the number.** O(open) is a
+shape, not a bound: the index is still read in full and sorted on every call,
+because an unordered set cannot be paginated in id order any other way. The
+slope is measured rather than guessed —
+`book_scaling_has_a_measured_ceiling_not_a_guessed_one` in
+`contract/tests/integration.rs` opens mandates twenty-five at a time and reads
+the gas off a real sandbox node:
+
+| open mandates | `get_mandates(limit 25)` |
+|---|---|
+| 25 | 7.45 TGas |
+| 50 | 9.27 TGas |
+| 75 | 11.09 TGas |
+| 100 | 12.91 TGas |
+
+Exactly linear, **0.0727 TGas per open mandate**, which puts the 200 TGas view
+ceiling at roughly **2,600 open mandates**. That figure is pessimistic twice
+over: it is a debug build, and it is measured through a transaction rather than
+a view, so both overheads are counted against it.
+
+So the limit is real and it is about three orders of magnitude above anything
+this vault has held. Raising it means an ordered index — `store::TreeMap` plus
+cursor pagination (`after_id` rather than `from_index`) — which changes the
+state layout and therefore needs a migration that preserves live escrow. That
+is the right change at a thousand open mandates and the wrong one at two, so it
+is written down here rather than done. The test fails if the slope ever
+regresses far enough to matter.
+
 `the_order_book_tracks_what_is_open_not_what_ever_existed` opens eight, closes
 seven, reaps one, and asserts the index and the records never disagree —
 including that pagination runs off the index and in id order.

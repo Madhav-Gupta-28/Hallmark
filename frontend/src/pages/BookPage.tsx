@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { Heading, L, Source } from "@/components/doc";
-import { Amount } from "@/components/fields";
+import { Amount, Sym } from "@/components/fields";
 import { age, short, VAULT, type BookEntry } from "@/lib/hallmark";
 import { bookQuery, openCountQuery, tokensQuery } from "@/lib/queries";
 import { meta, type TokenTable } from "@/lib/tokens";
@@ -81,14 +81,13 @@ function Register({ rows, table, readAt }: { rows: BookEntry[]; table: TokenTabl
         <tbody>
           {rows.map(([id, m]) => {
             const t = m.terms;
-            const inTok = meta(table, t.origin_asset);
-            const outTok = meta(table, t.destination_asset);
+            const inTok = meta(table, t.origin_asset);   // escrow is denominated in it
             const days = (BigInt(t.expiry_ns) - now) / NS_PER_DAY;
             const pct = t.max_cost_bps ? Math.min(100, (m.worst_bps / t.max_cost_bps) * 100) : 0;
             return (
               <tr key={id} className="cursor-pointer" onClick={() => navigate(`/mandate/${id}`)}>
                 <td className="typed font-bold">§{id}</td>
-                <td className="whitespace-nowrap font-semibold">{inTok.symbol} → {outTok.symbol}</td>
+                <td className="whitespace-nowrap font-semibold"><Sym table={table} asset={t.origin_asset} /> → <Sym table={table} asset={t.destination_asset} /></td>
                 <td className="num font-bold">{t.max_cost_bps} bps</td>
                 <td className="num">
                   {m.fills > 0 ? (

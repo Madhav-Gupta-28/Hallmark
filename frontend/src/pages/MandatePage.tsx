@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { ConfirmTxDialog, SummaryRows, type Ask } from "@/components/ConfirmTxDialog";
 import { A, Clause, Entry, Heading, L, Seal, Source, Stamp } from "@/components/doc";
-import { Amount } from "@/components/fields";
+import { Amount, Sym } from "@/components/fields";
 import { SigningResult } from "@/components/SigningResult";
 import { useSigned } from "@/lib/signed";
 import {
@@ -15,7 +15,7 @@ import {
 import { fillBlockers, fillTxs } from "@/lib/fill";
 import { GAS_HEADROOM, preflight } from "@/lib/post";
 import { mandateQuery, tokensQuery } from "@/lib/queries";
-import { meta, type TokenMeta, type TokenTable } from "@/lib/tokens";
+import { bothListed, meta, type TokenMeta, type TokenTable } from "@/lib/tokens";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/wallet/context";
 
@@ -78,7 +78,7 @@ function Agreement({ id, m, table, readAt }: { id: number; m: MandateRecord; tab
     <section className="relative">
       <div className="label mt-6 text-faint">Agreement §{id} · {m.open ? (left > 0n ? "in force" : "expired") : "closed"}</div>
       <h1 className="mt-3 font-serif text-[clamp(40px,7.4vw,96px)] font-extrabold leading-[0.95] tracking-[-0.02em]">
-        {inTok.symbol} <span className="font-medium italic">for</span> {outTok.symbol}.
+        <Sym table={table} asset={t.origin_asset} /> <span className="font-medium italic">for</span> <Sym table={table} asset={t.destination_asset} />.
       </h1>
       <div className="pointer-events-none absolute right-0 top-2 hidden md:block">
         {m.open
@@ -383,6 +383,20 @@ function FillAction({ id, p, table, floor, full }: {
         <i> is</i> the delivery — with the venue's signed quote attached. If anything has changed by the time it
         lands, the contract refuses it and the token returns the delivery in full.
       </p>
+      {/* The filler delivers real value first and is paid in the origin asset,
+          so an origin asset the venue does not list is this page's one genuine
+          hazard — and the contract cannot help, because a mandate denominated
+          in a token its owner wrote is a legitimate mandate. Say so here,
+          where the decision is made, rather than refusing it for them. */}
+      {!bothListed(table, p.terms.origin_asset) && (
+        <p className="mt-5 max-w-[760px] border-l-4 border-seal pl-5 text-[17px]">
+          <b>You would be paid in an asset 1Click does not list.</b> This agreement pays fillers in{" "}
+          <code>{p.terms.origin_asset}</code>, which is not in the venue's token list, so its symbol and decimals
+          here are guessed from the account name. Anyone may open a mandate denominated in a token they wrote
+          themselves — the contract is right not to judge that, and the escrow really is backed by a real transfer
+          of it. Satisfy yourself that the token is worth what you are about to deliver.
+        </p>
+      )}
       <div className="mt-5 flex flex-wrap gap-4">
         {options.map((o, i) => (
           <button key={o.key} className={cn("btn", i === 0 ? "btn-sign" : undefined)} onClick={() => void review(o)}>

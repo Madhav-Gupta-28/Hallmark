@@ -35,8 +35,18 @@ enum = mandate[mandate.index("pub enum Refusal") : mandate.index("/// What a pas
 refusals = re.findall(r"^    ([A-Z]\w+)", enum, re.M)
 impl = lib[lib.index("impl Hallmark {") :]
 exported = sorted(set(re.findall(r"\n    pub fn (\w+)", impl)))
-unit = (root / "contract" / "src" / "tests.rs").read_text().count("#[test]")
-integ = (root / "contract" / "tests" / "integration.rs").read_text().count("#[tokio::test]")
+# What a clean clone actually RUNS. An `#[ignore]`d test is not one of them —
+# the book-scaling benchmark opens a hundred mandates and takes two minutes, so
+# it is run on demand, and counting it here would overstate the claim.
+def runnable(path, marker):
+    body = (root / path).read_text()
+    return sum(
+        1 for block in body.split(marker)[1:]
+        if "#[ignore]" not in block.split("async fn")[0].split("fn ")[0]
+    )
+
+unit = runnable("contract/src/tests.rs", "#[test]")
+integ = runnable("contract/tests/integration.rs", "#[tokio::test]")
 
 # A number the app does not state cannot be stale. These assert the app is never
 # WRONG, not that it must keep making the claim — rewording a page is not a bug.

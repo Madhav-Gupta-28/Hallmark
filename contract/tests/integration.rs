@@ -1409,3 +1409,77 @@ async fn the_order_book_tracks_what_is_open_not_what_ever_existed() -> anyhow::R
     assert_eq!(page[0].0, 9, "from_index pages the open set, in id order");
     Ok(())
 }
+
+/// How far does the order book actually scale?
+///
+/// `get_mandates` reads the whole open-id index on every call and sorts it, so
+/// its cost tracks what the vault is *holding* (§2.12) — but "O(open)" is a
+/// shape, not a bound, and a view call has a real gas ceiling. This measures
+/// the slope so the limit can be stated as a number instead of a worry.
+///
+/// Ignored by default: it opens a hundred mandates one transaction at a time
+/// and takes minutes. Run it when the index changes:
+///     cargo test --test integration book_scaling -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn book_scaling_has_a_measured_ceiling_not_a_guessed_one() -> anyhow::Result<()> {
+    const STEP: usize = 25;
+    const STEPS: usize = 4;
+    /// Held constant so the only thing that grows between marks is the scan.
+    /// With a page that grows too, the delta measures serialisation as well and
+    /// the slope comes out too steep.
+    const PAGE: u64 = 25;
+
+    let w = setup().await?;
+    // A hundred mandate records plus their index entries; the owner pays for
+    // every byte, as anyone does.
+    w.owner
+        .call(w.vault.id(), "storage_deposit")
+        .args_json(json!({}))
+        .deposit(NearToken::from_near(5))
+        .transact()
+        .await?
+        .into_result()?;
+
+    let mut marks: Vec<(usize, u64)> = Vec::new();
+    for step in 1..=STEPS {
+        for _ in 0..STEP {
+            open_mandate(&w, 300, AMOUNT_IN / 500).await?;
+        }
+        let open: u32 = w.vault.view("open_mandate_count").await?.json()?;
+        // Ask for one page, as the book does — the scan is the cost, not the page.
+        let g = w
+            .owner
+            .call(w.vault.id(), "get_mandates")
+            .args_json(json!({ "from_index": 0, "limit": PAGE }))
+            .max_gas()
+            .transact()
+            .await?
+            .into_result()?
+            .total_gas_burnt
+            .as_gas();
+        marks.push((open as usize, g));
+        println!("  open {open:>4}   get_mandates(limit {PAGE})  {:.2} TGas", g as f64 / 1e12);
+        assert_eq!(open as usize, step * STEP, "every open mandate must be in the index");
+    }
+
+    let (n0, g0) = marks[0];
+    let (n1, g1) = *marks.last().unwrap();
+    let per_id = (g1 - g0) as f64 / (n1 - n0) as f64;
+    // A view call on mainnet gets 200 TGas; a transaction here carries extra
+    // overhead, so this is the pessimistic direction.
+    let headroom = (200e12 - g1 as f64) / per_id;
+    println!(
+        "\n  marginal cost {:.4} TGas per open mandate\n  \
+         at {} open the scan is {:.2} TGas; the 200 TGas view ceiling is ~{:.0} open mandates away\n",
+        per_id / 1e12, n1, g1 as f64 / 1e12, headroom
+    );
+
+    assert!(per_id > 0.0, "the scan must actually grow with the book");
+    assert!(
+        n1 as f64 + headroom > 1_000.0,
+        "the book should survive at least a thousand open mandates, got {}",
+        n1 as f64 + headroom
+    );
+    Ok(())
+}

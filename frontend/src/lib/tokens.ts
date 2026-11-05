@@ -35,3 +35,13 @@ export function meta(table: TokenTable, asset: string): TokenMeta {
   if (hit) return hit;
   return { symbol: tokenOf(asset).split(".")[0].toUpperCase(), dp: null };
 }
+
+/**
+ * Is every one of these assets in the venue's list?
+ *
+ * Lives here rather than beside `Sym` because a module that exports a React
+ * component must export nothing else, or Fast Refresh stops working for it —
+ * the same hazard that once left this app crashing on `useWallet`.
+ */
+export const bothListed = (table: TokenTable, ...assets: string[]) =>
+  assets.every((a) => meta(table, a).dp !== null);

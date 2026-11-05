@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { A, Clause, Entry, Heading, L, Seal, Source, Stamp } from "@/components/doc";
 import { exhibitA } from "@/lib/exhibit";
+import { useInView } from "@/motion/inView";
 import { EXPLORER, near, SIGNER, short, VAULT, view, viewAccount } from "@/lib/hallmark";
 import { parseCheck, refusalOf } from "@/lib/price";
 import { openCountQuery } from "@/lib/queries";
@@ -108,12 +109,14 @@ function Invariant() {
 /* ------------------------------------------------------------ exhibit A */
 
 function ExhibitA() {
-  const ex = useQuery({ queryKey: ["vault", "exhibit-a"], queryFn: exhibitA, staleTime: 60_000 });
+  // Six view calls, and the section is below the fold — see motion/inView.
+  const [ref, shown] = useInView<HTMLElement>();
+  const ex = useQuery({ queryKey: ["vault", "exhibit-a"], queryFn: exhibitA, staleTime: 60_000, enabled: shown });
   const r = ex.data;
   const floor = r ? parseCheck(r.atFloor) : null;
 
   return (
-    <section id="exhibit-a">
+    <section id="exhibit-a" ref={ref}>
       <Heading kicker="Exhibit A">A quote the venue really signed, and the contract refused</Heading>
       <div className="grid gap-10 lg:grid-cols-[1fr_auto]">
         <div className="max-w-[62ch] text-[19px]">
@@ -203,13 +206,15 @@ function WhyNow() {
 /* ---------------------------------------------------------- schedule B */
 
 function ScheduleB() {
-  const open = useQuery(openCountQuery);
-  const total = useQuery({ queryKey: ["vault", "mandate_count"], queryFn: () => view<number>("mandate_count") });
-  const acct = useQuery({ queryKey: ["vault", "account"], queryFn: () => viewAccount() });
-  const signer = useQuery({ queryKey: ["vault", "quote_signer"], queryFn: () => view<string>("quote_signer"), staleTime: Infinity });
+  // Four more, lower still.
+  const [ref, shown] = useInView<HTMLElement>();
+  const open = useQuery({ ...openCountQuery, enabled: shown });
+  const total = useQuery({ queryKey: ["vault", "mandate_count"], queryFn: () => view<number>("mandate_count"), enabled: shown });
+  const acct = useQuery({ queryKey: ["vault", "account"], queryFn: () => viewAccount(), enabled: shown });
+  const signer = useQuery({ queryKey: ["vault", "quote_signer"], queryFn: () => view<string>("quote_signer"), staleTime: Infinity, enabled: shown });
 
   return (
-    <section>
+    <section ref={ref}>
       <Heading kicker="Schedule B">The vault, as it stands</Heading>
       <div className="grid gap-x-12 md:grid-cols-2">
         <div>

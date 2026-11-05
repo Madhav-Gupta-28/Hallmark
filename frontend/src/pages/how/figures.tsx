@@ -220,7 +220,7 @@ export function Gauntlet() {
 
 const STOPS = 10;
 /** The delivered amount at stop t of STOPS, from the signed floor (0) to the full amountOut (STOPS). */
-export function deliveredAt(minOut: string, out: string, t: number): string {
+function deliveredAt(minOut: string, out: string, t: number): string {
   const lo = BigInt(minOut), hi = BigInt(out);
   return (lo + ((hi - lo) * BigInt(t)) / BigInt(STOPS)).toString();
 }

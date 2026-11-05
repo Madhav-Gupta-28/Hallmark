@@ -149,7 +149,7 @@ export function parseCheck(s: string): ParsedCheck {
 }
 
 /** A refusal variant, in the words a reader would use, and the clause it breaches. */
-export const REFUSAL: Record<string, { words: string; clause: string }> = {
+const REFUSAL: Record<string, { words: string; clause: string }> = {
   CostCeilingBreached: { words: "over the ceiling", clause: "§1" },
   UnderDelivered: { words: "under the signed floor", clause: "§1" },
   BadSignature: { words: "not signed by the venue", clause: "§2" },

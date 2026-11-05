@@ -56,13 +56,12 @@ export const VAULT = "hallmarkfi.near";
  *   archival-rpc.mainnet.fastnear.com work but are the same operator as
  *   free.rpc.fastnear.com, so they add no independence.
  */
-export const RPCS = [
+const RPCS = [
   "https://free.rpc.fastnear.com",
   "https://near.drpc.org",
   "https://rpc.mainnet.near.org",
 ] as const;
-export const RPC = RPCS[0];                // the first tried, not "the official" one
-export const API = "https://1click.chaindefuser.com";
+const API = "https://1click.chaindefuser.com";
 export const SIGNER = "ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc";
 export const EXPLORER = "https://nearblocks.io";
 
@@ -432,8 +431,8 @@ export const short = (s: string, n = 10) => (s.length > n * 2 ? `${s.slice(0, n)
    user copies cannot drift from the transaction a button sends.
    ======================================================================== */
 
-export const ONE_YOCTO = "1";
-export const TGAS = (n: number | bigint) => String(BigInt(n) * 1_000_000_000_000n);
+const ONE_YOCTO = "1";
+const TGAS = (n: number | bigint) => String(BigInt(n) * 1_000_000_000_000n);
 
 /** A decimal string to base units, exactly. Never via a float. */
 export function parseUnits(human: string | number, dp: number): string {

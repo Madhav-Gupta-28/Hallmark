@@ -23,7 +23,7 @@ export function Figure({ no, title, takeaway, children, full, id, className }: {
 }
 
 /** The fold: the whole clause, for whoever wants it. */
-export function Full({ children, label = "Read the clause in full" }: { children: ReactNode; label?: string }) {
+function Full({ children, label = "Read the clause in full" }: { children: ReactNode; label?: string }) {
   return (
     <details className="group mt-6 border-t-2 border-ink">
       <summary className="typed flex cursor-pointer list-none items-center gap-2 py-3 text-[14px] font-bold uppercase tracking-wide hover:bg-hl [&::-webkit-details-marker]:hidden">

@@ -71,6 +71,16 @@ pub fn mul_div(a: u128, b: u128, c: u128) -> u128 {
         let mid = (ll >> 64) + (lh & u64::MAX as u128) + (hl & u64::MAX as u128);
         (hh + (lh >> 64) + (hl >> 64) + (mid >> 64), (mid << 64) | (ll & u64::MAX as u128))
     };
+    // The quotient of a 256-bit numerator by `c` fits in 128 bits exactly when
+    // `hi < c`. Without this the loop below runs anyway and returns a number
+    // that is simply wrong — and wrong in the dangerous direction: an
+    // overflowing `value_ratio` or `fill_ratio` lands on `u128::MAX`, which
+    // makes `kept >= RATIO`, which makes `cost_bps` return 0, which accepts a
+    // fill at any price. `wrapping_sub` below is load-bearing for the division
+    // and silences the release profile's overflow checks, so this is the only
+    // thing standing between a malformed magnitude and a free fill.
+    require!(hi < c, "mul_div overflow");
+
     // restoring long division, 256 / 128
     let mut q = 0u128;
     for _ in 0..128 {

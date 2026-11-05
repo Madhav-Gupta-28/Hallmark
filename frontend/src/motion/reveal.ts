@@ -69,17 +69,46 @@ export function useReadingProgress(bar: () => HTMLElement | null) {
     const b = bar();
     if (!b) return;
     let raf = 0;
+
+    // Reading `scrollHeight` forces the browser to lay the document out. Doing
+    // that inside the scroll handler means a forced reflow on every frame of
+    // every scroll, on the longest pages on the site — exactly where it is
+    // most expensive. The height only changes when content does, so measure it
+    // then: on resize, and when the DOM mutates (these pages fill in from the
+    // chain). Scrolling itself now only reads `scrollY`, which is free.
+    let max = 0;
+    const measure = () => { max = document.documentElement.scrollHeight - innerHeight; };
+
     const update = () => {
       raf = 0;
-      const max = document.documentElement.scrollHeight - innerHeight;
       // Short pages have nothing to read through; keep the rule hidden.
       const p = max > innerHeight * 0.6 ? Math.min(1, scrollY / max) : 0;
       b.style.transform = `scaleX(${p})`;
     };
     const on = () => { if (!raf) raf = requestAnimationFrame(update); };
+
+    // Coalesced to one measurement per frame. A page filling in from the chain
+    // mutates many times in a row, and measuring on each one would put back the
+    // very forced reflow this is here to remove.
+    let pending = false;
+    const remeasure = () => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => { pending = false; measure(); update(); });
+    };
+
     addEventListener("scroll", on, { passive: true });
-    addEventListener("resize", on);
+    addEventListener("resize", remeasure);
+    const mo = new MutationObserver(remeasure);
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    measure();
     update();
-    return () => { removeEventListener("scroll", on); removeEventListener("resize", on); if (raf) cancelAnimationFrame(raf); };
+    return () => {
+      removeEventListener("scroll", on);
+      removeEventListener("resize", remeasure);
+      mo.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [bar]);
 }

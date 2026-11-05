@@ -13,6 +13,13 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* @fontsource's per-weight entry points carry a `unicode-range` on every
+   @font-face, so a reader downloads only the subsets their text actually needs
+   — ~186 KB of latin and latin-ext here, never the Cyrillic, Greek or
+   Vietnamese cuts that also sit in the build. Importing the per-subset files
+   instead looks tidier and is worse: those have NO unicode-range, so two of
+   them for one weight means the browser fetches both unconditionally. Measured
+   at 460 KB on first paint. Do not "optimise" this back. */
 @import "@fontsource/eb-garamond/500.css";
 @import "@fontsource/eb-garamond/500-italic.css";
 @import "@fontsource/eb-garamond/700.css";

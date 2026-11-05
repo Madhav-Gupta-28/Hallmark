@@ -15,7 +15,7 @@ import { fixtures, type MandateTerms } from "./hallmark";
 import { priceQuote, type Verdict } from "./price";
 
 /** `MAX_QUOTE_AGE_CEILING_SECS` in contract/src/lib.rs. */
-export const MAX_AGE_SECS = 30 * 86_400;
+const MAX_AGE_SECS = 30 * 86_400;
 
 export function exhibitTerms(canonical: string): MandateTerms {
   const q = JSON.parse(canonical);

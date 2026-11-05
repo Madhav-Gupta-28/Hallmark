@@ -275,6 +275,26 @@ fn mul_div_does_not_overflow_at_realistic_magnitudes() {
     assert_eq!(mul_div(7, 1_000_000_000, 3), 2_333_333_333);
 }
 
+/// The restoring division is only correct while the quotient fits in 128 bits.
+/// Before the guard it did not say so: it returned `u128::MAX`, which makes
+/// `kept >= RATIO`, which makes `cost_bps` answer 0 — a free fill at any price.
+/// Panicking refunds the filler's delivery; returning a wrong number does not.
+#[test]
+#[should_panic(expected = "mul_div overflow")]
+fn mul_div_panics_rather_than_returning_a_wrong_quotient() {
+    mul_div(u128::MAX, 1_000_000_000, 1);
+}
+
+/// The guard must not cost a legitimate fill. `a * b` here overflows 128 bits
+/// on its own — that is the whole reason for the 256-bit intermediate — and the
+/// quotient still fits, so it must be computed, not refused.
+#[test]
+fn a_quotient_that_fits_is_still_answered_though_the_product_does_not() {
+    let big = u128::MAX / 3;
+    assert_eq!(mul_div(big, 3, 3), big);
+    assert_eq!(mul_div(big, 2, 2), big);
+}
+
 #[test]
 fn parse_fixed_truncates_toward_a_worse_cost() {
     assert_eq!(parse_fixed("9.999220000000", 12), 9_999_220_000_000);

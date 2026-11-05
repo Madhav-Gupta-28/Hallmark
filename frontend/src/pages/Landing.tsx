@@ -15,9 +15,9 @@ import { exhibitA } from "@/lib/exhibit";
 import { useInView } from "@/motion/inView";
 import { EXPLORER, near, SIGNER, short, VAULT, view, viewAccount } from "@/lib/hallmark";
 import { parseCheck, refusalOf } from "@/lib/price";
-import { cn } from "@/lib/utils";
 import { openCountQuery } from "@/lib/queries";
 import { Count } from "@/motion/Count";
+import { Grow } from "@/motion/Grow";
 import { Typewriter } from "@/motion/Typewriter";
 
 export function Landing() {
@@ -126,11 +126,29 @@ function ExhibitA() {
       <Heading kicker="Exhibit A">A quote the venue really signed, and the contract refused</Heading>
       <div className="grid gap-10 lg:grid-cols-[1fr_auto]">
         <div className="max-w-[62ch] text-[19px]">
-          <p>
-            A real NEAR Intents quote from 31 October 2026. It offers <b>$10 → 2.14 wNEAR</b> — but the amount
-            it actually <i>guarantees</i> is <b>0.000214 wNEAR</b>. Both numbers are true, and the venue signed
-            both. Read the first one and you lose almost everything.
-          </p>
+          <p>Real quote. 31 October 2026. The venue signed both of these numbers.</p>
+
+          {/* The whole thesis as one picture: at this scale the guaranteed
+              amount is a tenth of a pixel wide, so the bar says what the
+              sentence cannot. */}
+          <div className="sheet mt-6 px-6 py-6">
+            <div className="label text-faint">What $10 was offered</div>
+            <div className="mt-2 h-7 w-full border-2 border-ink">
+              <Grow pct={100} className="bg-ink" />
+            </div>
+            <div className="typed mt-1.5 text-[17px] font-bold">2.1437 wNEAR</div>
+
+            <div className="label mt-6 text-faint">What $10 was <i>guaranteed</i></div>
+            <div className="relative mt-2 h-7 w-full border-2 border-ink">
+              <Grow pct={0.01} minPx={3} className="bg-seal" />
+              <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[13px] text-seal">◀</span>
+            </div>
+            <div className="typed mt-1.5 text-[17px] font-bold text-seal">0.00021437 wNEAR</div>
+            <p className="mt-5 text-[16.5px]">
+              Same bar. <b>One ten-thousandth</b> of it — too thin to draw. Read the first number and you lose
+              everything but that sliver.
+            </p>
+          </div>
           {ex.isPending && <p className="typed mt-6 text-[15px] text-faint">asking {VAULT}…</p>}
           {ex.isError && <p className="typed mt-6 text-[15px] text-seal">{ex.error.message}</p>}
           {r && (
@@ -170,61 +188,69 @@ function ExhibitA() {
  * careless. The loss is not in the object it inspects.
  */
 function WrongVariable() {
-  const rows: Array<[string, string, boolean]> = [
-    ["Who may be paid", "an allowlist of recipients", false],
-    ["How much may leave", "a per-transaction and daily cap", false],
-    ["Which methods may run", "an allowed-method list", false],
-    ["Whether a human approved", "an approval step, or a freeze switch", false],
-    ["What the money is worth on arrival", "nothing checks this", true],
+  const checks = [
+    ["who it may pay", "an allowlist"],
+    ["how much may leave", "a cap"],
+    ["which methods may run", "a list"],
+    ["whether a human approved", "a switch"],
   ];
   return (
     <section>
-      <Heading kicker="Part I">Everyone is bounding a different variable</Heading>
-      <p className="max-w-[64ch] text-[21px] leading-[1.45]">
-        The standard way to make an agent safe with money is a spend policy: who it may pay, how much,
-        how often. It is the obvious design, and it is obvious because it is mostly right.{" "}
-        <span className="hl">It just never asks what you got back.</span>
+      <Heading kicker="Part I">Every guard bounds the wrong thing</Heading>
+      <p className="max-w-[58ch] text-[21px] leading-[1.45]">
+        The usual way to keep an agent safe with money checks four things — and{" "}
+        <span className="hl">never what you got back</span>.
       </p>
 
-      <div className="mt-7 grid gap-px border-2 border-ink bg-ink sm:grid-cols-[1fr_1fr]">
-        <div className="label bg-paper-2 p-3 text-faint">A spend policy bounds</div>
-        <div className="label bg-paper-2 p-3 text-faint">How</div>
-        {rows.map(([k, how, gap]) => (
-          <Fragment key={k}>
-            <div className={cn("p-3 text-[17px]", gap ? "bg-paper font-bold text-seal" : "bg-paper")}>{k}</div>
-            <div className={cn("p-3 text-[17px]", gap ? "bg-paper font-bold text-seal" : "bg-paper text-faint")}>{how}</div>
-          </Fragment>
-        ))}
+      {/* Two objects, side by side. The loss is in the one nobody inspects. */}
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_auto_1fr]">
+        <div className="sheet px-6 py-5">
+          <div className="label text-faint">What a guard reads · the transaction</div>
+          <ul className="mt-3 space-y-1.5 text-[17px]">
+            {checks.map(([k, how]) => (
+              <li key={k} className="flex items-baseline justify-between gap-4">
+                <span>{k}</span><span className="typed text-[14px] text-faint">{how}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="typed mt-4 text-[14px] text-sign">all four pass ✓</p>
+        </div>
+
+        <div className="hidden items-center justify-center lg:flex">
+          <span className="font-serif text-[40px] font-extrabold text-faint" aria-hidden>≠</span>
+        </div>
+
+        <div className="sheet border-seal px-6 py-5">
+          <div className="label text-seal">Where the loss is · the quote</div>
+          <ul className="mt-3 space-y-1.5 text-[17px]">
+            <li className="flex items-baseline justify-between gap-4"><code>amountOut</code><span className="typed text-[14px] text-faint">offered</span></li>
+            <li className="flex items-baseline justify-between gap-4"><code>minAmountOut</code><span className="typed text-[14px] font-bold text-seal">guaranteed</span></li>
+            <li className="flex items-baseline justify-between gap-4"><code>appFees</code><span className="typed text-[14px] text-faint">unsigned</span></li>
+          </ul>
+          <p className="typed mt-4 text-[14px] text-seal">off-chain. not an argument to the call.</p>
+        </div>
       </div>
 
-      <p className="mt-6 max-w-[64ch] text-[19px]">
-        That last line is not carelessness. <b>The loss is not in the transaction.</b> An agent swapping
-        through a venue signs <code>ft_transfer_call</code> of the asset it is spending — and{" "}
-        <code>amountOut</code>, <code>minAmountOut</code> and the fees live in the <i>quote</i>, which is
-        off chain and is not an argument to that call. A guard reading the transaction is reading the
-        wrong object, and no amount of care fixes that.
+      <p className="mt-7 max-w-[58ch] text-[19px]">
+        So the guard is not careless — it is reading the wrong object. And handing it the quote does not save
+        it either: the <i>honest</i> twin of Exhibit A declares <b>100 bps</b> of slippage and guarantees a
+        worst cost of <b>160</b>.
       </p>
-      <p className="mt-4 max-w-[64ch] text-[19px]">
-        Nor does handing it the quote. Exhibit A's <i>honest</i> twin declares a slippage tolerance of
-        100 bps and guarantees a worst all in cost of <b>160</b>, because slippage is not the only thing
-        between what is offered and what is promised. The field a careful guard would reach for{" "}
-        <span className="struck">understates</span> the number that matters.
-      </p>
+
       <div className="sheet my-7 overflow-x-auto px-6 py-5">
         <code className="typed block whitespace-pre text-[clamp(12px,1.5vw,15px)]">{`npm run policy
 
-honest.quote.json   the guard says: APPROVED      actual worst cost:    160 bps
-worst.quote.json    the guard says: APPROVED      actual worst cost:  10000 bps`}</code>
+honest.quote.json   guard: APPROVED      real worst cost:    160 bps
+worst.quote.json    guard: APPROVED      real worst cost:  10000 bps`}</code>
       </div>
-      <p className="max-w-[64ch] text-[19px]">
-        Same size, same destination, same method — so the same policy answers the same way, twice. The
-        difference between those two payments is entirely in a document the policy never sees.{" "}
-        <b>Hallmark bounds the price instead</b>, measured on what actually arrived, against four figures
-        the venue signed.
+
+      <p className="max-w-[58ch] text-[21px] leading-[1.45]">
+        Same size, same place, same method — so the same answer, twice.{" "}
+        <b>Hallmark bounds the price instead.</b>
       </p>
       <Source>
-        the policy above is written out in <code>client/src/bin/policy.ts</code> and runs against both
-        captures. It executes nobody else's code and names nobody. <L to="/limits">What this is not →</L>
+        the policy is written out in <code>client/src/bin/policy.ts</code> — nobody else's code, nobody named.{" "}
+        <L to="/limits">What this is not →</L>
       </Source>
     </section>
   );
@@ -239,27 +265,19 @@ worst.quote.json    the guard says: APPROVED      actual worst cost:  10000 bps`
  */
 function WhyNow() {
   const rows: Array<[string, string, string]> = [
-    ["the primitive", "FIX ExecInst tag 18 = 1", "the same order"],
-    ["its protection", "a promise — “reasonable diligence”", "a number the venue signed"],
-    ["enforced", "after the fact, against a benchmark", "before anything moves"],
+    ["the order", "FIX ExecInst 18 = 1", "the same order"],
+    ["the protection", "a promise to try hard", "a number the venue signed"],
+    ["enforced", "afterwards, by argument", "before anything moves"],
   ];
   return (
     <section>
-      <Heading kicker="Part IV">Why the promise needs replacing, and why now</Heading>
-      <p className="max-w-[62ch] text-[21px] leading-[1.45]">
-        <b>Software is starting to trade on people's behalf.</b> A not-held order is how you hand that
-        discretion over, and for a century the only thing on the other side of it was a promise to try
-        hard. <span className="hl">If machines execute for us, something has to bound them</span> — and a
-        promise is not a bound, because a promise is prose and prose is argued about afterwards.
+      <Heading kicker="Part IV">A century-old promise, and why it has to end</Heading>
+      <p className="max-w-[58ch] text-[21px] leading-[1.45]">
+        Handing your trade to someone else is an old instrument. The only thing that ever protected you was a
+        promise to try hard. <span className="hl">Software trades for us now</span>, and a promise is prose —
+        prose is argued about afterwards.
       </p>
-      <p className="mt-4 max-w-[62ch] text-[19px]">
-        That is not a hypothetical worry: the regulator of the primitive has an open docket on exactly this
-        failure. On <b>24 July 2026</b> FINRA opened{" "}
-        <A href="https://www.finra.org/rules-guidance/notices/26-15">Regulatory Notice 26-15</A>, asking how to
-        modernise best execution under Rule 5310. Section 7 raises two concerns about not-held orders, and both
-        are the same one: <b>the client's protection lives in prose somebody else drafted</b>. It also asks
-        whether a safe harbor would help.
-      </p>
+
       <div className="mt-7 grid gap-px border-2 border-ink bg-ink sm:grid-cols-[auto_1fr_1fr]">
         <div className="label bg-paper-2 p-3 text-faint" />
         <div className="label bg-paper-2 p-3 text-faint">Equities, today</div>
@@ -267,15 +285,21 @@ function WhyNow() {
         {rows.map(([k, then, now]) => (
           <Fragment key={k}>
             <div className="label bg-paper p-3 text-faint sm:whitespace-nowrap">{k}</div>
-            <div className="bg-paper p-3 text-[17px]">{then}</div>
+            <div className="bg-paper p-3 text-[17px] text-faint">{then}</div>
             <div className="bg-paper p-3 text-[17px] font-semibold">{now}</div>
           </Fragment>
         ))}
       </div>
-      <p className="mt-6 max-w-[62ch] text-[19px]">
-        Nobody has proposed replacing the promise with arithmetic, because in equities no venue
-        cryptographically signs the economics of a fill. <b>On NEAR there is one</b> — which is why the
-        bound can be a number an agent cannot talk its way past, instead of a duty somebody owes you.
+
+      <p className="mt-6 max-w-[58ch] text-[19px]">
+        The regulator agrees it is broken. On <b>24 July 2026</b> FINRA opened{" "}
+        <A href="https://www.finra.org/rules-guidance/notices/26-15">Notice 26-15</A>, asking how to modernise
+        best execution — §7 is about not-held orders, and its worry is that the client's protection lives in
+        prose somebody else drafted.
+      </p>
+      <p className="mt-4 max-w-[58ch] text-[19px]">
+        Nobody proposed arithmetic instead, because no equity venue signs the economics of a fill.{" "}
+        <b>NEAR Intents does.</b>
       </p>
     </section>
   );

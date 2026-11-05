@@ -45,13 +45,19 @@ in its Omni deposit layer. Hallmark depends on the part that held, not the part
 that did not.
 
 **Both legs of a mandate settle on NEAR** — the contract requires `nep141:`
-assets on both sides. **The fill is what crosses chains:** a filler may source
-the output anywhere and deliver it here, which is what `adapted.ts` does through
-1Click with `depositType: INTENTS`. So the bound is enforced on NEAR while the
-liquidity behind it is Intents' liquidity — over $4B a month — rather than a
-pool this project would have to bootstrap. A mandate that *paid out* to another
-chain would mean the vault sending to an address a counterparty named, which is
-the one thing §2.4 exists to refuse.
+assets on both sides, and a mandate that *paid out* to another chain would mean
+the vault sending to an address a counterparty named, which is the one thing
+§2.4 exists to refuse.
+
+**Where a chain gets crossed is the fill, and that is the filler's side.** The
+vault only ever sees a NEAR token arrive; where the filler got it is its own
+business. Two ways to get it (§6.4): hold inventory, or buy the output through
+1Click with `depositType: INTENTS` and then deliver it. **All three fillers here
+hold inventory.** Source-then-deliver is specified, not demonstrated — §14 lists
+it first among the unverified items, and it stays there until it is timed end to
+end. The honest summary: Hallmark enforces the bound on NEAR and does not need
+liquidity of its own, but the cross-chain sourcing that would draw on Intents'
+is a documented path, not a shipped one.
 
 ---
 

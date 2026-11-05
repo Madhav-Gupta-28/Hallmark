@@ -73,6 +73,10 @@ fi
 
 step "The app, and its claims against the source and the chain"
 if [ -d frontend/node_modules ]; then
+  # `tsc --noEmit` is a no-op here: tsconfig.json carries "files": [] and
+  # defers to project references, so it checks nothing and exits 0. The build
+  # is the typecheck.
+  run "the app typechecks and builds" npm --prefix frontend run build
   run "99 frontend tests (ported canonicaliser matches the reference byte for byte)" npm --prefix frontend test
   run "every number the site and the README state, re-derived" python3 frontend/tools/check.py
   run "no signed quote is ever hand-typed" python3 frontend/tools/mkfixtures.py --check

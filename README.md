@@ -20,6 +20,15 @@ That is the gap an agent trades through, and it is a bound, not a bug: the
 venue promised the floor and offered the rest. Hallmark makes you name what
 you will actually accept, and refuses the rest on your behalf.
 
+**And no spend policy catches it.** The standard way to make an agent safe with
+money bounds *who* it may pay, *how much*, and *how often* — never what the
+money is worth when it arrives. That is not carelessness: an agent swapping
+through a venue signs `ft_transfer_call` of the asset it is spending, and
+`amountOut`, `minAmountOut` and the fees are fields of the **quote**, which is
+off-chain and is not an argument to that call. A guard reading the transaction
+is reading the wrong object. `npm run policy` (§5) runs that shape against both
+captures and gets **APPROVED** twice.
+
 A not-held order hands discretion over the time and price of your trade to
 somebody else. For a century the only thing protecting the client was a promise —
 the best execution obligation. NEAR Intents signs the economics of every fill, so

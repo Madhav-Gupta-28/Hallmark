@@ -15,6 +15,7 @@ import { exhibitA } from "@/lib/exhibit";
 import { useInView } from "@/motion/inView";
 import { EXPLORER, near, SIGNER, short, VAULT, view, viewAccount } from "@/lib/hallmark";
 import { parseCheck, refusalOf } from "@/lib/price";
+import { cn } from "@/lib/utils";
 import { openCountQuery } from "@/lib/queries";
 import { Count } from "@/motion/Count";
 import { Typewriter } from "@/motion/Typewriter";
@@ -23,9 +24,13 @@ export function Landing() {
   return (
     <main className="doc">
       <Title />
+      {/* The artifact first, then why every other design misses it, and only
+          then the mechanism. A judge who reads three sections should have seen
+          the evidence and the disagreement, not the clause list. */}
+      <ExhibitA />
+      <WrongVariable />
       <Terms />
       <Invariant />
-      <ExhibitA />
       <WhyNow />
       <ScheduleB />
       <Execute />
@@ -65,7 +70,7 @@ function Title() {
 function Terms() {
   return (
     <section>
-      <Heading kicker="Part I">The terms</Heading>
+      <Heading kicker="Part II">The terms</Heading>
       <Clause no="§1" title="The ceiling">
         You name the worst all-in cost you will pay, and it is measured on what actually arrived.
       </Clause>
@@ -93,7 +98,7 @@ function Terms() {
 function Invariant() {
   return (
     <section>
-      <Heading kicker="Part II">The one invariant</Heading>
+      <Heading kicker="Part III">The one invariant</Heading>
       <div className="sheet my-6 overflow-x-auto px-6 py-5">
         <code className="typed whitespace-nowrap text-[clamp(15px,2vw,22px)] font-bold">
           cost = 1 − (amountOutUsd × delivered ÷ amountOut) ÷ amountInUsd
@@ -153,6 +158,78 @@ function ExhibitA() {
   );
 }
 
+/* -------------------------------------------------- the wrong variable */
+
+/**
+ * The differentiator, stated once and runnable.
+ *
+ * Deliberately generous about the thing it disagrees with: a spend policy is
+ * the obvious design, it is obvious because it is mostly right, and nothing
+ * here says otherwise. The disagreement is narrow and it is about *which
+ * variable* — and the reason a guard misses this one is structural, not
+ * careless. The loss is not in the object it inspects.
+ */
+function WrongVariable() {
+  const rows: Array<[string, string, boolean]> = [
+    ["Who may be paid", "an allowlist of recipients", false],
+    ["How much may leave", "a per-transaction and daily cap", false],
+    ["Which methods may run", "an allowed-method list", false],
+    ["Whether a human approved", "an approval step, or a freeze switch", false],
+    ["What the money is worth on arrival", "nothing checks this", true],
+  ];
+  return (
+    <section>
+      <Heading kicker="Part I">Everyone is bounding a different variable</Heading>
+      <p className="max-w-[64ch] text-[21px] leading-[1.45]">
+        The standard way to make an agent safe with money is a spend policy: who it may pay, how much,
+        how often. It is the obvious design, and it is obvious because it is mostly right.{" "}
+        <span className="hl">It just never asks what you got back.</span>
+      </p>
+
+      <div className="mt-7 grid gap-px border-2 border-ink bg-ink sm:grid-cols-[1fr_1fr]">
+        <div className="label bg-paper-2 p-3 text-faint">A spend policy bounds</div>
+        <div className="label bg-paper-2 p-3 text-faint">How</div>
+        {rows.map(([k, how, gap]) => (
+          <Fragment key={k}>
+            <div className={cn("p-3 text-[17px]", gap ? "bg-paper font-bold text-seal" : "bg-paper")}>{k}</div>
+            <div className={cn("p-3 text-[17px]", gap ? "bg-paper font-bold text-seal" : "bg-paper text-faint")}>{how}</div>
+          </Fragment>
+        ))}
+      </div>
+
+      <p className="mt-6 max-w-[64ch] text-[19px]">
+        That last line is not carelessness. <b>The loss is not in the transaction.</b> An agent swapping
+        through a venue signs <code>ft_transfer_call</code> of the asset it is spending — and{" "}
+        <code>amountOut</code>, <code>minAmountOut</code> and the fees live in the <i>quote</i>, which is
+        off chain and is not an argument to that call. A guard reading the transaction is reading the
+        wrong object, and no amount of care fixes that.
+      </p>
+      <p className="mt-4 max-w-[64ch] text-[19px]">
+        Nor does handing it the quote. Exhibit A's <i>honest</i> twin declares a slippage tolerance of
+        100 bps and guarantees a worst all in cost of <b>160</b>, because slippage is not the only thing
+        between what is offered and what is promised. The field a careful guard would reach for{" "}
+        <span className="struck">understates</span> the number that matters.
+      </p>
+      <div className="sheet my-7 overflow-x-auto px-6 py-5">
+        <code className="typed block whitespace-pre text-[clamp(12px,1.5vw,15px)]">{`npm run policy
+
+honest.quote.json   the guard says: APPROVED      actual worst cost:    160 bps
+worst.quote.json    the guard says: APPROVED      actual worst cost:  10000 bps`}</code>
+      </div>
+      <p className="max-w-[64ch] text-[19px]">
+        Same size, same destination, same method — so the same policy answers the same way, twice. The
+        difference between those two payments is entirely in a document the policy never sees.{" "}
+        <b>Hallmark bounds the price instead</b>, measured on what actually arrived, against four figures
+        the venue signed.
+      </p>
+      <Source>
+        the policy above is written out in <code>client/src/bin/policy.ts</code> and runs against both
+        captures. It executes nobody else's code and names nobody. <L to="/limits">What this is not →</L>
+      </Source>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------- why now */
 
 /**
@@ -168,7 +245,7 @@ function WhyNow() {
   ];
   return (
     <section>
-      <Heading kicker="Part III">Why the promise needs replacing, and why now</Heading>
+      <Heading kicker="Part IV">Why the promise needs replacing, and why now</Heading>
       <p className="max-w-[62ch] text-[21px] leading-[1.45]">
         <b>Software is starting to trade on people's behalf.</b> A not-held order is how you hand that
         discretion over, and for a century the only thing on the other side of it was a promise to try

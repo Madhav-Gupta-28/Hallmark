@@ -9,6 +9,17 @@
 
 > **Live on NEAR mainnet: [`hallmarkfi.near`](https://nearblocks.io/address/hallmarkfi.near)**
 
+On 31 October 2026 NEAR Intents signed a quote offering **$10 → 2.1437 wNEAR**.
+The amount that quote *guarantees* is **0.00021437 wNEAR** — one ten-thousandth
+of it. Both numbers sit in the same signed payload, both are true, and the
+venue really signed them. The capture is `fixtures/worst.quote.json`; §1
+re-verifies the signature from a clean clone and §2 asks the live contract,
+with no key, what that floor costs. It answers **10000 bps**.
+
+That is the gap an agent trades through, and it is a bound, not a bug: the
+venue promised the floor and offered the rest. Hallmark makes you name what
+you will actually accept, and refuses the rest on your behalf.
+
 A not-held order hands discretion over the time and price of your trade to
 somebody else. For a century the only thing protecting the client was a promise —
 the best execution obligation. NEAR Intents signs the economics of every fill, so
@@ -84,6 +95,23 @@ anything disagrees.
 
 The sections below are the same things one at a time, with what each one proves.
 **Do this — see that.** Nothing needs a key or funds unless it says so.
+
+### Every claim, and the thing that settles it
+
+| claim | settled by |
+|---|---|
+| NEAR Intents really signed a quote that guarantees a 99.99% loss | `malicious_quote_is_a_9999_bps_haircut_and_is_validly_signed`, and `is_signed` on mainnet with no key |
+| all 692 bytes are covered by that signature | `every_single_byte_is_covered_by_the_signature` — each byte flipped, each rejected |
+| the contract prices a 500 bps `appFee` it is not allowed to read | `the_malicious_quote_is_refused_at_its_floor_but_fine_at_its_expected_fill` (§2.3) |
+| a signature alone is not enough — a stale quote is refused | `a_stale_quote_is_refused_even_though_it_is_signed_and_inside_its_deadline`, and on-chain in `3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc` |
+| the filler delivers first, so nobody ever holds a counterparty's funds | the 28 sandbox tests; §2.4 for why it is load-bearing |
+| whoever writes a byte pays for it, and the vault never subsidises | `the_vault_never_pays_for_state_someone_else_created` |
+| the reported cost is never below the true cost | `the_reported_cost_is_never_below_the_true_cost` (§8.1), and §8.4 for the overflow that broke it |
+| three canonicalisers agree byte for byte and hash for hash | `frontend/src/lib/hallmark.test.ts` against `client/` and the Python fixtures |
+| every number on the site is a keyless view call, not a literal | `python3 frontend/tools/check.py` — 12 claims, re-derived from source and chain |
+| every number in this README is still true | the same script; it fails if any of them drifts |
+| it works on mainnet, filled and withdrawn by two different accounts | §3.17 of ARCHITECTURE.md — every transaction hash, and `open_mandate_count` answers live |
+| what it is **not** | `/limits`, and §14 — fourteen known limits, written down before anyone asked |
 
 ## 1. See a validly signed quote that guarantees a 99.99% loss
 

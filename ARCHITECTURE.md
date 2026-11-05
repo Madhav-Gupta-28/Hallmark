@@ -1042,6 +1042,22 @@ track. It also means the baseline Hallmark must beat is *established and
 public*: every one of those six passes `worst.quote.json`. That fixture is the
 differentiator, and a judge can reproduce it in one command.
 
+**Checked again on 2026-11-05, against the hackathon itself.** The same shape
+turned up eight more times in two weeks, publicly posted: Tollgate, Aegis,
+NEAR Leash, SpactVault, Euthyna, Clean Exit, NearGuard and Lifeguard. Every one
+is a spend-policy gate in front of an agent's key — caps, allowlists, an
+approval step — and several demonstrate it the same way, by stealing their own
+agent's key and showing the refusals. It is plainly the obvious idea, which is
+the strongest argument available for not having built it.
+
+The distinction is not rigour, it is *what is being bounded*. A policy gate
+bounds **who** the agent may pay and **how much**, which is a bound on the
+transaction. None of them bounds the **price** — a payment to an allowed
+address, inside the cap, at a rate that loses 99.99%, passes every one of them,
+because the quote is not what they inspect. `worst.quote.json` is a payment of
+exactly that shape. The fixture is the differentiator and it costs one command
+to reproduce.
+
 ### 3.17 Live on mainnet
 
 Deployed and exercised end to end four times: **v1 on 2026-11-01**, **v2 on

@@ -155,6 +155,59 @@ claim("fixture byte counts are rendered, not typed",
       not any(f"{f['bytes']} bytes" in p for p in pages.values() for f in [fx["sandbox"]]),
       "from the JSON", "no hand-typed sandbox byte count in the markup")
 
+# ------------------------------------------------------------------- the README
+#
+# The site had a checker and the README did not, so the README drifted: it still
+# claimed 58 Rust tests and a 257,314-byte contract two deploys after both had
+# changed. That matters more than a stale page, because the AI pre-screen reads
+# the README, runs what it says, and compares. A number the README states has to
+# be a number the repository can still produce.
+readme = (root / "README.md").read_text()
+
+
+def says(pattern, label, actual):
+    m = re.search(pattern, readme)
+    found = m.group(1) if m else None
+    claim(label, found == str(actual), f"README says {found}", actual)
+
+
+print()
+says(r"\*\*See:\*\* (\d+) tests pass", "README: Rust test total", unit + integ)
+says(r"tests pass — (\d+) unit", "README: unit tests", unit)
+says(r"unit, (\d+) against a real sandbox", "README: integration tests", integ)
+says(r"contract/src/tests\.rs\s+(\d+) unit tests", "README: layout unit count", unit)
+says(r"contract/tests/integration\.rs (\d+) tests", "README: layout integration count", integ)
+says(r"the (\d+) Rust tests and", "README: AI-tooling test total", unit + integ)
+
+# Counting `it(` gives the wrong answer: `describe.each` runs one `it` once per
+# case, so the canonicalisation suite alone is 4 written tests and 12 real ones.
+# Ask the runner instead of guessing at its arithmetic.
+try:
+    # The json reporter writes a file and prints only where it put it.
+    out = root / "frontend" / ".vitest" / "json" / "check.json"
+    subprocess.run(["npx", "vitest", "run", "--reporter=json", "--outputFile", str(out)],
+                   cwd=root / "frontend", capture_output=True, text=True, timeout=300, check=True)
+    says(r"npm --prefix frontend test\s+# (\d+) tests", "README: frontend test count",
+         json.loads(out.read_text())["numTotalTests"])
+    out.unlink(missing_ok=True)
+except Exception as e:  # noqa: BLE001
+    print(f"  -- README frontend test count skipped: {type(e).__name__}")
+
+wasm = root / "target" / "near" / "hallmark" / "hallmark.wasm"
+if wasm.exists():
+    says(r"\| the contract \| ([\d,]+) bytes", "README: contract size", f"{wasm.stat().st_size:,}")
+else:
+    print("  -- README contract size skipped: build the wasm first (./build.sh)")
+
+# Q-015: one person may enter two projects only if each README names the other.
+dk = re.search(r"Docket[^\n]*?(https://github\.com/\S+)", readme) or \
+     re.search(r"(https://github\.com/\S+)[^\n]*?Docket", readme)
+claim("README: names the other submission (Q-015)", bool(dk),
+      "Docket, with a repo link", dk.group(1) if dk else "MISSING or has no link yet")
+# Q-005: every library and template has to be listed.
+claim("README: lists its libraries (Q-005)", "## Libraries" in readme,
+      "a Libraries section", "present" if "## Libraries" in readme else "MISSING")
+
 print()
 if fails:
     print(f"  {len(fails)} claim(s) do not match: {', '.join(fails)}")

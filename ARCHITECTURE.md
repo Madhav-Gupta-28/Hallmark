@@ -231,6 +231,25 @@ filler supplies the deposit address; a malicious filler supplies its own; the
 vault hands over the owner's funds and the attacker keeps them. The signature
 proves nothing about where the money went.
 
+**This is not a hypothetical class of bug, and the evidence arrived five weeks
+before this was written.** On 1 October 2026 NEAR Intents itself lost ~$3.8M to
+a fault in how its Omni deposit-and-withdrawal layer interacted with its main
+contract; the protocol halted, and the funds came back because the attacker was
+identified and returned them, not because the design made the loss impossible.
+Two things follow, and the second matters more than the first.
+
+The layer that failed is the layer Hallmark does not use. Hallmark depends on
+1Click's **signature over a quote** — a read-only, verifiable artifact — and
+never on Intents holding, routing or releasing a balance on its behalf. No
+address a counterparty nominated is ever sent anything, because the vault only
+ever credits an account that has already delivered.
+
+And the honest half: this is a *reduction* of trust, not an elimination of it.
+§3.1 and §9 still carry the real dependency — if 1Click's signing key is stolen,
+every bound here is forgeable, and that is listed as unmitigated. The claim is
+narrow and exact: Hallmark removes the custody-and-routing class of failure that
+actually occurred, and keeps the signing-key class, which did not.
+
 The fix inverts the order of operations:
 
 > **The filler transfers the output into the vault first. The vault verifies the
@@ -1025,16 +1044,25 @@ differentiator, and a judge can reproduce it in one command.
 
 ### 3.17 Live on mainnet
 
-Deployed and exercised end to end three times: **v1 on 2026-11-01**, **v2 on
-2026-11-02** after the audit found §2.10 and §2.11, and **v3 the same day** once
+Deployed and exercised end to end four times: **v1 on 2026-11-01**, **v2 on
+2026-11-02** after the audit found §2.10 and §2.11, **v3 the same day** once
 measuring showed §2.11's first fix was still inexact and §2.12 was a wall worth
-removing before launch.
+removing before launch, and **v3.1 on 2026-11-05** after a second audit found
+the unguarded quotient in `mul_div` (§8.4).
+
+v3.1 is the only one of the four deployed **without `migrate`**. The guard is a
+`require!` inside a function body, so the borsh layout is byte-identical and the
+code could be replaced under the live state rather than beside it — which
+mattered, because `migrate` calls `new()` and would have wiped both mandate
+records and stranded §1's escrow. Verified after the fact: `mandate_count` 2,
+§1 still holding 0.04 wNEAR at `fills 1, worst_bps 74`, §2 at `worst_bps 0`.
 
 | | |
 |---|---|
 | vault | **`hallmarkfi.near`** |
-| wasm (v3) | 274,159 bytes, sha256 `bb5a1d00…5523f833` |
-| v3 deploy + `migrate` | `HosgeB2W1j2nyYvbyGWigdVsXuGRanraJBfMhypkhGZw` |
+| wasm (v3.1) | 274,286 bytes, sha256 `744ea248…023f71cf`, code hash `8q1qZFpXnnh3biMBHdgLzAjNQY3Y3pvNrCiQ1kLaJkLW` |
+| v3.1 deploy (code only) | `4mMtctAm3AcnLSR6LrZ6T4xcnvjh7JiADJdmfdtp5xsh` |
+| v3 deploy + `migrate` (superseded) | `HosgeB2W1j2nyYvbyGWigdVsXuGRanraJBfMhypkhGZw` |
 | v2 deploy (superseded) | `8ndzKy5DWr4d6SorwgFKDGi8fB4RJHQv7dvcusmpqx4d` |
 | v1 deploy (superseded) | `5gPd4L1uG1uNGitZr3j6XPYtwzWg1RFsq8K41KsSCBpK` |
 
@@ -1898,6 +1926,54 @@ The last line is the proof of §2.3: the contract never reads `appFees` and
 prices it exactly.
 
 ---
+
+### 8.4 The quotient has to fit, and for three versions nobody checked
+
+Restoring division is only correct while its answer fits in the register it is
+accumulated into. `mul_div` computed a 256-bit product and divided it by a
+128-bit `c` without ever asking whether the quotient fit in 128 bits. It did not
+say so and it did not fail; it returned a number.
+
+Worse, it returned **the wrong number in the unsafe direction**. An overflowing
+quotient lands on `u128::MAX`, which makes `kept >= RATIO`, which makes
+`cost_bps` return **0** — and a cost of zero clears every ceiling. The one
+function the whole bound rests on failed *open*.
+
+Two things hid it. `wrapping_sub` is load-bearing for the division, so
+`overflow-checks = true` (which covers every other arithmetic operation in the
+contract) is deliberately silenced exactly here. And the test that existed was
+honest about its own scope in its name:
+`mul_div_does_not_overflow_at_realistic_magnitudes`.
+
+It was found by transliterating `mul_div` into Python and comparing it against
+exact bignum arithmetic rather than by reading it:
+
+| regime | cases | result |
+|---|---|---|
+| quotient fits in 128 bits | 167,246 random | **0 mismatches** — the implementation is exactly right |
+| quotient does not fit | 20,000 random | **20,000 returned `u128::MAX`, no panic** |
+
+The fix is the precondition itself, `require!(hi < c)`, which over 300,000
+random cases admits every quotient that fits and rejects every one that does
+not — **0 false positives, 0 false negatives**. A fill that panics is refunded
+by NEP-141; a fill priced from a wrong number is not.
+
+**Reachability, stated honestly: it is not reachable with any quote 1Click
+would sign.** Triggering it needs `amountOutUsd / amountInUsd ≈ 3.4e29`, or a
+delivery that same factor above `amountOut`. This was a latent fault in the
+arithmetic, not a live hole — fixed because the ceiling is the product, and
+"the venue would never sign that" is an assumption, not a bound.
+
+Live on mainnet since v3.1, and provable without a key, because `realised_cost`
+takes the canonical bytes and checks no signature:
+
+```
+near view hallmarkfi.near realised_cost \
+  '{"canonical":"{…\"amountOut\":\"1\"…}","delivered":"170141183460469231731687303715884105728"}'
+
+v3    0                                        ← accepted at any price
+v3.1  HostError(GuestPanic { panic_msg: "mul_div overflow" })
+```
 
 ## §9 Failure modes
 

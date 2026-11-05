@@ -29,6 +29,30 @@ Four signed fields and the amount that actually arrived. Slippage, bridge fee,
 solver spread and any app fee have all already moved those numbers before the
 venue signed them, so there is nothing else to enumerate.
 
+## Where NEAR Intents fits, and where it does not
+
+Hallmark uses exactly one thing from NEAR Intents: **the signature over a
+quote.** `amountIn`, `amountOut`, `minAmountOut` and the two USD marks are
+signed by the venue, so the owner's ceiling can be checked against numbers the
+venue committed to rather than against anything a filler says. It is a
+read-only artifact, verified on-chain by `ed25519_verify`.
+
+What Hallmark never uses is Intents holding, routing or releasing a balance for
+it. The vault sends nothing to any address a counterparty nominated — the hole
+that makes that unsafe is `depositAddress` being outside the signature (§2.4),
+and the same class of fault is what cost NEAR Intents ~$3.8M on 1 October 2026
+in its Omni deposit layer. Hallmark depends on the part that held, not the part
+that did not.
+
+**Both legs of a mandate settle on NEAR** — the contract requires `nep141:`
+assets on both sides. **The fill is what crosses chains:** a filler may source
+the output anywhere and deliver it here, which is what `adapted.ts` does through
+1Click with `depositType: INTENTS`. So the bound is enforced on NEAR while the
+liquidity behind it is Intents' liquidity — over $4B a month — rather than a
+pool this project would have to bootstrap. A mandate that *paid out* to another
+chain would mean the vault sending to an address a counterparty named, which is
+the one thing §2.4 exists to refuse.
+
 ---
 
 Every section below is **do this — see that**. Nothing here needs a key or funds
@@ -40,7 +64,7 @@ unless it says so.
 cargo test
 ```
 
-**See:** 58 tests pass — 30 unit, 28 against a real sandbox node. No network, no
+**See:** 60 tests pass — 32 unit, 28 against a real sandbox node. No network, no
 key, no funds. Four of them are the point:
 
 | test | what it shows |
@@ -144,7 +168,7 @@ have invented and no server between you and the chain.
 ```bash
 python3 frontend/tools/check.py              # the app's claims, against the code and the chain
 python3 frontend/tools/mkfixtures.py --check # no signed quote is ever hand-typed
-npm --prefix frontend test                   # 84 assertions, no network
+npm --prefix frontend test                   # 99 tests, no network
 ```
 
 `npm run build` emits a static `dist/`; `frontend/vercel.json` carries the
@@ -226,10 +250,10 @@ comes back.
 
 | | |
 |---|---|
-| a whole fill, on mainnet | **30.25 TGas** — 10% of one transaction's limit |
+| a whole fill, on mainnet | **30.48 TGas** — 10% of one transaction's limit |
 | opening a mandate | the **measured** cost of its record, ~0.003 NEAR, returned by `reap` |
 | filling one | the measured cost of the credit slots it creates, charged to the filler |
-| the contract | 257,314 bytes, which NEAR stakes 2.57 NEAR against |
+| the contract | 274,286 bytes, which NEAR stakes 2.77 NEAR against |
 
 ## Layout
 
@@ -237,7 +261,7 @@ comes back.
 contract/src/quote.rs        the signed quote, the signature, the arithmetic
 contract/src/mandate.rs      the mandate, the typed refusals, the check
 contract/src/lib.rs          the vault
-contract/src/tests.rs        30 unit tests — every guarantee the spec claims
+contract/src/tests.rs        32 unit tests — every guarantee the spec claims
 contract/tests/integration.rs 28 tests, end to end against a real node
 client/src/lib/canonical.ts  canonicalisation — the one place it exists
 client/src/bin/bound.ts      what a live quote guarantees
@@ -271,6 +295,63 @@ upgraded. §10.2 explains why that key is deleted last rather than first, and
 §2.10 is the argument: an audit found a critical bug in a contract that was
 already live, and a contract with no key could not have been fixed.
 
+## The other submission
+
+*Hackathon rule Q-015: one person may enter up to two projects if they are
+independent and each README names the other.*
+
+**Hallmark** is led by **Madhav Gupta** and is the project submitted here.
+
+**Docket** is a separate project led by **Aditi**, who also contributed the
+frontend work on Hallmark. The two are independent: different problems,
+different contracts, no shared code, and neither depends on the other.
+
+<!-- REQUIRED BEFORE SUBMITTING: add Docket's public repository URL on the line
+     below. frontend/tools/check.py fails until a github.com link appears next
+     to the word "Docket", because Q-015 is a rule and not a courtesy. -->
+
+> Docket's repository: _to be added before submission._
+
+## Libraries, and what was already here
+
+*Hackathon rules Q-005 (list every library and template) and Q-002/Q-004
+(disclose anything pre-existing).*
+
+**Baseline: none.** Hallmark was started on 2026-11-01, inside the window, and
+every commit in this repository is hackathon work. There is no earlier product,
+no ported contract and no pre-hackathon library of ours in the tree.
+
+**Contract** — `near-sdk` 5.24.1 (pinned: it is the newest release that compiles
+on rustc 1.86, and nearcore's VM rejects wasm from anything newer), `bs58`,
+`serde`. Tests add `near-workspaces`, `tokio`, `serde_json`, `anyhow`. No
+arithmetic library: `mul_div`, the ISO-8601 parser and the civil-date conversion
+are written out in `contract/src/quote.rs` so the whole bound is readable in one
+file.
+
+**Client** — `near-api-js` and `@near-js/crypto` to sign, `bs58`,
+`json-stable-stringify` (the canonical form 1Click's own SDK relies on), `tsx`,
+`typescript`.
+
+**Frontend** — React 19, `react-router-dom`, `@tanstack/react-query`,
+`@near-wallet-selector/core` with the Meteor and HERE modules, `near-api-js`,
+`radix-ui` and `shadcn` for the dialog and button primitives,
+`class-variance-authority`, `cn`, `lucide-react`, `@fontsource` for the three
+self-hosted typefaces, `buffer` (a polyfill the wallet selector needs), Tailwind
+4 via `@tailwindcss/vite`, `tw-animate-css`. Build and test: `vite`, `vitest`,
+`oxlint`, `typescript`.
+
+**Templates and generated code.** No starter template: `frontend/` began as
+`npm create vite` and everything in `src/` was written for this project. The
+shadcn dialog and button primitives are the upstream generated components,
+trimmed here to the parts this app renders. AI-generated code is covered under
+*AI tooling* below.
+
+**Not ours, and not vendored:** the signed quotes in `fixtures/` are genuine
+NEAR Intents API responses, captured and committed verbatim so the signature
+still verifies. `client/src/fillers/adapted.ts` is NEAR's own
+[`agent-skills`](https://github.com/near/agent-skills) `rules/server-example.md`
+with four marked changes, which is the point of that file.
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
@@ -280,7 +361,7 @@ MIT — see [LICENSE](LICENSE).
 This project was built with AI assistance (Anthropic's Claude, via Claude Code)
 for code, tests and prose, under line-by-line human review. Everything it
 produced was checked by running it: the contract is deployed on NEAR mainnet,
-the 58 Rust tests and 54 client assertions run from a clean clone, and
+the 60 Rust tests and 54 client assertions run from a clean clone, and
 `frontend/tools/check.py` re-verifies the app's factual claims against the source
 and the live chain rather than against anybody's recollection.
 

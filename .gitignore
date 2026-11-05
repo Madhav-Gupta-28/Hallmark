@@ -8,3 +8,4 @@ node_modules/
 res/
 .next/
 out/
+.vercel

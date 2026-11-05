@@ -1,0 +1,14 @@
+# The deploy root is the repository root, not frontend/, because the build reads
+# the signed captures out of contract/fixtures/ — see frontend/fixtures.ts and
+# the hallmarkFixtures plugin in vite.config.ts. So only the things the build
+# cannot possibly need are excluded, and target/ is the one that matters: it is
+# 2.4 GB of Rust artifacts and on its own pushes the upload past Vercel's
+# 15,000-file limit.
+#
+# contract/ is NOT excluded. Excluding a directory and re-including a child of
+# it does not work in this format, and contract/fixtures/ is load-bearing.
+target/
+node_modules/
+.git/
+frontend/dist/
+.DS_Store

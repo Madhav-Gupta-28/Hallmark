@@ -7,7 +7,8 @@
 
 **A not-held order that enforces its own execution bound.**
 
-> **Live on NEAR mainnet: [`hallmarkfi.near`](https://nearblocks.io/address/hallmarkfi.near)**
+> **Live: [hallmark-vert.vercel.app](https://hallmark-vert.vercel.app)** · contract
+> [`hallmarkfi.near`](https://nearblocks.io/address/hallmarkfi.near) on NEAR mainnet
 
 On 31 October 2026 NEAR Intents signed a quote offering **$10 → 2.1437 wNEAR**.
 The amount that quote *guarantees* is **0.00021437 wNEAR** — one ten-thousandth

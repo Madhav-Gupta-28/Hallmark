@@ -32,6 +32,7 @@ export function Landing() {
       <Terms />
       <Invariant />
       <WhyNow />
+      <BothHalves />
       <ScheduleB />
       <Execute />
     </main>
@@ -331,6 +332,125 @@ function ScheduleB() {
         </div>
       </div>
       <Source>every figure above is a keyless view call; the gas figure is the v3 mainnet fill, every receipt counted (ARCHITECTURE.md).</Source>
+    </section>
+  );
+}
+
+/* ------------------------------------------- both halves, on mainnet */
+
+/**
+ * The two things a ceiling has to be able to do, each done once on mainnet
+ * rather than argued for: turn away a fill that breaks it, and not care where
+ * the money came from.
+ *
+ * Both panels are pictures on purpose. "532 bps against a 300 bps ceiling" is
+ * a sentence you have to decode; a bar that visibly overshoots a marked line
+ * is not. The figures are hand-written here because they are facts about two
+ * transactions that have already happened — they cannot be read from a live
+ * view call, so each one links to the receipt instead.
+ */
+const BASESCAN = "https://basescan.org/tx";
+
+function BothHalves() {
+  // 600 bps of track, so a 300 bps ceiling sits exactly halfway and the
+  // overshoot is read rather than calculated.
+  const SCALE = 600;
+  const checks = ["right assets", "right recipient", "inside max_fill", "quote 1s old", "delivery at the signed floor"];
+
+  return (
+    <section>
+      <Heading kicker="Part V">Both halves, on mainnet</Heading>
+      <p className="max-w-[58ch] text-[21px] leading-[1.45]">
+        A ceiling is worth nothing unless it <span className="hl">refuses</span>, and worth little if the
+        liquidity has to live next door. Once each, with receipts.
+      </p>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        {/* ---------------------------------------------- it refuses */}
+        <div className="sheet px-6 py-5">
+          <div className="label text-faint">A fill that was sent anyway</div>
+
+          <div className="mt-4">
+            <div className="relative h-7 w-full border-2 border-ink">
+              <Grow pct={(532 / SCALE) * 100} className="bg-seal" ms={1400} />
+              {/* the ceiling, drawn where it actually is */}
+              <div className="absolute inset-y-0 border-l-2 border-dashed border-ink" style={{ left: `${(300 / SCALE) * 100}%` }} />
+            </div>
+            <div className="mt-1.5 flex justify-between">
+              <span className="typed text-[17px] font-bold text-seal">532 bps asked</span>
+              <span className="typed text-[14px] text-faint">300 bps allowed ⟵ ceiling</span>
+            </div>
+          </div>
+
+          <ul className="mt-5 space-y-1 text-[16px]">
+            {checks.map((c) => (
+              <li key={c} className="flex items-baseline gap-2">
+                <span className="typed text-[13px] text-sign">✓</span><span>{c}</span>
+              </li>
+            ))}
+            <li className="flex items-baseline gap-2 font-bold text-seal">
+              <span className="typed text-[13px]">✗</span><span>the price</span>
+            </li>
+          </ul>
+
+          <p className="mt-4 text-[16.5px]">
+            An ordinary <code>slippageTolerance</code> of <b>500 bps</b>. Nothing out of policy — only the
+            loss it authorises, and that is in no field a policy reads.
+          </p>
+          <div className="typed mt-3 text-[13px] text-seal">
+            REFUSED CostCeilingBreached {"{"} worst_bps: 532, ceiling_bps: 300 {"}"}
+          </div>
+          <Source>
+            <code>npm run breach</code> ·{" "}
+            <A href={`${EXPLORER}/txns/Fjz5cqJfiWyhYAhAqekVPfp6nGpgrNAM51Y2XnRsn3vx`}>the receipt</A>. The
+            delivery was refunded in the same transaction; the agreement never moved.
+          </Source>
+        </div>
+
+        {/* ------------------------------ it does not care where money is */}
+        <div className="sheet px-6 py-5">
+          <div className="label text-faint">A fill sourced on another chain</div>
+
+          <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div className="border-2 border-ink px-3 py-3 text-center">
+              <div className="typed text-[15px] font-bold">0.1544 USDC</div>
+              <div className="label mt-0.5 text-faint">Base</div>
+            </div>
+            <div className="text-center">
+              <div className="font-serif text-[22px] font-extrabold text-faint" aria-hidden>→</div>
+              <div className="typed text-[12px] text-sign">0 bps</div>
+              <div className="typed text-[12px] text-faint">38 s</div>
+            </div>
+            <div className="border-2 border-ink px-3 py-3 text-center">
+              <div className="typed text-[15px] font-bold">0.1545 USDT</div>
+              <div className="label mt-0.5 text-faint">NEAR</div>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="relative h-7 w-full border-2 border-ink">
+              <Grow pct={(97 / SCALE) * 100} className="bg-sign" ms={1400} />
+              <div className="absolute inset-y-0 border-l-2 border-dashed border-ink" style={{ left: `${(300 / SCALE) * 100}%` }} />
+            </div>
+            <div className="mt-1.5 flex justify-between">
+              <span className="typed text-[17px] font-bold text-sign">filled at 97 bps</span>
+              <span className="typed text-[14px] text-faint">300 bps allowed ⟵ ceiling</span>
+            </div>
+          </div>
+
+          <p className="mt-4 text-[16.5px]">
+            The filler held <b>zero</b> USDT on NEAR. A mandate is NEAR-local because the contract has to
+            watch the delivery arrive — that is where the <i>bound</i> lives, not the <i>market</i>.
+          </p>
+          <Source>
+            <code>npm run fill:sourced -- --from base</code> ·{" "}
+            <A href={`${BASESCAN}/0xcc0b220d4dc4eaa469bb1e6e0d21008fe861d0b5a3fd8a24fd2372dab55810d5`}>Base</A>{" "}
+            →{" "}
+            <A href={`${EXPLORER}/txns/4AgkUn5WfhBu5YVi37BMrzG4MzW1Czna3JzmeCYEe7be`}>NEAR</A>. The earnings
+            went back to Base; §3.17 has every hash.
+          </Source>
+        </div>
+      </div>
     </section>
   );
 }

@@ -7,8 +7,15 @@
 #
 # contract/ is NOT excluded. Excluding a directory and re-including a child of
 # it does not work in this format, and contract/fixtures/ is load-bearing.
+#
+# The patterns are anchored, so `target/` alone matches only the workspace
+# target at the root and silently leaves contract/target — another 1.0 GB —
+# in the upload. That failed as `write EPIPE` partway through 1.1 GB, which
+# reads like a network fault and is not. Both spellings, deliberately.
 target/
+**/target/
 node_modules/
+**/node_modules/
 .git/
 frontend/dist/
 .DS_Store

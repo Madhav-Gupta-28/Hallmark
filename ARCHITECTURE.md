@@ -914,6 +914,27 @@ This imposes an ordering constraint on deployment: **the vault account must be
 created before any quote can name it**, so before a filler can do anything at
 all. DEPLOY.md §4 puts it first for this reason.
 
+**And `nep141:wrap.near` does not settle as `nep141:wrap.near`.** Asked for
+wNEAR with `recipientType: DESTINATION_CHAIN`, 1Click delivers **native NEAR**
+— correctly, because on NEAR the native form of wNEAR is NEAR. Observed on
+mainnet on 2026-11-06, sourcing 0.042 wNEAR from Base:
+
+| | |
+|---|---|
+| 1Click status | `SUCCESS` |
+| settlement tx | `3trdpKvUut7Up79UpaTU9ZU6ebwYwyxL5Puvwx4edtMj` |
+| `ft_balance_of(wrap.near)` | **`"0"`** |
+| native balance | **+0.0413 NEAR** |
+
+The value is really there and the venue is not lying; the asset id names the
+economic asset, not the token standard it arrives in. This is a trap in both
+directions. A filler that believes the venue's `SUCCESS` delivers nothing and
+is refused; a filler that believes the token balance re-sources inventory it
+already owns and pays the bridge twice. `fillers/sourced.ts` therefore checks
+the chain rather than the status, and converts the shortfall and only the
+shortfall — which is the general rule this file keeps arriving at: **ask the
+chain what happened, not the service that did it.**
+
 ### 3.11b The mainnet test pair
 
 `wNEAR → USDT` — `nep141:wrap.near` (24 dp) to
@@ -1166,6 +1187,42 @@ on-chain actions, four bridge legs and two chains, measured by differencing
 every balance before and after: **$0.038 all in**, of which $0.014 is storage
 deposits parked on token contracts for one-shot deposit addresses. The estimate
 written down before any of it ran was "under $0.25".
+
+**And then a whole agreement, opened and filled from Base.** The run above
+filled an agreement that already existed, which reads as a second fill on §1
+rather than as a story. So §3 was opened for the purpose and served end to
+end out of the same Base wallet — and in the other direction, so the filler
+had to source **wNEAR**, an asset it held none of:
+
+| step | where | tx | |
+|---|---|---|---|
+| §3 opened | NEAR | `4bTSy97RNJ4yFXXwYRNeQYopCVk8ap7xBpBtbAgfohWT` | 0.15 USDT → wNEAR, 300 bps, 300 s, 9 days |
+| sourced 0.158083 USDC | **Base** | `0x7e15a94e967cd12714fdfa12df09537d461550bec17988ce5324544caa8ec62e` | **EXACT_OUTPUT**, so the venue guarantees the delivery exactly |
+| settled | NEAR | `3trdpKvUut7Up79UpaTU9ZU6ebwYwyxL5Puvwx4edtMj` | 36 s — **as native NEAR**, see §3.11 |
+| **the fill** | NEAR | `6A5EnuyfTeiNezWvYLsvhi2pPYryEjXGHiU3tuiEjgeF` | **141 bps** against 300, quote **4 s** old, 29.87 TGas |
+
+```
+EVENT_JSON:{"standard":"hallmark","version":"1.0.0","event":"filled",
+  "data":[{"mandate_id":"3","filler":"d3bc151a…b7bd484",
+           "amount_in":"150000","delivered":"40040666238911383279481",
+           "cost_bps":141,"ceiling_bps":300}]}
+```
+
+Two things were wrong in `sourced.ts` the first time this direction ran, and
+both are worth recording because the USDC→USDT leg had hidden them:
+
+- **The sourcing amount was denominated in the wrong asset.** `need` is an
+  amount of the *destination* asset, and it was being passed to an
+  `EXACT_INPUT` quote, which reads it as an amount of the *origin* asset. For
+  USDC→USDT — same decimals, one-to-one — that is invisibly correct. For wNEAR
+  it asks to swap 10^18 times too much. The fix is not a conversion but the
+  right primitive: a filler sourcing inventory knows what the delivery has to
+  be and does not know what it costs, which is `EXACT_OUTPUT`. 1Click then
+  returns `minAmountOut == amountOut` and there is no bridge slippage left.
+- **The delivery arrived as native NEAR** (§3.11), so the token balance read
+  zero after a `SUCCESS`. Caught by the check that asks the chain instead of
+  the venue, which existed only because §2.4 made the same distinction about
+  deliveries.
 
 What this does **not** show is a cross-chain *mandate*. There isn't one and
 there cannot be (§6.4b). The owner's asset, the delivery and the ceiling are all

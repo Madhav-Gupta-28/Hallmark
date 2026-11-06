@@ -17,6 +17,14 @@ export interface QuoteParams {
   refundTo: string;
   /** bps. Lower means the venue commits to a tighter floor. */
   slippageTolerance?: number;
+  /**
+   * `EXACT_INPUT` spends a known amount; `EXACT_OUTPUT` buys one. A filler
+   * sourcing inventory needs the second — it knows precisely what the delivery
+   * has to be and does not care what that costs, within its own spread. On an
+   * `EXACT_OUTPUT` quote the venue returns `minAmountOut == amountOut`, so
+   * there is no bridge slippage left to size a buffer against.
+   */
+  swapType?: "EXACT_INPUT" | "EXACT_OUTPUT";
   deadline?: string;
   dry?: boolean;
   depositType?: "ORIGIN_CHAIN" | "INTENTS";
@@ -56,7 +64,7 @@ async function call(path: string, body: unknown): Promise<any> {
 export async function getQuote(p: QuoteParams) {
   return call("/v0/quote", {
     dry: p.dry ?? true,
-    swapType: "EXACT_INPUT",
+    swapType: p.swapType ?? "EXACT_INPUT",
     slippageTolerance: p.slippageTolerance ?? 100,
     originAsset: p.originAsset,
     depositType: p.depositType ?? "ORIGIN_CHAIN",

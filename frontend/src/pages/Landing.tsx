@@ -409,45 +409,45 @@ function BothHalves() {
 
         {/* ------------------------------ it does not care where money is */}
         <div className="sheet px-6 py-5">
-          <div className="label text-faint">A fill sourced on another chain</div>
+          <div className="label text-faint">§3 · an agreement served from another chain</div>
 
           <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             <div className="border-2 border-ink px-3 py-3 text-center">
-              <div className="typed text-[15px] font-bold">0.1544 USDC</div>
+              <div className="typed text-[15px] font-bold">0.1581 USDC</div>
               <div className="label mt-0.5 text-faint">Base</div>
             </div>
             <div className="text-center">
               <div className="font-serif text-[22px] font-extrabold text-faint" aria-hidden>→</div>
-              <div className="typed text-[12px] text-sign">0 bps</div>
-              <div className="typed text-[12px] text-faint">38 s</div>
+              <div className="typed text-[12px] text-faint">36 s</div>
             </div>
             <div className="border-2 border-ink px-3 py-3 text-center">
-              <div className="typed text-[15px] font-bold">0.1545 USDT</div>
+              <div className="typed text-[15px] font-bold">0.0401 wNEAR</div>
               <div className="label mt-0.5 text-faint">NEAR</div>
             </div>
           </div>
 
           <div className="mt-4">
             <div className="relative h-7 w-full border-2 border-ink">
-              <Grow pct={(97 / SCALE) * 100} className="bg-sign" ms={1400} />
+              <Grow pct={(141 / SCALE) * 100} className="bg-sign" ms={1400} />
               <div className="absolute inset-y-0 border-l-2 border-dashed border-ink" style={{ left: `${(300 / SCALE) * 100}%` }} />
             </div>
             <div className="mt-1.5 flex justify-between">
-              <span className="typed text-[17px] font-bold text-sign">filled at 97 bps</span>
+              <span className="typed text-[17px] font-bold text-sign">filled at 141 bps</span>
               <span className="typed text-[14px] text-faint">300 bps allowed ⟵ ceiling</span>
             </div>
           </div>
 
           <p className="mt-4 text-[16.5px]">
-            The filler held <b>zero</b> USDT on NEAR. A mandate is NEAR-local because the contract has to
-            watch the delivery arrive — that is where the <i>bound</i> lives, not the <i>market</i>.
+            Drawn up, then served by a filler holding <b>zero</b> wNEAR — its whole balance sheet was on
+            Base. An agreement is NEAR-local because the contract has to watch the delivery arrive. That is
+            where the <i>bound</i> lives, not the <i>market</i>.
           </p>
           <Source>
-            <code>npm run fill:sourced -- --from base</code> ·{" "}
-            <A href={`${BASESCAN}/0xcc0b220d4dc4eaa469bb1e6e0d21008fe861d0b5a3fd8a24fd2372dab55810d5`}>Base</A>{" "}
+            <code>npm run fill:sourced -- --from base 3</code> ·{" "}
+            <A href={`${BASESCAN}/0x7e15a94e967cd12714fdfa12df09537d461550bec17988ce5324544caa8ec62e`}>Base</A>{" "}
             →{" "}
-            <A href={`${EXPLORER}/txns/4AgkUn5WfhBu5YVi37BMrzG4MzW1Czna3JzmeCYEe7be`}>NEAR</A>. The earnings
-            went back to Base; §3.17 has every hash.
+            <A href={`${EXPLORER}/txns/6A5EnuyfTeiNezWvYLsvhi2pPYryEjXGHiU3tuiEjgeF`}>NEAR</A>. §1 was filled
+            from Base too; §3.17 has every hash.
           </Source>
         </div>
       </div>

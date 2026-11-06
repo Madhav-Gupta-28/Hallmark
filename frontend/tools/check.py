@@ -76,6 +76,40 @@ claim("unit + integration tests", f"{unit} unit" in blob and f"{integ} against a
 claim("total test count", not re.search(r"\b(\d+) tests\b", blob) or f"{unit + integ} tests" in blob,
       f"{unit+integ}" if f"{unit + integ} tests" in blob else "not claimed", unit + integ)
 
+# How many fillers there are is prose in six files and a fact in one, so the
+# prose drifts the moment one is added. It did: `sourced.ts` landed and the
+# README, the limits page, the fill page, the how page and §14 all still said
+# "three" — while the README's own claims table said the cross-chain fill had
+# happened. A project whose whole pitch is that its claims are checked cannot
+# afford to contradict itself in front of a pre-screen whose stated job is
+# "does it run and do what the README says". So the number is derived.
+#
+# Derived from the npm scripts, because a filler that cannot be run is not a
+# filler: `fill` and every `fill:*`. `breach` is deliberately excluded — it is
+# written to be REFUSED, so counting it among the fillers would overstate the
+# supply side, which is the one number §6.2 is careful about.
+scripts = json.loads((root / "client" / "package.json").read_text())["scripts"]
+nfill = len([k for k in scripts if k == "fill" or k.startswith("fill:")])
+words = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
+# Only the INVENTORY claim, not every sentence with a number and the word
+# filler in it: "three fillers priced the same mandate" is about `npm run race`,
+# which really does race three of them, and must not be rewritten.
+# "Three fillers, one ceiling" is a figure about `npm run race`, which really
+# does race three of them, so the pattern matches only the phrasings that
+# assert a total: "N fillers, all …", "N fillers in the repository",
+# "N fillers written to find out", "supply side is N fillers".
+inventory = re.findall(
+    r"(\w+) fillers(?:,? all\b| in the repos| written to find out| and no more)",
+    "\n".join([blob, (root / "README.md").read_text(),
+               (root / "ARCHITECTURE.md").read_text(),
+               (root / "client/src/fillers/README.md").read_text()]), re.I)
+want = words.get(nfill, str(nfill))
+wrong = sorted({w.lower() for w in inventory
+                if w.lower() in words.values() and w.lower() != want})
+claim("filler count, where it is claimed as an inventory", not wrong,
+      f"{want} ({', '.join(sorted(k for k in scripts if k == 'fill' or k.startswith('fill:')))})",
+      f"prose also says {wrong}" if wrong else f"consistently {want}")
+
 # every refusal named on the site must exist in the enum
 named = {r for r in re.findall(r"\b([A-Z][a-zA-Z]+)\b", blob) if r in set(refusals) or r in
          {"QuoteTooOld", "BadSignature"}}

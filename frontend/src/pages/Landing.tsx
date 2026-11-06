@@ -109,6 +109,16 @@ function Invariant() {
         Four numbers the venue signed, and the amount that turned up. Every fee is already inside them,
         so there is nothing a filler can hide.
       </p>
+      {/* The sharpest line against the field, and §15.2 asked for it here. Every
+          other way of bounding a price needs a second source to compare against,
+          and that source is a new thing that can be wrong or be bought. Here both
+          dollar marks are inside the signature, so there is nothing to compare to. */}
+      <p className="mt-5 max-w-[60ch] text-[19px]">
+        <span className="hl">No oracle. No price feed. No reference price.</span> Both dollar marks are
+        inside the venue's own signature, so there is no second source to trust, to buy, or to
+        manipulate — and nothing to keep running. The contract reads the bytes it was handed and does
+        integer arithmetic.
+      </p>
     </section>
   );
 }

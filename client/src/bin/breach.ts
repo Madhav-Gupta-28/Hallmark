@@ -24,7 +24,7 @@
  * transaction on mainnet, not a unit test.
  */
 import { canonicalise, costBps, quoteAgeSecs, signatureB58, verifySigner } from "../lib/canonical.ts";
-import { getQuote } from "../lib/oneclick.ts";
+import { getQuote, formatUnits, nearAsset } from "../lib/oneclick.ts";
 import { Hallmark, receiptFailure, signer, transferCall, tokenAccount } from "../lib/hallmark.ts";
 
 const VAULT = process.env.HALLMARK_VAULT ?? "hallmarkfi.near";
@@ -65,7 +65,9 @@ if (!verifySigner(canonical, res.signature)) {
 // the ceiling is never reached — which would prove a different check.
 const deliver = BigInt(res.quote.minAmountOut);
 const expected = BigInt(res.quote.amountOut);
-const unit = 10 ** 6;
+// Ask the token for its decimals. Assuming six prints wNEAR as
+// 13144620232675330.000000, which is not a number anybody can read.
+const dest = await nearAsset(rec.terms.destination_asset);
 
 console.log(`
   mandate #${id}   ceiling ${rec.terms.max_cost_bps} bps
@@ -79,8 +81,8 @@ console.log(`
     verdict         nothing here is out of policy
 
   what the venue actually signed
-    expected out    ${(Number(expected) / unit).toFixed(6)}   -> ${costBps(res, expected)} bps, inside the ceiling
-    GUARANTEED out  ${(Number(deliver) / unit).toFixed(6)}   -> ${costBps(res, deliver)} bps, ${costBps(res, deliver) > rec.terms.max_cost_bps ? "OVER" : "inside"} the ceiling
+    expected out    ${formatUnits(expected, dest.decimals)}   -> ${costBps(res, expected)} bps, inside the ceiling
+    GUARANTEED out  ${formatUnits(deliver, dest.decimals)}   -> ${costBps(res, deliver)} bps, ${costBps(res, deliver) > rec.terms.max_cost_bps ? "OVER" : "inside"} the ceiling
 
   fill.ts would stop here, and so would the web app. This tool does not.
   delivering the floor: ${deliver} base units`);
@@ -115,7 +117,7 @@ if (!refused) {
 // looks identical from the outside.
 const after = await balance(tokenAccount(rec.terms.destination_asset), process.env.HALLMARK_ACCOUNT!);
 console.log(`  the delivery was refunded in the same transaction`);
-console.log(`  filler still holds ${(Number(after) / unit).toFixed(6)} ${rec.terms.destination_asset.split(":")[1]}\n`);
+console.log(`  filler still holds ${formatUnits(after, dest.decimals)} ${dest.symbol}\n`);
 
 async function balance(token: string, accountId: string) {
   return BigInt(await new Hallmark(token, RPC).view<string>("ft_balance_of", { account_id: accountId }));

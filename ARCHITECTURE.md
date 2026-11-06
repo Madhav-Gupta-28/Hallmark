@@ -1879,15 +1879,16 @@ Hallmark's guarantee is not "someone will trade for me"; it is
 "I need not trust whoever does." One owner and one agent is already a complete
 product. No network is required for the mechanism to be sound (§1.5).
 
-### §6.2 The demonstrated supply side is three fillers, and no more is claimed
+### §6.2 The demonstrated supply side is four fillers, and no more is claimed
 
-They are deliberately not three copies of each other:
+They are deliberately not four copies of each other:
 
 | | strategy | written from | what it proves |
 |---|---|---|---|
 | `bin/fill.ts` | splits the spread — delivers halfway between the venue's floor and its expected fill | the architecture | the reference. Asks the contract for a verdict before spending anything |
 | `fillers/edge.ts` | **patient**: fills only when the spread it keeps clears a floor it sets itself, and computes the cost itself instead of asking the contract | **§2.1 and §5.3 alone**, without reading `fill.ts` | an independent implementation of the invariant. It prints its own number beside the contract's on every live quote, so the agreement is checkable rather than asserted — and it exits non-zero if they ever differ |
 | `fillers/adapted.ts` | the official NEAR Intents agent flow, pointed at a vault | `near/agent-skills`, skill `near-intents` | what a stranger's agent must change to become a filler. The diff is the claim |
+| `fillers/sourced.ts` | **holds nothing on NEAR**: prices the NEAR leg, buys the exact output it is short on another chain with `EXACT_OUTPUT`, waits for it to land, re-prices, then delivers | the architecture, by us | that where the bound lives is not where the liquidity lives (§6.4b). Run on mainnet in both directions — §1 out of Base at 97 bps, §3 end to end at 141 bps with zero wNEAR held |
 
 `npm run race` has all three price the same live mandate side by side, and
 cross-checks the arithmetic three ways — the reference client, the independent
@@ -2433,13 +2434,17 @@ the end-to-end claim is **UNVERIFIED** and appears nowhere public.
 
 **UNVERIFIED:**
 
-1. That a filler sourcing via `depositType: INTENTS` can deliver into the vault
-   within the quote's deadline in practice. ~10 s estimated (§3.6); not timed by
-   us end to end. Not load-bearing: the reference filler holds inventory
-   instead, which is the documented v1 (§6.4).
+Nothing load-bearing remains. The last entry here was cross-chain sourcing, and
+it has now been run.
 
-*Resolved:* gas (§5.7), the sandbox fund → fill → withdraw path (§12), and
-**the mainnet round trip (§3.17)**.
+*Resolved:* gas (§5.7), the sandbox fund → fill → withdraw path (§12), **the
+mainnet round trip (§3.17)**, and **cross-chain sourcing, in both directions**
+— agreement §1 served out of Base at 97 bps, and agreement §3 drawn up and
+served end to end by a filler holding zero wNEAR at 141 bps, its sourcing leg
+priced at 0 bps with `EXACT_OUTPUT`. §3.17 has every hash. The reverse
+direction is what exposed two real bugs: a sourcing quote denominated in the
+wrong asset, and 1Click settling `nep141:wrap.near` as *native* NEAR while
+reporting `SUCCESS` (§3.11).
 
 **Found by the line-by-line audit of 2026-11-01, and closed:**
 
@@ -2526,10 +2531,13 @@ races (§12).
    > outage to prove it.
 11. **The filler needs capital** (§6.4). This is the deliberate cost of closing
     the `depositAddress` hole.
-12. **Three fillers, all written by us or adapted by us** — there is no
+12. **Four fillers, all written by us or adapted by us** — there is no
     third-party filler ecosystem and none is claimed (§6.2, point 5). What the
-    three do demonstrate is that the mandate does not care who fills it, and
+    four do demonstrate is that the mandate does not care who fills it, and
     that an independent reading of §2.1 agrees with the contract on live quotes.
+    `breach.ts` is the sharpest of them, because it is deliberately written
+    *not* to run our own guard — the only way to show the contract refusing
+    rather than the client declining.
 13. **Immutable means unpatchable** (§10.2) — and §2.10 is the argument for
     deleting that key as late as possible. An audit found a critical bug in a
     contract that was already live; had the key been gone, it could not have

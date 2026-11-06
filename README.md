@@ -73,12 +73,15 @@ the vault sending to an address a counterparty named, which is the one thing
 **Where a chain gets crossed is the fill, and that is the filler's side.** The
 vault only ever sees a NEAR token arrive; where the filler got it is its own
 business. Two ways to get it (§6.4): hold inventory, or buy the output through
-1Click with `depositType: INTENTS` and then deliver it. **All three fillers here
-hold inventory.** Source-then-deliver is specified, not demonstrated — §14 lists
-it first among the unverified items, and it stays there until it is timed end to
-end. The honest summary: Hallmark enforces the bound on NEAR and does not need
-liquidity of its own, but the cross-chain sourcing that would draw on Intents'
-is a documented path, not a shipped one.
+1Click and then deliver it. Three of the four fillers hold inventory;
+`fill:sourced` sources the output on another chain first, and it has now run
+**in both directions on mainnet** — agreement §1 served out of Base at 97 bps,
+and agreement §3 drawn up and served end to end by a filler holding **zero**
+wNEAR, at 141 bps. Every hash is in §3.17.
+
+The honest summary: Hallmark enforces the bound on NEAR, and a filler needs no
+liquidity on NEAR to satisfy it — but it does need capital somewhere, which is
+the deliberate price of closing the `depositAddress` hole (§14.11).
 
 ---
 

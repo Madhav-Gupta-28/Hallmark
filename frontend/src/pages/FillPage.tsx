@@ -54,13 +54,18 @@ export function FillPage() {
       <Figure id="agent" no="2" title="Your agent becomes a filler in four changes"
         takeaway={<>This is NEAR's own Intents agent example, marked up. Nothing else about it changes — same API, same quote request, same fields. Only the direction of trust.</>}
         full={<>
-          <p>The three fillers in the repository are the same four changes applied three ways:
+          <p>The four fillers in the repository are the same four changes applied four ways:
             <code> bin/fill.ts</code> splits the spread and asks the contract for a verdict before spending
             anything; <code>fillers/edge.ts</code> fills only when its spread clears a floor it sets, and
             computes the cost itself from the specification alone, exiting non-zero if it ever disagrees with
-            the chain; <code>fillers/adapted.ts</code> is the official agent flow pointed at a vault.</p>
-          <p><b>What is not claimed:</b> there is no third-party filler ecosystem yet. Three fillers, all
-            written or adapted by us. You would be the fourth, and the first we did not write.</p>
+            the chain; <code>fillers/adapted.ts</code> is the official agent flow pointed at a vault; and
+            <code>fillers/sourced.ts</code> holds nothing on NEAR at all — it buys the output on another
+            chain and delivers that, which it has done on mainnet in both directions.</p>
+          <p>There is a fifth, and it is written to <i>lose</i>: <code>bin/breach.ts</code> deliberately
+            does not run our guard, because the only way to show the <i>contract</i> refusing — rather than
+            our client politely declining — is to send it a fill it should refuse.</p>
+          <p><b>What is not claimed:</b> there is no third-party filler ecosystem yet. Four fillers, all
+            written or adapted by us. You would be the fifth, and the first we did not write.</p>
         </>}>
         <Redline />
       </Figure>

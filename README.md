@@ -30,6 +30,27 @@ off-chain and is not an argument to that call. A guard reading the transaction
 is reading the wrong object. `npm run policy` (§5) runs that shape against both
 captures and gets **APPROVED** twice.
 
+**And handing the guard the quote does not save it either.** This track's own
+starter prompt asks for a vault that fetches a 1Click quote and *"rejects it if
+slippage exceeds the user's limit"* — so take the honest capture, where nothing
+is hidden and nobody is attacking. It declares `slippageTolerance: 100`, one
+percent, and that field is **inside the signature**, so a guard can trust it
+completely. Ask the live contract what the same bytes actually guarantee and it
+answers **160 bps**:
+
+```
+honest.quote.json   declared slippage  100 bps  ->  worst_cost   160 bps
+worst.quote.json    declared slippage 9999 bps  ->  worst_cost 10000 bps
+```
+
+Sixty percent more than the number the user set, because slippage is not the
+all-in cost — the solver's spread, the 20 bps app fee and the withdraw fee all
+sit outside it. The second line is the honest half: the malicious capture's
+slippage field is at its maximum, so a slippage check *would* catch that one.
+The point is not that the field is unreadable. It is that **reading it is not
+the same as bounding what you get**, and only one of those two numbers is a
+bound. Both are re-derived from the chain by `./verify.sh`.
+
 A not-held order hands discretion over the time and price of your trade to
 somebody else. For a century the only thing protecting the client was a promise —
 the best execution obligation. NEAR Intents signs the economics of every fill, so
@@ -102,6 +123,7 @@ ceiling really did turn away a real fill. Non-zero if anything disagrees.
 ▸ The live contract on NEAR mainnet, asked anonymously
   PASS  NEAR Intents really signed the 99.99%-loss quote (is_signed = true)
   PASS  and the contract prices its floor at 10000 bps — a total loss
+  PASS  an honest quote declares 100 bps of slippage and still guarantees 160
   PASS  an overflowing magnitude panics rather than pricing a fill at zero (§8.4)
   PASS  mainnet refused a real fill the owner's ceiling did not allow (532 > 300 bps)
   PASS  the register answers with no key: 5 agreement(s) in force
@@ -115,6 +137,7 @@ The sections below are the same things one at a time, with what each one proves.
 | claim | settled by |
 |---|---|
 | NEAR Intents really signed a quote that guarantees a 99.99% loss | `malicious_quote_is_a_9999_bps_haircut_and_is_validly_signed`, and `is_signed` on mainnet with no key |
+| reading the venue's declared slippage is not the same as bounding the cost | `./verify.sh` — the honest capture declares **100 bps** inside the signature and the live contract prices it at **160** |
 | all 692 bytes are covered by that signature | `every_single_byte_is_covered_by_the_signature` — each byte flipped, each rejected |
 | the contract prices a 500 bps `appFee` it is not allowed to read | `the_malicious_quote_is_refused_at_its_floor_but_fine_at_its_expected_fill` (§2.3) |
 | a signature alone is not enough — a stale quote is refused | `a_stale_quote_is_refused_even_though_it_is_signed_and_inside_its_deadline`, and on-chain in `3JKAnmbAnQKM141iT3fd4Pk2jhTLjBmmYC3Gk4vp6Zyc` |

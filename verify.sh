@@ -109,6 +109,19 @@ print(json.dumps({"canonical":c,"signature":"1"*(len(s)-len(s.lstrip(b"\x00")))+
   [ "$WORST" = "10000" ] && ok "and the contract prices its floor at 10000 bps — a total loss" \
                          || no "worst_cost returned '$WORST', expected 10000"
 
+  # The honest capture, which is the sharper half of the argument. Nothing is
+  # hidden in it and nobody is attacking: it declares `slippageTolerance: 100`,
+  # that field is INSIDE the signature so a guard may trust it completely, and
+  # the all-in cost it guarantees is still 160 bps. Reading the declared
+  # slippage is not the same as bounding what you get, and this is the pair of
+  # numbers that says so. Asserted here because the README states it.
+  HCANON=$(python3 -c 'import json;print(json.dumps({"canonical":open("contract/fixtures/honest.canonical.json").read()}))' 2>/dev/null)
+  HSLIP=$(python3 -c 'import json;print(json.load(open("contract/fixtures/honest.canonical.json"))["slippageTolerance"])' 2>/dev/null)
+  HONEST=$(ask worst_cost "$HCANON" | python3 -c 'import sys,json;r=json.load(sys.stdin);print("".join(map(chr,r["result"]["result"])))' 2>/dev/null)
+  [ "$HONEST" = "160" ] && [ "$HSLIP" = "100" ] \
+    && ok "an honest quote declares ${HSLIP} bps of slippage and still guarantees 160" \
+    || no "the honest quote declares '$HSLIP' bps and prices at '$HONEST' bps, expected 100 and 160"
+
   GUARD=$(ask realised_cost '{"canonical":"{\"amountIn\":\"1000\",\"amountInUsd\":\"10.000000000000\",\"amountOutUsd\":\"9.000000000000\",\"amountOut\":\"1\",\"minAmountOut\":\"1\",\"originAsset\":\"nep141:wrap.near\",\"destinationAsset\":\"nep141:usdt.tether-token.near\",\"recipient\":\"hallmarkfi.near\",\"deadline\":\"2026-11-20T00:00:00.000Z\",\"timestamp\":\"2026-10-31T00:00:00.000Z\",\"slippageTolerance\":100}","delivered":"170141183460469231731687303715884105728"}')
   echo "$GUARD" | grep -q "mul_div overflow" \
     && ok "an overflowing magnitude panics rather than pricing a fill at zero (§8.4)" \

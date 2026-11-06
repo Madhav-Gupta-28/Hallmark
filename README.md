@@ -101,7 +101,7 @@ ceiling really did turn away a real fill. Non-zero if anything disagrees.
   PASS  and the contract prices its floor at 10000 bps — a total loss
   PASS  an overflowing magnitude panics rather than pricing a fill at zero (§8.4)
   PASS  mainnet refused a real fill the owner's ceiling did not allow (532 > 300 bps)
-  PASS  the register answers with no key: 2 agreement(s) in force
+  PASS  the register answers with no key: 5 agreement(s) in force
 ```
 
 The sections below are the same things one at a time, with what each one proves.

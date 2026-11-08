@@ -1,0 +1,57 @@
+# Proves this repository does what its README says, from a clean checkout.
+#
+# Two jobs on purpose. `test` is offline and deterministic — no network, no key,
+# no funds — so it is the one the badge tracks. `sandbox` downloads a real NEAR
+# node and fills a mandate against it, which is slower and depends on a release
+# download, so it runs beside rather than inside the fast job.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests — offline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: contract — 32 unit tests
+        run: cargo test --lib
+
+      - name: client — 54 assertions
+        run: npm --prefix client ci && npm --prefix client test
+
+      - name: frontend — 99 tests
+        run: npm --prefix frontend ci && npm --prefix frontend test
+
+      - name: frontend — typechecks and builds
+        run: npm --prefix frontend run build
+
+      - name: every claim the site makes, re-derived from source and chain
+        run: python3 frontend/tools/check.py
+
+      - name: no signed quote is ever hand-typed
+        run: python3 frontend/tools/mkfixtures.py --check
+
+  sandbox:
+    name: tests — against a real NEAR node
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: contract — 28 integration tests, nothing mocked
+        run: cargo test --test integration

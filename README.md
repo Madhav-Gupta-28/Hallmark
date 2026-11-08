@@ -11,7 +11,8 @@ that delivery against the dollar marks **NEAR Intents signed itself** — so the
 price feed to manipulate and no fee list to keep current. Over the ceiling, it refuses
 and refunds in the same transaction.
 
-[![tests](https://img.shields.io/badge/tests-213%20passing-brightgreen)](#testing)
+[![CI](https://github.com/Madhav-Gupta-28/Hallmark/actions/workflows/ci.yml/badge.svg)](https://github.com/Madhav-Gupta-28/Hallmark/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-213-brightgreen)](#testing)
 [![mainnet](https://img.shields.io/badge/mainnet-hallmarkfi.near-00ec97)](https://nearblocks.io/address/hallmarkfi.near)
 [![oracles](https://img.shields.io/badge/oracles-0-blue)](#the-one-invariant)
 [![licence](https://img.shields.io/badge/licence-MIT-lightgrey)](LICENSE)
@@ -49,7 +50,7 @@ Sixty percent more than the user asked for, because the solver's spread, the app
 the withdraw fee all sit outside slippage. **Reading a field is not the same as bounding
 what you get.**
 
-Handing someone discretion over the time and price of your trade is a century old — it is
+Giving someone discretion over the time and price of your trade is a century old — it is
 called a **not-held order**, and the only thing that ever bounded it was a promise to try
 hard, enforced after the fact by a regulator. NEAR Intents signs the economics of every
 fill. So on NEAR that promise can be a number instead.
@@ -85,8 +86,9 @@ cost = 1 − (amountOutUsd × delivered / amountOut) / amountInUsd
 Four fields the venue signed, and the amount that actually arrived. Slippage, bridge fee,
 solver spread and any app fee have **already moved those numbers before the venue signed
 them**, so there is nothing left to enumerate — which is why there is no fee list and no
-oracle. The whole bound is 80 lines of [`contract/src/quote.rs`](contract/src/quote.rs),
-and it fails closed for free: a quote that cannot be priced cannot be filled.
+oracle. The signed subset, the signature check and the arithmetic are one 216-line file,
+[`contract/src/quote.rs`](contract/src/quote.rs), and the bound fails closed for free: a
+quote that cannot be priced cannot be filled.
 
 ## How it works
 
@@ -491,21 +493,23 @@ ARCHITECTURE.md numbers every one.
 
 ## Roadmap
 
-- **Delete the full-access key**, making the vault immutable.
-- **A third-party filler.** The supply side is the honest gap; joining needs no permission.
+- **Delete the full-access key**, after a professional audit, making the vault immutable.
+- **A third-party filler.** The supply side is the honest gap — and joining needs nobody's
+  permission, which is the whole point.
 - **More venues.** The invariant needs a venue that signs the economics of a fill. NEAR
   Intents is the only one today; any other that does would work unchanged.
-- **Mainnet at size**, after a professional audit.
 
 ## The other submission
 
 > *Hackathon rule Q-015: one person may enter up to two projects if they are independent
 > and each README names the other.*
 
-**Hallmark** is led by **Madhav Gupta** and is the project submitted here. **Docket** is a
-separate project led by **Aditi**, who also contributed the frontend work on Hallmark. The
-two are independent: different problems, different contracts, no shared code, and neither
-depends on the other.
+**Hallmark** is led by **Madhav Gupta** and is the project submitted here. **Aditi Gupta**
+built Hallmark's front end.
+
+**Docket** is a separate project, led by Aditi. **Madhav contributed nothing to it** — no
+code, no design, no review. The two projects share no code, solve different problems, use
+different contracts, and neither depends on the other.
 
 > Docket's repository: *to be added before submission.*
 
@@ -514,13 +518,13 @@ depends on the other.
 > *Hackathon rules Q-005 (list every library and template) and Q-002/Q-004 (disclose
 > anything pre-existing).*
 
-**Baseline: none.** Hallmark was started on 2026-11-01, inside the window, and every commit
-here is hackathon work. No earlier product, no ported contract, no pre-hackathon library of
-ours in the tree.
+**Baseline: none.** Hallmark was started on 2026-11-01, inside the window. Every commit
+here is hackathon work — no earlier product, no ported contract, nothing of ours that
+predates it.
 
-**No starter template.** `frontend/` began as `npm create vite` and everything in `src/`
-was written for this project. The shadcn dialog and button primitives are the upstream
-generated components, trimmed to what this app renders.
+**No starter template.** `frontend/` began as `npm create vite`; everything in `src/` was
+written for this project. The shadcn dialog and button primitives are upstream generated
+components, trimmed to what this app renders.
 
 **Not ours, and not vendored:** the signed quotes in `fixtures/` are genuine NEAR Intents
 API responses, committed verbatim so the signature still verifies.
@@ -533,16 +537,15 @@ Full dependency list in [Tech stack](#tech-stack) and in each `package.json` / `
 ## AI tooling
 
 Built with AI assistance (Anthropic's Claude, via Claude Code) for code, tests and prose,
-under line-by-line human review. Everything it produced was checked by running it: the
-contract is deployed on mainnet, the 60 Rust tests and 54 client assertions run from a
-clean clone, and `check.py` re-verifies the app's claims against the source and the live
-chain rather than against anybody's recollection.
+under line-by-line human review. Nothing was trusted because it looked right: the contract
+is deployed on mainnet, the 60 Rust tests and 54 client assertions run from a clean clone,
+and `check.py` re-derives every claim from the source and the chain rather than from
+anybody's recollection.
 
-The two vulnerabilities in §2.10 and §2.11 were found by auditing a version that was
-**already live**, and both were found by *measuring* — printing real `storage_usage`
-deltas, replaying a genuinely signed three-day-old quote against the deployed contract —
-not by reasoning about the code. Three wrong fixes are recorded in ARCHITECTURE.md
-alongside the right one, for the same reason.
+Both vulnerabilities in §2.10 and §2.11 were found in a version that was **already live**,
+and both were found by *measuring* — real `storage_usage` deltas, a genuinely signed
+three-day-old quote replayed against the deployed contract — not by reasoning about the
+code. Three wrong fixes are recorded beside the right one, for the same reason.
 
 ## Licence
 

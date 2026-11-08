@@ -56,10 +56,23 @@ jobs:
       # The suite deploys real wasm into a real node, so it has to exist first.
       # build.sh pins rustc 1.86 because nearcore's VM rejects anything newer
       # (ARCHITECTURE.md §3.14) — the same build a human runs before deploying.
+      # `curl … | sh` hides a download failure, because the pipeline exits with
+      # sh's status and sh is happy with empty input. The release CDN answered
+      # 504 once already, so: retry, fall back to building it, then prove the
+      # command actually exists before anything depends on it.
       - name: install cargo-near
         run: |
-          curl --proto '=https' --tlsv1.2 -LsSf \
-            https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if curl --proto '=https' --tlsv1.2 -LsSf --retry 3 --retry-delay 5 \
+                 https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh \
+                 -o /tmp/cargo-near-installer.sh; then
+              sh /tmp/cargo-near-installer.sh && break
+            fi
+            echo "attempt $attempt failed, retrying"; sleep 10
+          done
+          command -v cargo-near >/dev/null || cargo install cargo-near --locked
+          cargo near --version
 
       - name: build the deployable wasm
         run: ./build.sh

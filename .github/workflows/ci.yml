@@ -60,6 +60,12 @@ jobs:
       # sh's status and sh is happy with empty input. The release CDN answered
       # 504 once already, so: retry, fall back to building it, then prove the
       # command actually exists before anything depends on it.
+      # cargo-near pulls in hidapi for Ledger support, which needs libudev.
+      # GitHub runners do not ship it, so the source fallback cannot build
+      # without this.
+      - name: system deps for the source fallback
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libudev-dev pkg-config
+
       - name: install cargo-near
         run: |
           set -euo pipefail
